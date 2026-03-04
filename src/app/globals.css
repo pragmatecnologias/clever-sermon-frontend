@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 232 47% 6%;
+    --foreground: 210 40% 96%;
+    --card: 230 36% 12%;
+    --card-foreground: 210 40% 96%;
+    --popover: 230 36% 12%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 187 100% 50%;
+    --primary-foreground: 230 30% 8%;
+    --secondary: 270 82% 55%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 230 24% 18%;
+    --muted-foreground: 217 15% 72%;
+    --accent: 330 90% 56%;
+    --accent-foreground: 210 40% 96%;
+    --destructive: 0 88% 60%;
+    --destructive-foreground: 210 40% 96%;
+    --border: 230 26% 22%;
+    --input: 230 26% 22%;
+    --ring: 187 100% 50%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(circle at 15% 20%, rgba(0, 231, 255, 0.18), transparent 35%),
+      radial-gradient(circle at 80% 10%, rgba(198, 78, 255, 0.2), transparent 40%),
+      radial-gradient(circle at 10% 85%, rgba(255, 77, 166, 0.18), transparent 35%);
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .cyber-panel {
+    @apply bg-[color:hsla(var(--card))] text-foreground border border-[color:hsla(var(--border))] shadow-[0_0_25px_rgba(0,231,255,0.08)];
+  }
+
+  .cyber-button {
+    @apply relative overflow-hidden bg-[color:hsla(var(--primary))] text-[color:hsla(var(--primary-foreground))] font-semibold tracking-wide uppercase;
+    box-shadow: 0 0 12px rgba(0, 231, 255, 0.35);
+  }
+
+  .cyber-button-secondary {
+    @apply bg-[color:hsla(var(--secondary))] text-white font-semibold tracking-wide uppercase;
+    box-shadow: 0 0 12px rgba(198, 78, 255, 0.35);
+  }
+
+  .cyber-outline {
+    @apply border border-[color:hsla(var(--primary))] text-[color:hsla(var(--primary))];
+    box-shadow: 0 0 10px rgba(0, 231, 255, 0.2);
+  }
+
+  .cyber-tag {
+    @apply inline-flex items-center px-2 py-1 rounded-full text-xs uppercase tracking-widest bg-[rgba(0,231,255,0.15)] text-[color:hsla(var(--primary))];
+  }
+
+  .cyber-muted {
+    @apply text-[color:hsla(var(--muted-foreground))];
+  }
+}
