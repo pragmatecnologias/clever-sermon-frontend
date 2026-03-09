@@ -28,9 +28,10 @@ interface InterpretiveChallengePanelProps {
   token: string
   language?: string
   cachedData?: InterpretiveChallenge | null
+  onDataLoad?: (data: InterpretiveChallenge) => void
 }
 
-export default function InterpretiveChallengePanel({ passage, token, language = 'en', cachedData }: InterpretiveChallengePanelProps) {
+export default function InterpretiveChallengePanel({ passage, token, language = 'en', cachedData, onDataLoad }: InterpretiveChallengePanelProps) {
   const [challenge, setChallenge] = useState<InterpretiveChallenge | null>(cachedData || null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -64,6 +65,7 @@ export default function InterpretiveChallengePanel({ passage, token, language = 
           setChallenge(null)
         } else {
           setChallenge(data)
+          onDataLoad?.(data)
         }
       } else {
         setError('Unable to load interpretive challenges')

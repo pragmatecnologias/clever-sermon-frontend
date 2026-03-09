@@ -49,6 +49,8 @@ export default function InteractiveCanonicalConstellation({ focusPassage, onNode
     covenantDevelopment: true,
     narrativeContinuation: true,
     showLabels: true,
+    testament: 'all' as 'all' | 'OT' | 'NT',
+    theme: 'all',
   })
 
   useEffect(() => {
@@ -311,17 +313,31 @@ export default function InteractiveCanonicalConstellation({ focusPassage, onNode
       const material = line.material as THREE.LineBasicMaterial | THREE.LineDashedMaterial
       
       // Check if this connection type is enabled
-      const typeEnabled = filters[`${data.type}` as keyof typeof filters]
+      const rawType = String(data.relationType || data.type || '').toLowerCase()
+      const typeEnabled =
+        rawType === 'direct_quotation'
+          ? filters.directQuotation
+          : rawType === 'prophetic_fulfillment'
+            ? filters.propheticFulfillment
+            : rawType === 'typology'
+              ? filters.typology
+              : rawType === 'covenant_development'
+                ? filters.covenantDevelopment
+                : rawType === 'narrative_continuation'
+                  ? filters.narrativeContinuation
+                  : filters.thematicEcho
       
       // Check if we're filtering for strongest only
-      const strengthOk = !filters.strongestOnly || data.strength === 'strong'
+      const strengthOk = !filters.strongestOnly || data.strength === 'strong' || (data.strengthScore || 0) >= 0.75
       
       // Theme-based dimming: fade connections not matching active theme
-      if (activeTheme && data.type !== activeTheme) {
+      if ((activeTheme && rawType !== activeTheme) || (filters.theme !== 'all' && !String(data.theme || '').toLowerCase().includes(filters.theme))) {
         material.opacity = 0.1 // Dim unrelated connections
       } else {
         // Restore original opacity based on strength
-        const strengthValue = data.strength === 'strong' ? 0.9 : data.strength === 'moderate' ? 0.6 : 0.4
+        const strengthValue = typeof data.strengthScore === 'number'
+          ? Math.max(0.2, Math.min(1, data.strengthScore))
+          : data.strength === 'strong' ? 0.9 : data.strength === 'moderate' ? 0.6 : 0.4
         material.opacity = strengthValue
       }
       
@@ -338,9 +354,13 @@ export default function InteractiveCanonicalConstellation({ focusPassage, onNode
     // Dim nodes not in active theme or suggested path
     nodesRef.current.forEach((data, mesh) => {
       const material = mesh.material as THREE.MeshStandardMaterial
-      if (activeTheme || suggestedPath) {
+      const testamentOk = filters.testament === 'all' || data.testament === filters.testament
+      const nodeThemes = Array.isArray(data.themes) ? data.themes.map((theme: string) => String(theme).toLowerCase()) : []
+      const themeOk = filters.theme === 'all' || nodeThemes.some((theme: string) => theme.includes(filters.theme))
+
+      if (activeTheme || suggestedPath || !testamentOk || !themeOk) {
         const isInPath = suggestedPath?.includes(data.reference || data.label)
-        material.opacity = isInPath ? 1.0 : 0.3
+        material.opacity = testamentOk && themeOk ? (isInPath ? 1.0 : 0.35) : 0.1
         material.transparent = true
       } else {
         material.opacity = 1.0
@@ -436,6 +456,8 @@ export default function InteractiveCanonicalConstellation({ focusPassage, onNode
           reference: node.reference,
           title: node.title || node.label,
           theme: node.theme,
+          themes: node.themes || (node.theme ? [node.theme] : []),
+          testament: node.testament || 'UNKNOWN',
           snippet: node.snippet,
           connectionType: node.connectionType,
           connectionStrength: node.connectionStrength,
@@ -471,6 +493,7 @@ export default function InteractiveCanonicalConstellation({ focusPassage, onNode
           
           // Different line styles based on connection type with enhanced visual styling
           const connType = conn.type || 'thematic_echo'
+          const relationType = conn.relationType || connType
           const strengthValue = conn.strengthValue || 0.6
           const visualStyle = conn.visualStyle || { lineType: 'solid', animated: false, glow: false }
           
@@ -483,6 +506,7 @@ export default function InteractiveCanonicalConstellation({ focusPassage, onNode
             prophetic_fulfillment: 0xef4444, // Red
             typology: 0x8b5cf6,              // Purple
             thematic_echo: 0x10b981,         // Green
+            thematic: 0x10b981,              // Green
             covenant_development: 0xfbbf24,  // Gold
             narrative_continuation: 0x6b7280 // Gray
           }
@@ -570,7 +594,10 @@ export default function InteractiveCanonicalConstellation({ focusPassage, onNode
           connectionsRef.current.set(line, {
             id: conn.id,
             type: connType,
+            relationType,
+            relationStyle: conn.relationStyle || visualStyle.lineType,
             strength: conn.strength || 'moderate',
+            strengthScore: conn.strengthScore || strengthValue,
             explanation: conn.explanation || 'Connection between passages',
             canonicalSignificance: conn.canonicalSignificance || '',
             fromReference: fromNode.reference || fromNode.label,
@@ -628,8 +655,17 @@ export default function InteractiveCanonicalConstellation({ focusPassage, onNode
   }
 
   const handleOpenPassage = (reference: string) => {
-    console.log('Opening passage:', reference)
-    window.open(`${process.env.NEXT_PUBLIC_API_URL}/scripture/${encodeURIComponent(reference)}`, '_blank')
+    console.log('Open full passage context inline:', reference)
+    const existing = Array.from(nodesRef.current.values()).find(
+      (node: any) => node.reference === reference,
+    )
+    if (existing) {
+      setSelectedNode({
+        ...existing,
+        verseText: existing.verseText || `Passage context for ${reference} is available in Scripture tools.`,
+      })
+      setContextPanelVisible(true)
+    }
   }
 
   const handleExploreConnections = (reference: string) => {

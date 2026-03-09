@@ -33,9 +33,10 @@ interface StructuralAnalysisPanelProps {
   token: string
   language?: string
   cachedData?: StructuralAnalysis | null
+  onDataLoad?: (data: StructuralAnalysis) => void
 }
 
-export default function StructuralAnalysisPanel({ passage, token, language = 'en', cachedData }: StructuralAnalysisPanelProps) {
+export default function StructuralAnalysisPanel({ passage, token, language = 'en', cachedData, onDataLoad }: StructuralAnalysisPanelProps) {
   const [analysis, setAnalysis] = useState<StructuralAnalysis | null>(cachedData || null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -68,6 +69,7 @@ export default function StructuralAnalysisPanel({ passage, token, language = 'en
           setAnalysis(null)
         } else {
           setAnalysis(data)
+          onDataLoad?.(data)
         }
       } else {
         setError('Unable to load structural analysis')

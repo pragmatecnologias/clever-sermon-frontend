@@ -34,18 +34,22 @@ const connectionTypeLabels: Record<string, string> = {
   direct_quotation: 'Direct Quotation',
   prophetic_fulfillment: 'Prophetic Fulfillment',
   typology: 'Typology',
+  thematic: 'Thematic',
   thematic_echo: 'Thematic Echo',
   covenant_development: 'Covenant Development',
-  narrative_continuation: 'Narrative Continuation'
+  narrative_continuation: 'Narrative Continuation',
+  lexical: 'Lexical'
 }
 
 const connectionTypeColors: Record<string, string> = {
   direct_quotation: 'bg-cyan-500/20 text-cyan-200 border-cyan-400/40',
   prophetic_fulfillment: 'bg-red-500/20 text-red-200 border-red-400/40',
   typology: 'bg-purple-500/20 text-purple-200 border-purple-400/40',
+  thematic: 'bg-green-500/20 text-green-200 border-green-400/40',
   thematic_echo: 'bg-green-500/20 text-green-200 border-green-400/40',
   covenant_development: 'bg-yellow-500/20 text-yellow-200 border-yellow-400/40',
-  narrative_continuation: 'bg-gray-500/20 text-gray-200 border-gray-400/40'
+  narrative_continuation: 'bg-gray-500/20 text-gray-200 border-gray-400/40',
+  lexical: 'bg-indigo-500/20 text-indigo-200 border-indigo-400/40'
 }
 
 const strengthColors: Record<string, string> = {

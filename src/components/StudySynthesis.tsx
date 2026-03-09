@@ -17,9 +17,10 @@ interface StudySynthesisProps {
   token: string
   language?: string
   cachedData?: StudySynthesisData | null
+  onDataLoad?: (data: StudySynthesisData) => void
 }
 
-export default function StudySynthesis({ reference, token, language = 'en', cachedData }: StudySynthesisProps) {
+export default function StudySynthesis({ reference, token, language = 'en', cachedData, onDataLoad }: StudySynthesisProps) {
   const [data, setData] = useState<StudySynthesisData | null>(cachedData || null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -51,6 +52,7 @@ export default function StudySynthesis({ reference, token, language = 'en', cach
           setData(null)
         } else {
           setData(result)
+          onDataLoad?.(result)
         }
       } else {
         setError('Unable to load study synthesis')

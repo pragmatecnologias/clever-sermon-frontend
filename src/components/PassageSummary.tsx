@@ -17,9 +17,10 @@ interface PassageSummaryProps {
   token: string
   language?: string
   cachedData?: PassageSummaryData | null
+  onDataLoad?: (data: PassageSummaryData) => void
 }
 
-export default function PassageSummary({ reference, token, language = 'en', cachedData }: PassageSummaryProps) {
+export default function PassageSummary({ reference, token, language = 'en', cachedData, onDataLoad }: PassageSummaryProps) {
   const [data, setData] = useState<PassageSummaryData | null>(cachedData || null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -51,6 +52,7 @@ export default function PassageSummary({ reference, token, language = 'en', cach
           setData(null)
         } else {
           setData(result)
+          onDataLoad?.(result)
         }
       } else {
         setError('Unable to load passage summary')

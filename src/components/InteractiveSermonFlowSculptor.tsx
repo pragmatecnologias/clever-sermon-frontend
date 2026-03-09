@@ -50,6 +50,8 @@ export default function InteractiveSermonFlowSculptor({
     covenantDevelopment: true,
     narrativeContinuation: true,
     showLabels: true,
+    testament: 'all' as 'all' | 'OT' | 'NT',
+    theme: 'all',
   })
 
   useEffect(() => {

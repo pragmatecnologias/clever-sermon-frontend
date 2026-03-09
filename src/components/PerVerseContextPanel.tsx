@@ -35,9 +35,10 @@ interface PerVerseContextPanelProps {
   token: string
   language?: string
   cachedData?: VerseContextData | null
+  onDataLoad?: (data: VerseContextData) => void
 }
 
-export default function PerVerseContextPanel({ reference, token, language = 'en', cachedData }: PerVerseContextPanelProps) {
+export default function PerVerseContextPanel({ reference, token, language = 'en', cachedData, onDataLoad }: PerVerseContextPanelProps) {
   const [data, setData] = useState<VerseContextData | null>(cachedData || null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -64,6 +65,7 @@ export default function PerVerseContextPanel({ reference, token, language = 'en'
         }
       )
       setData(response.data)
+      onDataLoad?.(response.data)
     } catch (err) {
       console.error('Failed to fetch verse context:', err)
       setError('Unable to load verse context')

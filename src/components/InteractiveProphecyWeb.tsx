@@ -40,6 +40,8 @@ export default function InteractiveProphecyWeb({ theme = 'all' }: ProphecyWebPro
     covenantDevelopment: true,
     narrativeContinuation: true,
     showLabels: true,
+    testament: 'all' as 'all' | 'OT' | 'NT',
+    theme: 'all',
   })
 
   useEffect(() => {
@@ -101,6 +103,8 @@ export default function InteractiveProphecyWeb({ theme = 'all' }: ProphecyWebPro
         reference: node.reference,
         title: node.title || node.label,
         theme: node.theme,
+        themes: node.themes || (node.theme ? [node.theme] : []),
+        testament: node.testament || 'UNKNOWN',
         snippet: node.snippet,
         connectionType: node.connectionType,
         connectionStrength: node.connectionStrength,
@@ -381,6 +385,15 @@ export default function InteractiveProphecyWeb({ theme = 'all' }: ProphecyWebPro
       }
       
       line.visible = visible
+    })
+
+    nodesRef.current.forEach((data, mesh) => {
+      const material = mesh.material as THREE.MeshStandardMaterial
+      const testamentOk = filters.testament === 'all' || data.testament === filters.testament
+      const themeList = Array.isArray(data.themes) ? data.themes.map((theme: string) => String(theme).toLowerCase()) : []
+      const themeOk = filters.theme === 'all' || themeList.some((theme: string) => theme.includes(filters.theme))
+      material.opacity = testamentOk && themeOk ? 1 : 0.12
+      material.transparent = !testamentOk || !themeOk
     })
   }
 
