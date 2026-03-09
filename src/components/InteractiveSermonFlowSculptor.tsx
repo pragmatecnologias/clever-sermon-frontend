@@ -43,10 +43,12 @@ export default function InteractiveSermonFlowSculptor({
   const [focusModeActive, setFocusModeActive] = useState(false)
   const [filters, setFilters] = useState({
     strongestOnly: false,
-    canonicalLinks: true,
-    prophecyLinks: true,
-    covenantThreads: true,
-    egwReferences: false,
+    directQuotation: true,
+    propheticFulfillment: true,
+    typology: true,
+    thematicEcho: true,
+    covenantDevelopment: true,
+    narrativeContinuation: true,
     showLabels: true,
   })
 
@@ -301,36 +303,32 @@ export default function InteractiveSermonFlowSculptor({
   const focusOnNode = (nodeData: any) => {
     if (!cameraRef.current || !controlsRef.current) return
     
-    let targetMesh: THREE.Mesh | null = null
-    nodesRef.current.forEach((data, mesh) => {
-      if (data.reference === nodeData.reference) {
-        targetMesh = mesh
-      }
-    })
+    const targetMesh = Array.from(nodesRef.current.entries()).find(
+      ([, data]) => data.reference === nodeData.reference
+    )?.[0]
+    if (!targetMesh) return
+
+    const targetPosition = targetMesh.position.clone()
+    targetPosition.z += 10
     
-    if (targetMesh) {
-      const targetPosition = targetMesh.position.clone()
-      targetPosition.z += 10
+    const startPosition = cameraRef.current.position.clone()
+    const duration = 1000
+    const startTime = Date.now()
+    
+    const animateCamera = () => {
+      const elapsed = Date.now() - startTime
+      const progress = Math.min(elapsed / duration, 1)
+      const eased = 1 - Math.pow(1 - progress, 3)
       
-      const startPosition = cameraRef.current.position.clone()
-      const duration = 1000
-      const startTime = Date.now()
+      cameraRef.current!.position.lerpVectors(startPosition, targetPosition, eased)
+      controlsRef.current!.target.copy(targetMesh.position)
+      controlsRef.current!.update()
       
-      const animateCamera = () => {
-        const elapsed = Date.now() - startTime
-        const progress = Math.min(elapsed / duration, 1)
-        const eased = 1 - Math.pow(1 - progress, 3)
-        
-        cameraRef.current!.position.lerpVectors(startPosition, targetPosition, eased)
-        controlsRef.current!.target.copy(targetMesh!.position)
-        controlsRef.current!.update()
-        
-        if (progress < 1) {
-          requestAnimationFrame(animateCamera)
-        }
+      if (progress < 1) {
+        requestAnimationFrame(animateCamera)
       }
-      animateCamera()
     }
+    animateCamera()
   }
 
   const applyFilters = () => {

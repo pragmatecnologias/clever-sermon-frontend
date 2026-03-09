@@ -179,6 +179,16 @@ export default function WorkspaceDetailPage() {
   const [crossRefLastLookup, setCrossRefLastLookup] = useState<string>('')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
+  const [expandedOutlineId, setExpandedOutlineId] = useState<string | null>(null)
+  const [expandedPointSections, setExpandedPointSections] = useState<Record<string, boolean>>({})
+  const [expandedTextBlocks, setExpandedTextBlocks] = useState<Record<string, boolean>>({})
+  const [verseEvidencePanel, setVerseEvidencePanel] = useState<{
+    outlineId: string
+    pointTitle: string
+    verse: string
+    text: string
+    reason: string
+  } | null>(null)
   const autosaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const autosaveHashes = useRef<Record<string, string>>({})
   const scriptureLookupRequestId = useRef(0)
@@ -922,10 +932,12 @@ export default function WorkspaceDetailPage() {
     }
     if (Array.isArray(value)) {
       return (
-        <ul className="mt-2 list-disc list-inside space-y-1 text-gray-100/90">
+        <ul className="mt-2 list-disc list-outside pl-5 space-y-2 text-gray-100/90">
           {value.map((item, index) => (
-            <li key={`value-${index}`}>
-              {typeof item === 'string' ? renderMarkdown(item) : (
+            <li key={`value-${index}`} className="leading-relaxed marker:text-cyan-200">
+              {typeof item === 'string' ? (
+                <span className="block">{item}</span>
+              ) : (
                 <pre className="text-xs text-gray-100/90 whitespace-pre-wrap">{JSON.stringify(item, null, 2)}</pre>
               )}
             </li>
@@ -942,11 +954,225 @@ export default function WorkspaceDetailPage() {
     return <pre className="text-xs text-gray-100/90 whitespace-pre-wrap">{JSON.stringify(value, null, 2)}</pre>
   }
 
+  const getOutlinePointLabel = (point: any) => {
+    if (typeof point === 'string') return point
+    return point?.title || point?.content || point?.text || ''
+  }
+
+  const getOutlinePointNodes = (structure: any) => {
+    if (!structure || typeof structure !== 'object') return []
+    if (Array.isArray(structure.pointNodes) && structure.pointNodes.length > 0) {
+      return structure.pointNodes.map((point: any, index: number) => ({
+        id: point?.id || `point-${index + 1}`,
+        title: getOutlinePointLabel(point),
+        summary: typeof point?.summary === 'string' ? point.summary : '',
+        movement: typeof point?.movement === 'string' ? point.movement : '',
+        supportingVerses: Array.isArray(point?.supportingVerses) ? point.supportingVerses : [],
+        canonicalThemes: Array.isArray(point?.canonicalThemes) ? point.canonicalThemes : [],
+        crossReferences: Array.isArray(point?.crossReferences) ? point.crossReferences : [],
+        subpoints: Array.isArray(point?.subpoints) ? point.subpoints : [],
+        illustrationIdeas: Array.isArray(point?.illustrationIdeas) ? point.illustrationIdeas : [],
+        mediaSuggestions: Array.isArray(point?.mediaSuggestions) ? point.mediaSuggestions : [],
+      }))
+    }
+
+    const fallbackPoints = Array.isArray(structure.points) ? structure.points : []
+    return fallbackPoints.map((point: any, index: number) => ({
+      id: `point-${index + 1}`,
+      title: getOutlinePointLabel(point),
+      summary: '',
+      movement: '',
+      supportingVerses: Array.isArray(point?.supportingVerses) ? point.supportingVerses : [],
+      canonicalThemes: Array.isArray(point?.canonicalThemes) ? point.canonicalThemes : [],
+      crossReferences: Array.isArray(point?.crossReferences) ? point.crossReferences : [],
+      subpoints: Array.isArray(point?.subpoints) ? point.subpoints : [],
+      illustrationIdeas: Array.isArray(point?.illustrationIdeas) ? point.illustrationIdeas : [],
+      mediaSuggestions: Array.isArray(point?.mediaSuggestions) ? point.mediaSuggestions : [],
+    }))
+  }
+
+  const pointTextTokens = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((token) => token.length > 2)
+
+  const scoreApplicationForPoint = (applicationText: string, point: any) => {
+    const appTokens = new Set(pointTextTokens(applicationText))
+    const pointTokens = new Set(pointTextTokens(point?.title || ''))
+    const overlap = Array.from(pointTokens).filter((token) => appTokens.has(token)).length
+
+    const verses = Array.isArray(point?.supportingVerses) ? point.supportingVerses : []
+    const verseScore = verses.reduce((score: number, verse: string) => {
+      const normalizedVerse = verse.toLowerCase()
+      return applicationText.toLowerCase().includes(normalizedVerse) ? score + 2 : score
+    }, 0)
+
+    return overlap + verseScore
+  }
+
+  const getRelatedApplicationsForPoint = (point: any) => {
+    const applications = Array.isArray(workspace?.applications) ? workspace.applications : []
+    if (!applications.length) return []
+
+    const ranked = applications
+      .map((app: any): { app: any; score: number } => ({
+        app,
+        score: scoreApplicationForPoint(app?.content || '', point),
+      }))
+      .filter((item: { app: any; score: number }) => item.score > 0)
+      .sort((a: { app: any; score: number }, b: { app: any; score: number }) => b.score - a.score)
+      .slice(0, 3)
+      .map((item: { app: any; score: number }) => item.app)
+
+    return ranked
+  }
+
+  const togglePointSection = (outlineId: string, pointIndex: number, section: string) => {
+    const key = `${outlineId}-${pointIndex}-${section}`
+    setExpandedPointSections((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const isPointSectionExpanded = (outlineId: string, pointIndex: number, section: string) =>
+    !!expandedPointSections[`${outlineId}-${pointIndex}-${section}`]
+
+  const toggleTextBlock = (key: string) => {
+    setExpandedTextBlocks((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const renderCollapsibleMarkdown = (text: string, key: string, collapsedHeight = 'max-h-24') => {
+    const normalized = (text || '').trim()
+    if (!normalized) return null
+    const isLong = normalized.length > 260
+    const expanded = !!expandedTextBlocks[key]
+
+    return (
+      <div>
+        <div className={`${!expanded && isLong ? `${collapsedHeight} overflow-hidden` : ''} text-gray-100/95 leading-relaxed`}>
+          {renderMarkdown(normalized)}
+        </div>
+        {isLong && (
+          <button
+            onClick={() => toggleTextBlock(key)}
+            className="mt-2 cyber-outline text-[10px] px-2 py-1 rounded-full"
+          >
+            {expanded ? 'Show less' : 'Show full'}
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  const renderCompactList = (
+    items: any[],
+    key: string,
+    emptyText: string,
+    colorClass = 'text-gray-100'
+  ) => {
+    const values = (Array.isArray(items) ? items : []).map((item) => String(item).trim()).filter(Boolean)
+    if (!values.length) {
+      return <p className="text-xs text-gray-300">{emptyText}</p>
+    }
+
+    const expanded = !!expandedTextBlocks[key]
+    const visible = expanded ? values : values.slice(0, 4)
+
+    return (
+      <div>
+        <ul className={`list-disc list-inside space-y-1 text-xs ${colorClass}`}>
+          {visible.map((item, index) => (
+            <li key={`${key}-${index}`} className="leading-relaxed">{item}</li>
+          ))}
+        </ul>
+        {values.length > 4 && (
+          <button
+            onClick={() => toggleTextBlock(key)}
+            className="mt-2 cyber-outline text-[10px] px-2 py-1 rounded-full"
+          >
+            {expanded ? 'Show fewer' : `Show ${values.length - 4} more`}
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  const getPassageFocusText = () => {
+    const primaryReport = workspace?.studyReports?.[0]?.sections
+    if (typeof passageSummary === 'string' && passageSummary.trim()) return passageSummary.trim()
+    if (passageSummary?.summary) return String(passageSummary.summary)
+    if (passageSummary?.mainIdea) return String(passageSummary.mainIdea)
+    if (passageSummary?.interpretiveCenter) return String(passageSummary.interpretiveCenter)
+    if (primaryReport?.theologicalInsights) return String(primaryReport.theologicalInsights).slice(0, 320)
+    if (primaryReport?.keyThemes) return String(primaryReport.keyThemes).slice(0, 320)
+    return ''
+  }
+
+  const getOutlineBigIdea = (outline: any) => {
+    const movement = outline?.structure?.sermonMovement
+    if (typeof movement === 'string' && movement.trim()) return movement.trim()
+    const focus = getPassageFocusText()
+    if (focus) return focus
+    return 'This sermon moves from biblical insight toward faithful response and transformed living.'
+  }
+
+  const compactLabel = (value: string, limit = 72) => {
+    const normalized = String(value || '').replace(/\s+/g, ' ').trim()
+    if (!normalized) return 'Point'
+    if (normalized.length <= limit) return normalized
+    return `${normalized.slice(0, limit - 1).trimEnd()}…`
+  }
+
+  const getFlowNarrativeEntries = (outline: any, pointNodes: any[]) => {
+    const introText = outline?.structure?.introduction || getPassageFocusText() || 'Opening movement for the sermon.'
+    const conclusionText = outline?.structure?.conclusion || outline?.structure?.callToAction || 'Closing response and invitation.'
+    const pointEntries = (Array.isArray(pointNodes) ? pointNodes : []).map((point: any, index: number) => {
+      const detailParts = [
+        point?.title || '',
+        point?.summary || point?.movement || '',
+        ...(Array.isArray(point?.subpoints) ? point.subpoints : []),
+      ].filter(Boolean)
+
+      return {
+        id: `point-${index + 1}`,
+        label: `Point ${index + 1}`,
+        title: point?.title || `Point ${index + 1}`,
+        detail: detailParts.join('\n\n'),
+      }
+    })
+
+    return [
+      { id: 'intro', label: 'Intro', title: 'Introduction', detail: introText },
+      ...pointEntries,
+      { id: 'conclusion', label: 'Conclusion', title: 'Conclusion', detail: conclusionText },
+    ]
+  }
+
+  const estimatePointMinutes = (point: any) => {
+    const composite = [
+      point?.title || '',
+      point?.summary || '',
+      ...(Array.isArray(point?.subpoints) ? point.subpoints : []),
+    ].join(' ')
+    const words = composite.split(/\s+/).filter(Boolean).length
+    return Math.max(3, Math.min(8, Math.round(words / 18) || 5))
+  }
+
+  const getVerseEvidenceText = (verseRef: string) => {
+    const verses = extractVerses(scriptureResult)
+    const normalizedTarget = verseRef.replace(/\s+/g, ' ').toLowerCase()
+    const match = verses.find((verse: any) => {
+      const ref = String(verse?.reference || '').replace(/\s+/g, ' ').toLowerCase()
+      return ref.includes(normalizedTarget) || normalizedTarget.includes(ref)
+    })
+    return match?.text || ''
+  }
+
   const renderOutline = (structure: any) => {
     if (!structure || typeof structure !== 'object') {
       return <p className="cyber-muted text-sm">Outline unavailable.</p>
     }
-    const points = Array.isArray(structure.points) ? structure.points : []
+    const points = getOutlinePointNodes(structure)
     return (
       <div className="space-y-3 text-sm">
         {structure.introduction && (
@@ -959,8 +1185,8 @@ export default function WorkspaceDetailPage() {
           <div>
             <p className="text-xs uppercase tracking-widest cyber-muted">Main Points</p>
             <ol className="mt-2 list-decimal list-inside space-y-1 text-gray-100/90">
-              {points.map((point: string, index: number) => (
-                <li key={`${point}-${index}`}>{renderMarkdown(point)}</li>
+              {points.map((point: any, index: number) => (
+                <li key={`${point.id}-${index}`}>{renderMarkdown(point.title)}</li>
               ))}
             </ol>
           </div>
@@ -982,8 +1208,8 @@ export default function WorkspaceDetailPage() {
   }
 
   const getOutlineTitle = (outline: any) => {
-    const points = Array.isArray(outline?.structure?.points) ? outline.structure.points : []
-    const rawTitle = points[0] || outline?.structure?.introduction || outline?.title || 'Outline'
+    const points = getOutlinePointNodes(outline?.structure)
+    const rawTitle = points[0]?.title || outline?.structure?.introduction || outline?.title || 'Outline'
     const firstSentence = rawTitle.split(/\.|\?|\!/).slice(0, 1).join('').trim()
     const trimmed = (firstSentence || rawTitle).trim()
     if (trimmed.length > 120) {
@@ -1116,8 +1342,11 @@ export default function WorkspaceDetailPage() {
         if (defaultReference) {
           setScriptureQuery(defaultReference)
           setScriptureLastLookup(defaultReference)
+          setCrossRefVerse(defaultReference)
+          setCrossRefLastLookup(defaultReference)
         }
         setScriptureTranslation(defaultTranslation)
+        setCitationTranslation(defaultTranslation)
         setParallelTranslations(defaultTranslation)
 
         const restored = await restoreScriptureLookupCache(workspaceData)
@@ -1161,10 +1390,12 @@ export default function WorkspaceDetailPage() {
   useEffect(() => {
     const validateOutlineCitations = async () => {
       const selectedOutline = workspace?.outlines?.find((o: any) => o.isSelected) || workspace?.outlines?.[0]
-      if (!selectedOutline?.structure?.points) return
+      if (!selectedOutline?.structure) return
+      const points = getOutlinePointNodes(selectedOutline.structure)
+      if (!points.length) return
       
       const validations: Record<string, any> = {}
-      for (const point of selectedOutline.structure.points) {
+      for (const point of points) {
         if (point.supportingVerses && point.supportingVerses.length > 0) {
           for (const verse of point.supportingVerses) {
             if (!citationValidations[verse]) {
@@ -1473,6 +1704,14 @@ export default function WorkspaceDetailPage() {
     if (!config) return
     const normalizedWord = wordStudyWord.trim()
     const normalizedLang = wordStudyLanguage.trim().toLowerCase() || 'greek'
+    const workspaceLanguage = String(workspace?.language || '').toLowerCase()
+    const responseLanguage =
+      workspaceLanguage.startsWith('es') ||
+      workspaceLanguage.includes('spanish') ||
+      workspaceLanguage.includes('espanol') ||
+      workspaceLanguage.includes('español')
+        ? 'es'
+        : 'en'
     if (!normalizedWord) {
       setWordStudyError('Enter a word to analyze (ex: agape, logos).')
       return
@@ -1486,11 +1725,19 @@ export default function WorkspaceDetailPage() {
       const [studyRes, insightsRes] = await Promise.allSettled([
         axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/word-study`, {
           ...config,
-          params: { word: normalizedWord, language: normalizedLang },
+          params: {
+            word: normalizedWord,
+            language: normalizedLang,
+            responseLanguage,
+          },
         }),
         axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/word-study-insights`, {
           ...config,
-          params: { word: normalizedWord, language: normalizedLang },
+          params: {
+            word: normalizedWord,
+            language: normalizedLang,
+            responseLanguage,
+          },
         }),
       ])
       if (studyRes.status === 'fulfilled') {
@@ -2252,130 +2499,306 @@ export default function WorkspaceDetailPage() {
                     </div>
                   </div>
                   {workspace.outlines?.length ? (
-                    <div className="space-y-3">
-                      {workspace.outlines.map((outline: any) => (
-                        <div key={outline.id} className="border border-white/10 rounded-xl p-4 bg-black/30">
-                          <div className="flex items-center justify-between mb-3">
-                            <p className="font-semibold text-cyan-300">{getOutlineTitle(outline)}</p>
-                            <div className="flex items-center gap-2">
-                              {outline.isSelected && <span className="cyber-tag">Selected</span>}
-                              <button
-                                onClick={() => {
-                                  setEditingOutlineId(outline.id)
-                                  setOutlineDraft({
-                                    id: outline.id,
-                                    title: outline.title,
-                                    introduction: outline.structure?.introduction || '',
-                                    points: outline.structure?.points || [],
-                                    conclusion: outline.structure?.conclusion || '',
-                                    callToAction: outline.structure?.callToAction || '',
-                                  })
-                                }}
-                                className="cyber-outline px-3 py-1 text-xs rounded-full"
-                              >
-                                Edit
-                              </button>
-                            </div>
-                          </div>
-                          {editingOutlineId === outline.id && outlineDraft ? (
-                            <div className="space-y-3">
-                              <label className="text-xs uppercase tracking-widest cyber-muted">Outline Title</label>
-                              <input
-                                value={outlineDraft.title}
-                                onChange={(e) => setOutlineDraft({ ...outlineDraft, title: e.target.value })}
-                                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                              />
-                              <label className="text-xs uppercase tracking-widest cyber-muted">Introduction</label>
-                              <textarea
-                                value={outlineDraft.introduction}
-                                onChange={(e) => setOutlineDraft({ ...outlineDraft, introduction: e.target.value })}
-                                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                                rows={2}
-                              />
-                              <label className="text-xs uppercase tracking-widest cyber-muted">Main Points (one per line)</label>
-                              <textarea
-                                value={outlineDraft.points?.join('\n')}
-                                onChange={(e) => setOutlineDraft({ ...outlineDraft, points: e.target.value.split('\n').filter(Boolean) })}
-                                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                                rows={4}
-                              />
-                              <label className="text-xs uppercase tracking-widest cyber-muted">Conclusion</label>
-                              <textarea
-                                value={outlineDraft.conclusion}
-                                onChange={(e) => setOutlineDraft({ ...outlineDraft, conclusion: e.target.value })}
-                                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                                rows={2}
-                              />
-                              <label className="text-xs uppercase tracking-widest cyber-muted">Call To Action</label>
-                              <textarea
-                                value={outlineDraft.callToAction}
-                                onChange={(e) => setOutlineDraft({ ...outlineDraft, callToAction: e.target.value })}
-                                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                                rows={2}
-                              />
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={handleOutlineSave}
-                                  className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                                  disabled={actionLoading.includes('outline-edit')}
-                                >
-                                  {actionLoading.includes('outline-edit') ? 'Saving...' : 'Save'}
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setEditingOutlineId(null)
-                                    setOutlineDraft(null)
-                                  }}
-                                  className="cyber-outline text-xs px-4 py-2 rounded-full"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="text-sm text-gray-100/90 space-y-2">
-                              {outline.structure?.introduction && (
+                    <div className="space-y-4">
+                      <div className="border border-cyan-400/30 rounded-xl p-4 bg-cyan-500/10">
+                        <p className="text-[11px] uppercase tracking-widest text-cyan-200/80">Passage Focus</p>
+                        <p className="text-sm text-cyan-100/95 mt-1">
+                          {getPassageFocusText() || `${workspace.mainPassage} is the controlling passage for this sermon movement.`}
+                        </p>
+                      </div>
+                      {[...workspace.outlines]
+                        .sort((a: any, b: any) => Number(b?.isSelected) - Number(a?.isSelected))
+                        .map((outline: any) => {
+                          const pointNodes = getOutlinePointNodes(outline.structure)
+                          const isExpanded = expandedOutlineId === outline.id || outline.isSelected
+                          const totalMinutes = pointNodes.reduce((sum: number, point: any) => sum + estimatePointMinutes(point), 6)
+                          const flowNarrativeEntries = getFlowNarrativeEntries(outline, pointNodes)
+                          return (
+                            <div
+                              key={outline.id}
+                              className={`border rounded-xl p-4 transition-all ${
+                                outline.isSelected
+                                  ? 'border-cyan-300/70 bg-cyan-500/10 ring-1 ring-cyan-300/60 shadow-[0_0_24px_rgba(34,211,238,0.22)]'
+                                  : 'border-white/10 bg-black/30'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between mb-3">
                                 <div>
-                                  <p className="text-xs uppercase tracking-widest cyber-muted">Introduction</p>
-                                  <div className="mt-1">{renderMarkdown(outline.structure.introduction)}</div>
+                                  <p className="font-semibold text-cyan-300">{getOutlineTitle(outline)}</p>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    {outline.isSelected && <span className="cyber-tag">Selected • Active Build</span>}
+                                    {outline?.structure?.outlineType && (
+                                      <span className="text-[10px] px-2 py-1 rounded-full border border-white/20 text-gray-200/90 uppercase">
+                                        {outline.structure.outlineType}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
-                              )}
-                              {outline.structure?.points?.length ? (
-                                <div>
-                                  <p className="text-xs uppercase tracking-widest cyber-muted">Main Points</p>
-                                  <ul className="list-disc list-inside mt-1 space-y-2">
-                                    {outline.structure.points.map((point: any, index: number) => (
-                                      <li key={`${outline.id}-point-${index}`} className="space-y-1">
-                                        <div>{renderMarkdown(typeof point === 'string' ? point : (point.title || point.content || ''))}</div>
-                                        {point.supportingVerses && point.supportingVerses.length > 0 && (
-                                          <div className="flex flex-wrap gap-2 ml-6">
-                                            {point.supportingVerses.map((verse: string) => (
-                                              <div key={verse} className="flex items-center gap-1">
-                                                <span className="text-xs text-cyan-300">{verse}</span>
-                                                <CitationValidationBadge
-                                                  supportLevel={citationValidations[verse]?.supportLevel || 'pending'}
-                                                  verseReference={verse}
-                                                  matchScore={citationValidations[verse]?.matchScore}
-                                                  compact={true}
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => setExpandedOutlineId((prev) => (prev === outline.id ? null : outline.id))}
+                                    className="cyber-outline px-3 py-1 text-xs rounded-full"
+                                  >
+                                    {isExpanded ? 'Collapse' : 'Expand'}
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setEditingOutlineId(outline.id)
+                                      setOutlineDraft({
+                                        id: outline.id,
+                                        title: outline.title,
+                                        introduction: outline.structure?.introduction || '',
+                                        points: outline.structure?.points || [],
+                                        conclusion: outline.structure?.conclusion || '',
+                                        callToAction: outline.structure?.callToAction || '',
+                                      })
+                                    }}
+                                    className="cyber-outline px-3 py-1 text-xs rounded-full"
+                                  >
+                                    Edit
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="space-y-3 mb-3">
+                                <div className="grid md:grid-cols-12 gap-3">
+                                  <div className="md:col-span-8 border border-white/10 rounded-xl p-3 bg-black/20">
+                                    <p className="text-[10px] uppercase tracking-widest cyber-muted">Big Idea</p>
+                                    <div className="mt-1">
+                                      {renderCollapsibleMarkdown(getOutlineBigIdea(outline), `${outline.id}-bigidea`, 'max-h-20')}
+                                    </div>
+                                  </div>
+                                  <div className="md:col-span-4 border border-white/10 rounded-xl p-3 bg-black/20">
+                                    <p className="text-[10px] uppercase tracking-widest cyber-muted">Estimated Timing</p>
+                                    <p className="text-sm text-gray-100/95 mt-1">{totalMinutes} minutes</p>
+                                    <p className="text-xs text-gray-300 mt-1">Intro 3 • Body {Math.max(1, totalMinutes - 6)} • Conclusion 3</p>
+                                  </div>
+                                </div>
+                                <div className="border border-white/10 rounded-xl p-3 bg-black/20">
+                                  <p className="text-[10px] uppercase tracking-widest cyber-muted">Flow</p>
+                                  <div className="mt-3 overflow-x-auto pb-1">
+                                    <div className="flex items-stretch gap-2 min-w-max pr-1">
+                                      {flowNarrativeEntries.map((entry: any, index: number) => (
+                                        <div key={`${outline.id}-flow-detail-${entry.id}`} className="flex items-stretch gap-2">
+                                          <div className="w-72 border border-cyan-400/20 rounded-lg p-3 bg-cyan-500/5">
+                                            <p className="text-[10px] uppercase tracking-widest text-cyan-300/90">{entry.label}</p>
+                                            <p className="text-sm text-cyan-100 font-medium mt-1 leading-relaxed">{entry.title}</p>
+                                            <div className="mt-2 text-xs">
+                                              {renderCollapsibleMarkdown(
+                                                entry.detail,
+                                                `${outline.id}-flow-detail-${entry.id}`,
+                                                'max-h-20'
+                                              )}
+                                            </div>
+                                          </div>
+                                          {index < flowNarrativeEntries.length - 1 && (
+                                            <div className="flex items-center text-cyan-300/80 px-1 text-lg">→</div>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {editingOutlineId === outline.id && outlineDraft ? (
+                                <div className="space-y-3">
+                                  <label className="text-xs uppercase tracking-widest cyber-muted">Outline Title</label>
+                                  <input
+                                    value={outlineDraft.title}
+                                    onChange={(e) => setOutlineDraft({ ...outlineDraft, title: e.target.value })}
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
+                                  />
+                                  <label className="text-xs uppercase tracking-widest cyber-muted">Introduction</label>
+                                  <textarea
+                                    value={outlineDraft.introduction}
+                                    onChange={(e) => setOutlineDraft({ ...outlineDraft, introduction: e.target.value })}
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
+                                    rows={2}
+                                  />
+                                  <label className="text-xs uppercase tracking-widest cyber-muted">Main Points (one per line)</label>
+                                  <textarea
+                                    value={outlineDraft.points?.join('\n')}
+                                    onChange={(e) => setOutlineDraft({ ...outlineDraft, points: e.target.value.split('\n').filter(Boolean) })}
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
+                                    rows={4}
+                                  />
+                                  <label className="text-xs uppercase tracking-widest cyber-muted">Conclusion</label>
+                                  <textarea
+                                    value={outlineDraft.conclusion}
+                                    onChange={(e) => setOutlineDraft({ ...outlineDraft, conclusion: e.target.value })}
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
+                                    rows={2}
+                                  />
+                                  <label className="text-xs uppercase tracking-widest cyber-muted">Call To Action</label>
+                                  <textarea
+                                    value={outlineDraft.callToAction}
+                                    onChange={(e) => setOutlineDraft({ ...outlineDraft, callToAction: e.target.value })}
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
+                                    rows={2}
+                                  />
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={handleOutlineSave}
+                                      className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
+                                      disabled={actionLoading.includes('outline-edit')}
+                                    >
+                                      {actionLoading.includes('outline-edit') ? 'Saving...' : 'Save'}
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setEditingOutlineId(null)
+                                        setOutlineDraft(null)
+                                      }}
+                                      className="cyber-outline text-xs px-4 py-2 rounded-full"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : isExpanded ? (
+                                <div className="text-sm text-gray-100/90 space-y-3">
+                                  {pointNodes.length > 0 && (
+                                    <div className="space-y-2">
+                                      <p className="text-xs uppercase tracking-widest cyber-muted">Main Points</p>
+                                      {pointNodes.map((point: any, index: number) => {
+                                        const relatedApplications = getRelatedApplicationsForPoint(point)
+                                        const supportingVerses = Array.isArray(point.supportingVerses) ? point.supportingVerses : []
+                                        return (
+                                          <div key={`${outline.id}-point-${index}`} className="border border-white/10 rounded-xl p-3 bg-black/20">
+                                            <p className="font-semibold text-white leading-relaxed">
+                                              {index + 1}. {point.title}
+                                            </p>
+                                            {(point.summary || point.movement) && (
+                                              <div className="mt-2 border border-cyan-400/20 rounded-lg p-2 bg-cyan-500/5">
+                                                <p className="text-[10px] uppercase tracking-widest text-cyan-300/90">Preaching Insight</p>
+                                                {renderCollapsibleMarkdown(
+                                                  point.summary || point.movement,
+                                                  `${outline.id}-${index}-insight`,
+                                                  'max-h-20'
+                                                )}
+                                              </div>
+                                            )}
+
+                                            <div className="flex flex-wrap gap-1 mt-2">
+                                              <button onClick={() => togglePointSection(outline.id, index, 'subpoints')} className="cyber-outline text-[10px] px-2 py-1 rounded-full">Subpoints</button>
+                                              <button onClick={() => togglePointSection(outline.id, index, 'verses')} className="cyber-outline text-[10px] px-2 py-1 rounded-full">Verses</button>
+                                              <button onClick={() => togglePointSection(outline.id, index, 'themes')} className="cyber-outline text-[10px] px-2 py-1 rounded-full">Themes</button>
+                                              <button onClick={() => togglePointSection(outline.id, index, 'apps')} className="cyber-outline text-[10px] px-2 py-1 rounded-full">Applications</button>
+                                              <button onClick={() => togglePointSection(outline.id, index, 'media')} className="cyber-outline text-[10px] px-2 py-1 rounded-full">Media</button>
+                                              <button onClick={() => togglePointSection(outline.id, index, 'egw')} className="cyber-outline text-[10px] px-2 py-1 rounded-full">EGW</button>
+                                            </div>
+
+                                            {isPointSectionExpanded(outline.id, index, 'subpoints') && (
+                                              <div className="mt-3">
+                                                {renderCompactList(
+                                                  point.subpoints,
+                                                  `${outline.id}-${index}-subpoints`,
+                                                  'No subpoints available.',
+                                                  'text-gray-200'
+                                                )}
+                                              </div>
+                                            )}
+
+                                            {isPointSectionExpanded(outline.id, index, 'verses') && (
+                                              <div className="mt-2">
+                                                {supportingVerses.length ? (
+                                                  <div className="flex flex-wrap gap-2">
+                                                    {supportingVerses.map((verse: string) => (
+                                                      <button
+                                                        key={`${outline.id}-${index}-${verse}`}
+                                                        onClick={() => {
+                                                          setVerseEvidencePanel({
+                                                            outlineId: outline.id,
+                                                            pointTitle: point.title,
+                                                            verse,
+                                                            text: getVerseEvidenceText(verse),
+                                                            reason: point.summary || point.movement || 'This verse reinforces the point through direct thematic support.',
+                                                          })
+                                                          handleVerseClick(verse)
+                                                        }}
+                                                        className="text-xs px-2 py-1 rounded-full border border-cyan-400/40 text-cyan-300 hover:bg-cyan-500/10"
+                                                      >
+                                                        {verse}
+                                                      </button>
+                                                    ))}
+                                                  </div>
+                                                ) : (
+                                                  <p className="text-xs text-gray-300">No supporting verses attached.</p>
+                                                )}
+                                              </div>
+                                            )}
+
+                                            {isPointSectionExpanded(outline.id, index, 'themes') && (
+                                              <div className="mt-3">
+                                                {renderCompactList(
+                                                  point.canonicalThemes,
+                                                  `${outline.id}-${index}-themes`,
+                                                  'No canonical themes attached.',
+                                                  'text-emerald-200'
+                                                )}
+                                              </div>
+                                            )}
+
+                                            {isPointSectionExpanded(outline.id, index, 'apps') && (
+                                              <div className="mt-3">
+                                                {relatedApplications.length ? (
+                                                  renderCompactList(
+                                                    relatedApplications.map((app: any) => app?.content),
+                                                    `${outline.id}-${index}-apps`,
+                                                    'No related applications found in current Applications tab.',
+                                                    'text-amber-200'
+                                                  )
+                                                ) : (
+                                                  <p className="text-xs text-gray-300">No related applications found in current Applications tab.</p>
+                                                )}
+                                              </div>
+                                            )}
+
+                                            {isPointSectionExpanded(outline.id, index, 'media') && (
+                                              <div className="mt-3">
+                                                {renderCompactList(
+                                                  point.mediaSuggestions,
+                                                  `${outline.id}-${index}-media`,
+                                                  'No media ideas available.',
+                                                  'text-violet-200'
+                                                )}
+                                              </div>
+                                            )}
+
+                                            {isPointSectionExpanded(outline.id, index, 'egw') && (
+                                              <div className="mt-2">
+                                                <OutlinePointEGWSupport
+                                                  point={point.title || point.content || point}
+                                                  supportingVerses={supportingVerses}
                                                 />
                                               </div>
-                                            ))}
+                                            )}
                                           </div>
-                                        )}
-                                        {/* EGW Support for this point */}
-                                        <OutlinePointEGWSupport
-                                          point={point.title || point.content || point}
-                                          supportingVerses={point.supportingVerses}
-                                        />
-                                      </li>
-                                    ))}
-                                  </ul>
+                                        )
+                                      })}
+                                    </div>
+                                  )}
                                 </div>
-                              ) : null}
+                              ) : (
+                                <p className="text-xs text-gray-300">Collapsed. Expand to view full structure.</p>
+                              )}
                             </div>
-                          )}
+                          )
+                        })}
+                      {verseEvidencePanel && (
+                        <div className="border border-cyan-400/30 rounded-xl p-4 bg-cyan-500/10">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-semibold text-cyan-200">Verse Evidence</p>
+                            <button onClick={() => setVerseEvidencePanel(null)} className="cyber-outline text-xs px-3 py-1 rounded-full">Close</button>
+                          </div>
+                          <p className="text-xs text-cyan-100/90 mt-1">{verseEvidencePanel.verse} • {verseEvidencePanel.pointTitle}</p>
+                          <p className="text-sm text-gray-100/95 mt-2">
+                            {verseEvidencePanel.text || 'Verse text not available in the current scripture cache.'}
+                          </p>
+                          <p className="text-xs text-cyan-200/85 mt-2">Why it supports this point: {verseEvidencePanel.reason}</p>
                         </div>
-                      ))}
+                      )}
                     </div>
                   ) : (
                     <p className="text-gray-100/90">No outlines yet.</p>
@@ -3379,6 +3802,9 @@ export default function WorkspaceDetailPage() {
                 {wordStudyResult ? (
                   <div className="text-sm text-gray-100/90 space-y-2">
                     <p><span className="text-cyan-200">Lemma:</span> {wordStudyResult.lemma}</p>
+                    {wordStudyResult.originalScript && (
+                      <p><span className="text-cyan-200">Original Script:</span> {wordStudyResult.originalScript}</p>
+                    )}
                     <p><span className="text-cyan-200">Transliteration:</span> {wordStudyResult.transliteration}</p>
                     <div>
                       <span className="text-cyan-200">Definition:</span>
@@ -3439,12 +3865,15 @@ export default function WorkspaceDetailPage() {
                           </div>
                           {wordStudyInsights.grammarInsights ? (
                             <div className="mt-2 grid md:grid-cols-2 gap-2 text-xs">
-                              {Object.entries(wordStudyInsights.grammarInsights).map(([key, value]) => (
-                                <div key={key} className="flex items-center justify-between border border-white/10 rounded-lg px-2 py-1">
-                                  <span className="text-gray-100/90 capitalize">{key}</span>
-                                  <span className="text-cyan-200">{String(value || 'N/A')}</span>
-                                </div>
-                              ))}
+                              {['tense', 'voice', 'mood', 'case', 'number', 'gender', 'notes'].map((key) => {
+                                const value = wordStudyInsights.grammarInsights?.[key]
+                                return (
+                                  <div key={key} className="flex items-center justify-between border border-white/10 rounded-lg px-2 py-1">
+                                    <span className="text-gray-100/90 capitalize">{key}</span>
+                                    <span className="text-cyan-200">{String(value || 'N/A')}</span>
+                                  </div>
+                                )
+                              })}
                             </div>
                           ) : null}
                         </div>

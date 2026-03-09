@@ -3,7 +3,7 @@
 import { CheckCircle, AlertTriangle, XCircle } from 'lucide-react'
 
 interface CitationValidationBadgeProps {
-  supportLevel: 'supported' | 'weak' | 'unsupported' | 'pending'
+  supportLevel: 'supported' | 'weak' | 'unsupported' | 'not_supported' | 'pending' | string
   verseReference?: string
   matchScore?: number
   explanation?: string
@@ -44,7 +44,10 @@ export default function CitationValidationBadge({
     }
   }
 
-  const badge = badges[supportLevel]
+  const badge =
+    badges[supportLevel as keyof typeof badges] ??
+    badges[(supportLevel || '').toLowerCase() as keyof typeof badges] ??
+    (supportLevel === 'not_supported' ? badges.unsupported : badges.pending)
   const Icon = badge.icon
 
   if (compact) {
