@@ -123,9 +123,14 @@ export default function PerVerseContextPanel({ reference, token, language = 'en'
   }
 
   return (
-    <div className="space-y-4">
+    <div className="cyber-panel rounded-2xl p-6 space-y-4">
+      <div className="flex items-center gap-2 pr-24">
+        <Clock className="w-5 h-5 text-cyan-400" />
+        <h3 className="text-lg font-semibold">Historical Context</h3>
+      </div>
+
       {/* Reference Header */}
-      <div className="border border-cyan-400/40 rounded-lg p-3 bg-cyan-500/10">
+      <div>
         <h4 className="text-lg font-semibold text-cyan-200">{data.reference}</h4>
         <p className="text-xs text-gray-400 mt-1">Historical, Cultural & Geographical Context</p>
       </div>

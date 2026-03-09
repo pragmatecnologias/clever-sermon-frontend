@@ -31,10 +31,11 @@ interface StructuralAnalysis {
 interface StructuralAnalysisPanelProps {
   passage: string
   token: string
+  language?: string
   cachedData?: StructuralAnalysis | null
 }
 
-export default function StructuralAnalysisPanel({ passage, token, cachedData }: StructuralAnalysisPanelProps) {
+export default function StructuralAnalysisPanel({ passage, token, language = 'en', cachedData }: StructuralAnalysisPanelProps) {
   const [analysis, setAnalysis] = useState<StructuralAnalysis | null>(cachedData || null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,14 +49,14 @@ export default function StructuralAnalysisPanel({ passage, token, cachedData }: 
     if (passage) {
       fetchAnalysis()
     }
-  }, [passage, cachedData])
+  }, [passage, language, cachedData])
 
   const fetchAnalysis = async () => {
     setLoading(true)
     setError(null)
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/scripture/structural-analysis?passage=${encodeURIComponent(passage)}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/scripture/structural-analysis?passage=${encodeURIComponent(passage)}&language=${encodeURIComponent(language)}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }

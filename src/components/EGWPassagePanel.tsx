@@ -30,6 +30,7 @@ interface EGWPassagePanelProps {
   chapter: number;
   verseStart?: number;
   verseEnd?: number;
+  language?: string;
 }
 
 function RankingBadge({ reason }: { reason: PassageEGWInsight['rankingReason'] }) {
@@ -97,6 +98,10 @@ function InsightCard({
         {excerpt}
       </p>
 
+      <p className="mt-2 text-xs text-amber-300/70">
+        Related to: {insight.scriptureReference}
+      </p>
+
       <div className="mt-3 flex items-center gap-1 text-xs text-amber-400 group-hover:text-amber-300 transition-colors">
         <span>Click to read full quote</span>
         <ChevronDown className="w-3 h-3" />
@@ -110,7 +115,8 @@ export default function EGWPassagePanel({
   book, 
   chapter, 
   verseStart, 
-  verseEnd 
+  verseEnd,
+  language = 'en'
 }: EGWPassagePanelProps) {
   const [data, setData] = useState<EGWPanelData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -120,7 +126,7 @@ export default function EGWPassagePanel({
 
   useEffect(() => {
     fetchInsights();
-  }, [passage, book, chapter, verseStart, verseEnd]);
+  }, [passage, book, chapter, verseStart, verseEnd, language, showingAll]);
 
   const fetchInsights = async () => {
     setLoading(true);
@@ -137,6 +143,7 @@ export default function EGWPassagePanel({
       if (verseEnd !== undefined) {
         url.searchParams.append('verseEnd', verseEnd.toString());
       }
+      url.searchParams.append('language', language);
       url.searchParams.append('limit', showingAll ? '20' : '5');
 
       const response = await fetch(url.toString(), {
@@ -161,7 +168,6 @@ export default function EGWPassagePanel({
 
   const handleViewMore = () => {
     setShowingAll(true);
-    fetchInsights();
   };
 
   if (loading && !data) {

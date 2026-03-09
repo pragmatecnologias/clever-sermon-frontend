@@ -15,10 +15,11 @@ interface StudySynthesisData {
 interface StudySynthesisProps {
   reference: string
   token: string
+  language?: string
   cachedData?: StudySynthesisData | null
 }
 
-export default function StudySynthesis({ reference, token, cachedData }: StudySynthesisProps) {
+export default function StudySynthesis({ reference, token, language = 'en', cachedData }: StudySynthesisProps) {
   const [data, setData] = useState<StudySynthesisData | null>(cachedData || null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -31,14 +32,14 @@ export default function StudySynthesis({ reference, token, cachedData }: StudySy
     if (reference) {
       fetchSynthesis()
     }
-  }, [reference, cachedData])
+  }, [reference, language, cachedData])
 
   const fetchSynthesis = async () => {
     setLoading(true)
     setError(null)
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/scripture/study-synthesis?reference=${encodeURIComponent(reference)}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/scripture/study-synthesis?reference=${encodeURIComponent(reference)}&language=${encodeURIComponent(language)}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }

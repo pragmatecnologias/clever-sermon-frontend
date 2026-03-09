@@ -8,6 +8,7 @@ interface Translation {
   code: string
   name: string
   text: string
+  verses?: Array<{ number: string; text: string; reference?: string }>
   type: 'formal' | 'dynamic' | 'paraphrase'
 }
 
@@ -36,13 +37,15 @@ interface TranslationComparisonEnhancedProps {
   token: string
   language?: string
   cachedData?: TranslationComparisonData | null
+  onDataLoad?: (data: TranslationComparisonData) => void
 }
 
 export default function TranslationComparisonEnhanced({ 
   reference, 
   token,
   language = 'en',
-  cachedData = null
+  cachedData = null,
+  onDataLoad,
 }: TranslationComparisonEnhancedProps) {
   const [data, setData] = useState<TranslationComparisonData | null>(cachedData)
   const [loading, setLoading] = useState(false)
@@ -51,8 +54,12 @@ export default function TranslationComparisonEnhanced({
 
   useEffect(() => {
     if (cachedData) {
+      const hasVerseRows = Array.isArray(cachedData.translations)
+        && cachedData.translations.some((trans) => Array.isArray(trans.verses) && trans.verses.length > 0)
       setData(cachedData)
-      return
+      if (hasVerseRows) {
+        return
+      }
     }
     if (reference) {
       fetchComparison()
@@ -71,6 +78,7 @@ export default function TranslationComparisonEnhanced({
         }
       )
       setData(response.data)
+      onDataLoad?.(response.data)
     } catch (err) {
       console.error('Failed to fetch translation comparison:', err)
       setError('Unable to load translation comparison')
@@ -97,6 +105,44 @@ export default function TranslationComparisonEnhanced({
     verb_difference: 'Verb Difference',
     literal_vs_dynamic: 'Literal vs Dynamic',
     addition_omission: 'Addition/Omission'
+  }
+
+  const buildVerseRows = () => {
+    if (!data?.translations?.length) {
+      return {
+        verseNumbers: [] as string[],
+        byTranslation: {} as Record<string, Record<string, string>>,
+      }
+    }
+
+    const byTranslation: Record<string, Record<string, string>> = {}
+    const verseSet = new Set<string>()
+
+    data.translations.forEach((trans) => {
+      byTranslation[trans.code] = {}
+
+      if (Array.isArray(trans.verses) && trans.verses.length > 0) {
+        trans.verses.forEach((verse) => {
+          const number = String(verse.number || '').trim()
+          if (!number) return
+          verseSet.add(number)
+          byTranslation[trans.code][number] = String(verse.text || '').trim()
+        })
+        return
+      }
+
+      // Fallback for legacy payloads without verse arrays.
+      byTranslation[trans.code].full = trans.text
+      verseSet.add('full')
+    })
+
+    const verseNumbers = Array.from(verseSet).sort((a, b) => {
+      if (a === 'full') return 1
+      if (b === 'full') return -1
+      return Number(a) - Number(b)
+    })
+
+    return { verseNumbers, byTranslation }
   }
 
   if (loading) {
@@ -143,10 +189,15 @@ export default function TranslationComparisonEnhanced({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="cyber-panel rounded-2xl p-6 space-y-6">
+      <div className="flex items-center gap-2 pr-24">
+        <AlertTriangle className="w-5 h-5 text-cyan-400" />
+        <h3 className="text-lg font-semibold">Translation Comparison</h3>
+      </div>
+
       {/* Reference Header */}
-      <div className="border border-cyan-400/40 rounded-lg p-4 bg-cyan-500/10">
-        <h3 className="text-xl font-semibold text-cyan-200">{data.reference}</h3>
+      <div>
+        <h4 className="text-xl font-semibold text-cyan-200">{data.reference}</h4>
         <p className="text-xs text-gray-400 mt-1">{data.translations?.length || 0} translations compared</p>
       </div>
 
@@ -205,31 +256,67 @@ export default function TranslationComparisonEnhanced({
 
       {/* Translations Side-by-Side */}
       {data.translations && data.translations.length > 0 && (
-        <div className="space-y-3">
-          <h4 className="text-lg font-semibold text-white">Translations</h4>
-          {data.translations.map((trans, idx) => (
-            <div 
-              key={idx}
-              className="border border-gray-700 rounded-lg p-4 bg-black/30"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-cyan-200">{trans.code}</span>
-                  <span className="text-xs text-gray-400">{trans.name}</span>
+        <div className="space-y-4">
+          <h4 className="text-lg font-semibold text-white flex items-center gap-2">
+            <Info className="w-5 h-5 text-blue-400" />
+            Verse-by-Verse Comparison
+          </h4>
+          {(() => {
+            const { verseNumbers, byTranslation } = buildVerseRows()
+            const columnCount = data.translations.length
+
+            return (
+              <div className="border border-gray-700 rounded-xl overflow-hidden bg-black/30">
+                <div
+                  className="grid bg-slate-900/80 border-b border-gray-700"
+                  style={{ gridTemplateColumns: `72px repeat(${columnCount}, minmax(260px, 1fr))` }}
+                >
+                  <div className="px-3 py-3 text-xs uppercase tracking-widest text-cyan-200/80">Verse</div>
+                  {data.translations.map((trans) => (
+                    <div key={trans.code} className="px-4 py-3 border-l border-gray-700/60">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-bold text-cyan-300">{trans.code}</p>
+                          <p className="text-[11px] text-gray-400">{trans.name}</p>
+                        </div>
+                        <span className={`text-[11px] px-2 py-0.5 rounded font-medium ${
+                          trans.type === 'formal'
+                            ? 'bg-blue-500/20 text-blue-200 border border-blue-400/30'
+                            : trans.type === 'dynamic'
+                            ? 'bg-green-500/20 text-green-200 border border-green-400/30'
+                            : 'bg-purple-500/20 text-purple-200 border border-purple-400/30'
+                        }`}>
+                          {trans.type}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded ${
-                  trans.type === 'formal' 
-                    ? 'bg-blue-500/20 text-blue-200' 
-                    : trans.type === 'dynamic'
-                    ? 'bg-green-500/20 text-green-200'
-                    : 'bg-purple-500/20 text-purple-200'
-                }`}>
-                  {trans.type}
-                </span>
+
+                <div className="max-h-[520px] overflow-auto">
+                  {verseNumbers.map((verseNum, rowIndex) => (
+                    <div
+                      key={verseNum}
+                      className={`grid ${rowIndex % 2 === 0 ? 'bg-slate-950/30' : 'bg-slate-900/20'}`}
+                      style={{ gridTemplateColumns: `72px repeat(${columnCount}, minmax(260px, 1fr))` }}
+                    >
+                      <div className="px-3 py-3 text-cyan-300 font-semibold border-t border-gray-800/80">
+                        {verseNum === 'full' ? 'Text' : verseNum}
+                      </div>
+                      {data.translations.map((trans) => (
+                        <div
+                          key={`${verseNum}-${trans.code}`}
+                          className="px-4 py-3 border-l border-t border-gray-800/80 text-sm leading-relaxed text-gray-100"
+                        >
+                          {byTranslation[trans.code]?.[verseNum] || <span className="text-gray-500">—</span>}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
               </div>
-              <p className="text-sm text-gray-200 leading-relaxed">{trans.text}</p>
-            </div>
-          ))}
+            )
+          })()}
         </div>
       )}
 

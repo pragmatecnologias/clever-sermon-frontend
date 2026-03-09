@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, ReactNode } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
-import { Book } from 'lucide-react'
+import { AlertCircle, Book, BookOpen, Clock, Layers, Lightbulb, MessageSquare, Network, Rows } from 'lucide-react'
 import AudioPlayer from '@/components/AudioPlayer'
 import StudyNotes from '@/components/StudyNotes'
 import InteractiveCanonicalConstellation from '@/components/InteractiveCanonicalConstellation'
@@ -56,6 +56,7 @@ type ScriptureLookupSnapshot = {
   passageSummary: any
   studySynthesis: any
   canonicalThemes: any
+  verseCommentary: any
   translationComparison: any
   cachedAt: string
 }
@@ -124,7 +125,28 @@ export default function WorkspaceDetailPage() {
   const [passageSummary, setPassageSummary] = useState<any>(null)
   const [studySynthesis, setStudySynthesis] = useState<any>(null)
   const [canonicalThemes, setCanonicalThemes] = useState<any>(null)
+  const [verseCommentary, setVerseCommentary] = useState<any>(null)
   const [translationComparison, setTranslationComparison] = useState<any>(null)
+  const [generatedScriptureSections, setGeneratedScriptureSections] = useState<Record<string, boolean>>({
+    passageSummary: false,
+    verseContext: false,
+    translationComparison: false,
+    verseCommentary: false,
+    structuralAnalysis: false,
+    interpretiveChallenges: false,
+    canonicalThemes: false,
+    studySynthesis: false,
+  })
+  const [scriptureSectionRefreshKey, setScriptureSectionRefreshKey] = useState<Record<string, number>>({
+    passageSummary: 0,
+    verseContext: 0,
+    translationComparison: 0,
+    verseCommentary: 0,
+    structuralAnalysis: 0,
+    interpretiveChallenges: 0,
+    canonicalThemes: 0,
+    studySynthesis: 0,
+  })
   const [scriptureError, setScriptureError] = useState<string | null>(null)
   const [scriptureLastLookup, setScriptureLastLookup] = useState<string>('')
   const [scriptureSuggestions, setScriptureSuggestions] = useState<string[]>([])
@@ -339,6 +361,7 @@ export default function WorkspaceDetailPage() {
     passageSummary: payload.passageSummary || null,
     studySynthesis: payload.studySynthesis || null,
     canonicalThemes: payload.canonicalThemes || null,
+    verseCommentary: payload.verseCommentary || null,
     translationComparison: payload.translationComparison || null,
     cachedAt: payload.cachedAt || new Date().toISOString(),
   })
@@ -370,10 +393,69 @@ export default function WorkspaceDetailPage() {
     setPassageSummary(snapshot.passageSummary || null)
     setStudySynthesis(snapshot.studySynthesis || null)
     setCanonicalThemes(snapshot.canonicalThemes || null)
+    setVerseCommentary(snapshot.verseCommentary || null)
     setTranslationComparison(snapshot.translationComparison || null)
+    setGeneratedScriptureSections({
+      passageSummary: !!snapshot.passageSummary,
+      verseContext: !!snapshot.perVerseContext,
+      translationComparison: !!snapshot.translationComparison,
+      verseCommentary: !!snapshot.verseCommentary,
+      structuralAnalysis: !!snapshot.structuralAnalysis,
+      interpretiveChallenges: !!snapshot.interpretiveChallenges,
+      canonicalThemes: !!snapshot.canonicalThemes,
+      studySynthesis: !!snapshot.studySynthesis,
+    })
+    setScriptureSectionRefreshKey({
+      passageSummary: 0,
+      verseContext: 0,
+      translationComparison: 0,
+      verseCommentary: 0,
+      structuralAnalysis: 0,
+      interpretiveChallenges: 0,
+      canonicalThemes: 0,
+      studySynthesis: 0,
+    })
     const warning = getVerseValidationWarning(snapshot.scriptureLastLookup || '', verses)
     setScriptureValidationWarning(warning)
     setScriptureError(null)
+  }
+
+  const regenerateScriptureSection = (section: string) => {
+    setGeneratedScriptureSections((prev) => ({ ...prev, [section]: true }))
+
+    switch (section) {
+      case 'passageSummary':
+        setPassageSummary(null)
+        break
+      case 'verseContext':
+        setPerVerseContext(null)
+        break
+      case 'translationComparison':
+        setTranslationComparison(null)
+        break
+      case 'verseCommentary':
+        setVerseCommentary(null)
+        break
+      case 'structuralAnalysis':
+        setStructuralAnalysis(null)
+        break
+      case 'interpretiveChallenges':
+        setInterpretiveChallenges(null)
+        break
+      case 'canonicalThemes':
+        setCanonicalThemes(null)
+        break
+      case 'studySynthesis':
+        setStudySynthesis(null)
+        break
+      default:
+        break
+    }
+
+    setScriptureSectionRefreshKey((prev) => ({
+      ...prev,
+      [section]: (prev[section] || 0) + 1,
+    }))
   }
 
   const persistScriptureSnapshot = async (snapshot: ScriptureLookupSnapshot) => {
@@ -386,6 +468,30 @@ export default function WorkspaceDetailPage() {
       ...snapshot,
       lookupHistory: nextHistory,
     })
+  }
+
+  const persistCurrentScriptureSection = (section: 'canonicalThemes' | 'verseCommentary' | 'translationComparison', data: any) => {
+    if (!scriptureResult || !scriptureLastLookup) return
+
+    const snapshot = buildScriptureSnapshot({
+      scriptureResult,
+      scriptureLastLookup,
+      scriptureQuery: scriptureQuery || scriptureLastLookup,
+      scriptureTranslation,
+      parallelTranslations,
+      parallelResults,
+      contextData,
+      structuralAnalysis,
+      interpretiveChallenges,
+      perVerseContext,
+      passageSummary,
+      studySynthesis,
+      canonicalThemes: section === 'canonicalThemes' ? data : canonicalThemes,
+      verseCommentary: section === 'verseCommentary' ? data : verseCommentary,
+      translationComparison: section === 'translationComparison' ? data : translationComparison,
+    })
+
+    persistScriptureSnapshot(snapshot)
   }
 
   // Map sections to phases
@@ -566,6 +672,7 @@ export default function WorkspaceDetailPage() {
             passageSummary: data.passageSummary || null,
             studySynthesis: data.studySynthesis || null,
             canonicalThemes: data.canonicalThemes || null,
+            verseCommentary: data.verseCommentary || null,
             translationComparison: data.translationComparison || null,
             cachedAt: data.cachedAt,
           })
@@ -1223,7 +1330,28 @@ export default function WorkspaceDetailPage() {
     setPassageSummary(null)
     setStudySynthesis(null)
     setCanonicalThemes(null)
+    setVerseCommentary(null)
     setTranslationComparison(null)
+    setGeneratedScriptureSections({
+      passageSummary: false,
+      verseContext: false,
+      translationComparison: false,
+      verseCommentary: false,
+      structuralAnalysis: false,
+      interpretiveChallenges: false,
+      canonicalThemes: false,
+      studySynthesis: false,
+    })
+    setScriptureSectionRefreshKey({
+      passageSummary: 0,
+      verseContext: 0,
+      translationComparison: 0,
+      verseCommentary: 0,
+      structuralAnalysis: 0,
+      interpretiveChallenges: 0,
+      canonicalThemes: 0,
+      studySynthesis: 0,
+    })
     
     setActionLoading((prev) => (prev.includes('scripture') ? prev : [...prev, 'scripture']))
     
@@ -1291,34 +1419,6 @@ export default function WorkspaceDetailPage() {
           ...config,
           params: { reference: normalizedReference },
         }),
-        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/structural-analysis`, {
-          ...config,
-          params: { passage: normalizedReference, language: workspace?.language || 'en' },
-        }),
-        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/interpretive-challenge`, {
-          ...config,
-          params: { passage: normalizedReference, language: workspace?.language || 'en' },
-        }),
-        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/verse-context`, {
-          ...config,
-          params: { reference: normalizedReference, language: workspace?.language || 'en' },
-        }),
-        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/passage-summary`, {
-          ...config,
-          params: { reference: normalizedReference, language: workspace?.language || 'en' },
-        }),
-        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/study-synthesis`, {
-          ...config,
-          params: { reference: normalizedReference, language: workspace?.language || 'en' },
-        }),
-        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/canonical-themes`, {
-          ...config,
-          params: { reference: normalizedReference },
-        }),
-        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/translation-comparison-enhanced`, {
-          ...config,
-          params: { reference: normalizedReference, language: workspace?.language || 'en' },
-        }),
       ]).then(results => {
         if (requestId !== scriptureLookupRequestId.current) {
           return
@@ -1326,24 +1426,10 @@ export default function WorkspaceDetailPage() {
         // Extract and set all data after request-id guard
         const parallelData = results[0].status === 'fulfilled' ? results[0].value?.data?.translations || [] : []
         const contextDataResult = results[1].status === 'fulfilled' ? results[1].value?.data || null : null
-        const structuralAnalysisData = results[2].status === 'fulfilled' && results[2].value?.data?.dataSource !== 'unavailable' ? results[2].value?.data : null
-        const interpretiveChallengesData = results[3].status === 'fulfilled' && results[3].value?.data?.dataSource !== 'unavailable' ? results[3].value?.data : null
-        const perVerseContextData = results[4].status === 'fulfilled' && results[4].value?.data?.dataSource !== 'unavailable' ? results[4].value?.data : null
-        const passageSummaryData = results[5].status === 'fulfilled' && results[5].value?.data?.dataSource !== 'unavailable' ? results[5].value?.data : null
-        const studySynthesisData = results[6].status === 'fulfilled' && results[6].value?.data?.dataSource !== 'unavailable' ? results[6].value?.data : null
-        const canonicalThemesData = results[7].status === 'fulfilled' && results[7].value?.data?.dataSource !== 'unavailable' ? results[7].value?.data : null
-        const translationComparisonData = results[8].status === 'fulfilled' ? results[8].value?.data || null : null
         
         // Set all state updates together
         setParallelResults(parallelData)
         setContextData(contextDataResult)
-        setStructuralAnalysis(structuralAnalysisData)
-        setInterpretiveChallenges(interpretiveChallengesData)
-        setPerVerseContext(perVerseContextData)
-        setPassageSummary(passageSummaryData)
-        setStudySynthesis(studySynthesisData)
-        setCanonicalThemes(canonicalThemesData)
-        setTranslationComparison(translationComparisonData)
         
         const snapshot = buildScriptureSnapshot({
           scriptureResult: normalizedPassageResult,
@@ -1353,13 +1439,14 @@ export default function WorkspaceDetailPage() {
           parallelTranslations: normalizedParallel,
           parallelResults: parallelData,
           contextData: contextDataResult,
-          structuralAnalysis: structuralAnalysisData,
-          interpretiveChallenges: interpretiveChallengesData,
-          perVerseContext: perVerseContextData,
-          passageSummary: passageSummaryData,
-          studySynthesis: studySynthesisData,
-          canonicalThemes: canonicalThemesData,
-          translationComparison: translationComparisonData,
+          structuralAnalysis: null,
+          interpretiveChallenges: null,
+          perVerseContext: null,
+          passageSummary: null,
+          studySynthesis: null,
+          canonicalThemes: null,
+          translationComparison: null,
+          verseCommentary: null,
         })
         persistScriptureSnapshot(snapshot)
       }).catch(err => {
@@ -2929,57 +3016,197 @@ export default function WorkspaceDetailPage() {
                     )}
                     
                     {/* Passage Summary - Interpretive Framing */}
-                    <PassageSummary 
-                      reference={scriptureLastLookup}
-                      token={localStorage.getItem('token') || ''}
-                      language={workspace?.language || 'en'}
-                      cachedData={passageSummary}
-                    />
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => regenerateScriptureSection('passageSummary')}
+                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
+                      >
+                        Generate
+                      </button>
+                      {generatedScriptureSections.passageSummary ? (
+                        <PassageSummary 
+                          key={`${scriptureLastLookup}-passageSummary-${scriptureSectionRefreshKey.passageSummary}`}
+                          reference={scriptureLastLookup}
+                          token={localStorage.getItem('token') || ''}
+                          language={workspace?.language || 'en'}
+                          cachedData={passageSummary}
+                        />
+                      ) : (
+                        <div className="cyber-panel rounded-2xl p-6">
+                          <div className="flex items-center gap-2 mb-1">
+                            <BookOpen className="w-5 h-5 text-cyan-400" />
+                            <h3 className="text-lg font-semibold">Passage Summary</h3>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     
                     {/* Per-Verse Context Panel */}
-                    <PerVerseContextPanel 
-                      reference={scriptureLastLookup}
-                      token={localStorage.getItem('token') || ''}
-                      language={workspace?.language || 'en'}
-                      cachedData={perVerseContext}
-                    />
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => regenerateScriptureSection('verseContext')}
+                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
+                      >
+                        Generate
+                      </button>
+                      {generatedScriptureSections.verseContext ? (
+                        <PerVerseContextPanel 
+                          key={`${scriptureLastLookup}-verseContext-${scriptureSectionRefreshKey.verseContext}`}
+                          reference={scriptureLastLookup}
+                          token={localStorage.getItem('token') || ''}
+                          language={workspace?.language || 'en'}
+                          cachedData={perVerseContext}
+                        />
+                      ) : (
+                        <div className="cyber-panel rounded-2xl p-6">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Clock className="w-5 h-5 text-cyan-400" />
+                            <h3 className="text-lg font-semibold">Historical Context</h3>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     
                     {/* Translation Comparison */}
-                    <TranslationComparisonEnhanced 
-                      reference={scriptureLastLookup}
-                      token={localStorage.getItem('token') || ''}
-                      language={workspace?.language || 'en'}
-                      cachedData={translationComparison}
-                    />
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => regenerateScriptureSection('translationComparison')}
+                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
+                      >
+                        Generate
+                      </button>
+                      {generatedScriptureSections.translationComparison ? (
+                        <TranslationComparisonEnhanced 
+                          key={`${scriptureLastLookup}-translationComparison-${scriptureSectionRefreshKey.translationComparison}`}
+                          reference={scriptureLastLookup}
+                          token={localStorage.getItem('token') || ''}
+                          language={workspace?.language || 'en'}
+                          cachedData={translationComparison}
+                          onDataLoad={(data: any) => {
+                            setTranslationComparison(data)
+                            persistCurrentScriptureSection('translationComparison', data)
+                          }}
+                        />
+                      ) : (
+                        <div className="cyber-panel rounded-2xl p-6">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Rows className="w-5 h-5 text-cyan-400" />
+                            <h3 className="text-lg font-semibold">Verse-by-Verse Comparison</h3>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     
                     {/* Verse Commentary */}
-                    <VerseCommentaryPanel 
-                      reference={scriptureLastLookup}
-                      token={localStorage.getItem('token') || ''}
-                      language={workspace?.language || 'en'}
-                    />
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => regenerateScriptureSection('verseCommentary')}
+                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
+                      >
+                        Generate
+                      </button>
+                      {generatedScriptureSections.verseCommentary ? (
+                        <VerseCommentaryPanel 
+                          key={`${scriptureLastLookup}-verseCommentary-${scriptureSectionRefreshKey.verseCommentary}`}
+                          reference={scriptureLastLookup}
+                          token={localStorage.getItem('token') || ''}
+                          language={workspace?.language || 'en'}
+                          cachedData={verseCommentary}
+                          onDataLoad={(data: any) => {
+                            setVerseCommentary(data)
+                            persistCurrentScriptureSection('verseCommentary', data)
+                          }}
+                        />
+                      ) : (
+                        <div className="cyber-panel rounded-2xl p-6">
+                          <div className="flex items-center gap-2 mb-1">
+                            <MessageSquare className="w-5 h-5 text-cyan-400" />
+                            <h3 className="text-lg font-semibold">Verse Commentary</h3>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     
                     {/* Structural Analysis */}
-                    <StructuralAnalysisPanel 
-                      passage={scriptureLastLookup}
-                      token={localStorage.getItem('token') || ''}
-                      cachedData={structuralAnalysis}
-                    />
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => regenerateScriptureSection('structuralAnalysis')}
+                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
+                      >
+                        Generate
+                      </button>
+                      {generatedScriptureSections.structuralAnalysis ? (
+                        <StructuralAnalysisPanel 
+                          key={`${scriptureLastLookup}-structuralAnalysis-${scriptureSectionRefreshKey.structuralAnalysis}`}
+                          passage={scriptureLastLookup}
+                          token={localStorage.getItem('token') || ''}
+                          language={workspace?.language || 'en'}
+                          cachedData={structuralAnalysis}
+                        />
+                      ) : (
+                        <div className="cyber-panel rounded-2xl p-6">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Layers className="w-5 h-5 text-cyan-400" />
+                            <h3 className="text-lg font-semibold">Structural Analysis</h3>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     
                     {/* Interpretive Challenges */}
-                    <InterpretiveChallengePanel 
-                      passage={scriptureLastLookup}
-                      token={localStorage.getItem('token') || ''}
-                      cachedData={interpretiveChallenges}
-                    />
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => regenerateScriptureSection('interpretiveChallenges')}
+                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
+                      >
+                        Generate
+                      </button>
+                      {generatedScriptureSections.interpretiveChallenges ? (
+                        <InterpretiveChallengePanel 
+                          key={`${scriptureLastLookup}-interpretiveChallenges-${scriptureSectionRefreshKey.interpretiveChallenges}`}
+                          passage={scriptureLastLookup}
+                          token={localStorage.getItem('token') || ''}
+                          language={workspace?.language || 'en'}
+                          cachedData={interpretiveChallenges}
+                        />
+                      ) : (
+                        <div className="cyber-panel rounded-2xl p-6">
+                          <div className="flex items-center gap-2 mb-1">
+                            <AlertCircle className="w-5 h-5 text-cyan-400" />
+                            <h3 className="text-lg font-semibold">Interpretive Challenges</h3>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     
                     {/* Canonical Theme Tracing */}
-                    <CanonicalThemeTracing 
-                      reference={scriptureLastLookup}
-                      token={localStorage.getItem('token') || ''}
-                      workspaceId={workspaceId}
-                      cachedData={canonicalThemes}
-                      onAddToOutline={async (theme, verses) => {
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => regenerateScriptureSection('canonicalThemes')}
+                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
+                      >
+                        Generate
+                      </button>
+                      {generatedScriptureSections.canonicalThemes ? (
+                        <CanonicalThemeTracing 
+                          key={`${scriptureLastLookup}-canonicalThemes-${scriptureSectionRefreshKey.canonicalThemes}`}
+                          reference={scriptureLastLookup}
+                          token={localStorage.getItem('token') || ''}
+                          workspaceId={workspaceId}
+                          language={workspace?.language || 'en'}
+                          cachedData={canonicalThemes}
+                          onDataLoad={(data: any) => {
+                            setCanonicalThemes(data)
+                            persistCurrentScriptureSection('canonicalThemes', data)
+                          }}
+                          onAddToOutline={async (theme, verses) => {
                         // Add theme to the selected outline or first outline
                         const selectedOutline = workspace.outlines?.find((o: any) => o.isSelected) || workspace.outlines?.[0]
                         
@@ -3028,8 +3255,17 @@ export default function WorkspaceDetailPage() {
                         } catch (error) {
                           console.error('Failed to save outline:', error)
                         }
-                      }}
-                    />
+                          }}
+                        />
+                      ) : (
+                        <div className="cyber-panel rounded-2xl p-6">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Network className="w-5 h-5 text-cyan-400" />
+                            <h3 className="text-lg font-semibold">Canonical Theme Tracing</h3>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     
                     {/* Study Notes */}
                     {scriptureResult.studyNotes && scriptureResult.studyNotes.length > 0 && (
@@ -3038,13 +3274,54 @@ export default function WorkspaceDetailPage() {
                         onVerseClick={handleVerseClick}
                       />
                     )}
+
+                    {/* EGW insights within Scripture section */}
+                    {workspace?.includeEGW !== false && scriptureLastLookup && (() => {
+                      const match = scriptureLastLookup.match(/^(.+?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/)
+                      const parsedBook = match?.[1]?.trim() || scriptureLastLookup.split(' ')[0]
+                      const parsedChapter = Number(match?.[2] || '1')
+                      const parsedVerseStart = match?.[3] ? Number(match[3]) : undefined
+                      const parsedVerseEnd = match?.[4] ? Number(match[4]) : undefined
+
+                      return (
+                        <EGWPassagePanel
+                          passage={scriptureLastLookup}
+                          book={parsedBook}
+                          chapter={parsedChapter}
+                          verseStart={parsedVerseStart}
+                          verseEnd={parsedVerseEnd}
+                          language={workspace?.language || 'en'}
+                        />
+                      )
+                    })()}
                     
                     {/* Study Synthesis - Final Theological Takeaway */}
-                    <StudySynthesis 
-                      reference={scriptureLastLookup}
-                      token={localStorage.getItem('token') || ''}
-                      cachedData={studySynthesis}
-                    />
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => regenerateScriptureSection('studySynthesis')}
+                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
+                      >
+                        Generate
+                      </button>
+                      {generatedScriptureSections.studySynthesis ? (
+                        <StudySynthesis 
+                          key={`${scriptureLastLookup}-studySynthesis-${scriptureSectionRefreshKey.studySynthesis}`}
+                          reference={scriptureLastLookup}
+                          token={localStorage.getItem('token') || ''}
+                          language={workspace?.language || 'en'}
+                          cachedData={studySynthesis}
+                        />
+                      ) : (
+                        <div className="cyber-panel rounded-2xl p-6">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Lightbulb className="w-5 h-5 text-cyan-400" />
+                            <h3 className="text-lg font-semibold">Study Synthesis</h3>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                   </div>
                 ) : (
                   <p className="text-gray-200/80">No passage loaded yet.</p>
@@ -3223,12 +3500,24 @@ export default function WorkspaceDetailPage() {
 
               {/* EGW Passage Panel - Below Cross References */}
               {crossRefLastLookup && (
+                (() => {
+                  const match = crossRefLastLookup.match(/^(.+?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/)
+                  const parsedBook = match?.[1]?.trim() || crossRefLastLookup.split(' ')[0]
+                  const parsedChapter = Number(match?.[2] || '1')
+                  const parsedVerseStart = match?.[3] ? Number(match[3]) : undefined
+                  const parsedVerseEnd = match?.[4] ? Number(match[4]) : undefined
+
+                  return (
                 <EGWPassagePanel 
                   passage={crossRefLastLookup}
-                  book={crossRefLastLookup.split(' ')[0]}
-                  chapter={parseInt(crossRefLastLookup.split(' ')[1]?.split(':')[0] || '1')}
-                  verseStart={parseInt(crossRefLastLookup.split(':')[1]?.split('-')[0] || '1')}
+                  book={parsedBook}
+                  chapter={parsedChapter}
+                  verseStart={parsedVerseStart}
+                  verseEnd={parsedVerseEnd}
+                  language={workspace?.language || 'en'}
                 />
+                  )
+                })()
               )}
             </div>
           )}

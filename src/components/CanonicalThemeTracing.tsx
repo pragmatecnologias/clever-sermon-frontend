@@ -40,9 +40,11 @@ interface CanonicalThemeTracingProps {
   workspaceId?: string
   onAddToOutline?: (theme: string, verses: string[]) => void
   cachedData?: CanonicalThemesResponse | null
+  onDataLoad?: (data: CanonicalThemesResponse) => void
+  language?: string
 }
 
-export default function CanonicalThemeTracing({ reference, token, workspaceId, onAddToOutline, cachedData }: CanonicalThemeTracingProps) {
+export default function CanonicalThemeTracing({ reference, token, workspaceId, onAddToOutline, cachedData, onDataLoad, language = 'en' }: CanonicalThemeTracingProps) {
   const [themes, setThemes] = useState<CanonicalTheme[]>(cachedData?.themes || [])
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -69,7 +71,7 @@ export default function CanonicalThemeTracing({ reference, token, workspaceId, o
     setError(null)
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/scripture/canonical-themes?reference=${encodeURIComponent(reference)}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/scripture/canonical-themes?reference=${encodeURIComponent(reference)}&language=${encodeURIComponent(language)}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -81,6 +83,7 @@ export default function CanonicalThemeTracing({ reference, token, workspaceId, o
           setThemes([])
         } else {
           setThemes(data.themes || [])
+          onDataLoad?.(data)
         }
       } else {
         setError('Unable to load themes for this passage')

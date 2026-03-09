@@ -26,10 +26,11 @@ interface InterpretiveChallenge {
 interface InterpretiveChallengePanelProps {
   passage: string
   token: string
+  language?: string
   cachedData?: InterpretiveChallenge | null
 }
 
-export default function InterpretiveChallengePanel({ passage, token, cachedData }: InterpretiveChallengePanelProps) {
+export default function InterpretiveChallengePanel({ passage, token, language = 'en', cachedData }: InterpretiveChallengePanelProps) {
   const [challenge, setChallenge] = useState<InterpretiveChallenge | null>(cachedData || null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -44,14 +45,14 @@ export default function InterpretiveChallengePanel({ passage, token, cachedData 
     if (passage) {
       fetchChallenge()
     }
-  }, [passage, cachedData])
+  }, [passage, language, cachedData])
 
   const fetchChallenge = async () => {
     setLoading(true)
     setError(null)
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/scripture/interpretive-challenge?passage=${encodeURIComponent(passage)}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/scripture/interpretive-challenge?passage=${encodeURIComponent(passage)}&language=${encodeURIComponent(language)}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }

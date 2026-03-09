@@ -19,19 +19,25 @@ interface VerseCommentaryPanelProps {
   reference: string
   token: string
   language?: string
+  cachedData?: VerseCommentary | null
+  onDataLoad?: (data: VerseCommentary) => void
 }
 
-export default function VerseCommentaryPanel({ reference, token, language = 'en' }: VerseCommentaryPanelProps) {
-  const [commentary, setCommentary] = useState<VerseCommentary | null>(null)
+export default function VerseCommentaryPanel({ reference, token, language = 'en', cachedData, onDataLoad }: VerseCommentaryPanelProps) {
+  const [commentary, setCommentary] = useState<VerseCommentary | null>(cachedData || null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expandedSections, setExpandedSections] = useState<Record<number, boolean>>({})
 
   useEffect(() => {
+    if (cachedData) {
+      setCommentary(cachedData)
+      return
+    }
     if (reference) {
       fetchCommentary()
     }
-  }, [reference, language])
+  }, [reference, language, cachedData])
 
   const fetchCommentary = async () => {
     setLoading(true)
@@ -44,8 +50,9 @@ export default function VerseCommentaryPanel({ reference, token, language = 'en'
         }
       )
       if (response.ok) {
-        const data = await response.json()
+        const data: VerseCommentary = await response.json()
         setCommentary(data)
+        onDataLoad?.(data)
       } else {
         setError('Commentary not available for this verse')
       }
@@ -225,7 +232,7 @@ export default function VerseCommentaryPanel({ reference, token, language = 'en'
 
   return (
     <div className="cyber-panel rounded-2xl p-6 space-y-4">
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-4 flex-wrap pr-24">
         <MessageSquare className="w-5 h-5 text-cyan-400" />
         <h3 className="text-lg font-semibold">Verse Commentary</h3>
         {commentary.dataSource === 'egw' && (
@@ -238,7 +245,7 @@ export default function VerseCommentaryPanel({ reference, token, language = 'en'
             AI-Generated
           </span>
         )}
-        <span className="ml-auto text-xs text-gray-400">{commentary.verseReference}</span>
+        <span className="w-full sm:w-auto sm:ml-auto text-xs text-gray-400">{commentary.verseReference}</span>
       </div>
 
       <div className="space-y-3">
