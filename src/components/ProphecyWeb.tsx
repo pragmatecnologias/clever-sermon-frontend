@@ -12,6 +12,8 @@ export default function ProphecyWeb({ theme = 'all' }: ProphecyWebProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [webData, setWebData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  
+  // Theological Question: What covenant movement is unfolding?
 
   useEffect(() => {
     loadProphecyWeb()
@@ -148,6 +150,10 @@ export default function ProphecyWeb({ theme = 'all' }: ProphecyWebProps) {
             <div className="text-cyan-200">Weaving Prophecy Connections...</div>
           </div>
         )}
+        <div className="absolute top-4 right-4 bg-gradient-to-br from-red-900/90 to-purple-900/90 p-4 rounded-lg border border-red-500/50 max-w-md z-20">
+          <p className="text-sm font-semibold text-red-200 mb-1">Theological Question:</p>
+          <p className="text-xs text-gray-300 italic">What covenant movement is unfolding?</p>
+        </div>
         <div ref={containerRef} className="w-full h-full" />
         <div className="absolute top-4 left-4 bg-black/80 p-3 rounded-lg border border-white/10">
           <p className="text-xs text-gray-400 mb-2">Prophecy Web</p>

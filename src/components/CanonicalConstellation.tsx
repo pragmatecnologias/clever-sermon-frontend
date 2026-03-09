@@ -3,6 +3,10 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import NodeHoverPreview from './NodeHoverPreview'
+import NodeContextPanel from './NodeContextPanel'
+import ConnectionTooltip from './ConnectionTooltip'
+import ExplorationControls from './ExplorationControls'
 
 interface CanonicalConstellationProps {
   focusPassage?: string
@@ -12,8 +16,31 @@ interface CanonicalConstellationProps {
 export default function CanonicalConstellation({ focusPassage, onNodeClick }: CanonicalConstellationProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
+  const controlsRef = useRef<OrbitControls | null>(null)
+  const raycasterRef = useRef<THREE.Raycaster>(new THREE.Raycaster())
+  const mouseRef = useRef<THREE.Vector2>(new THREE.Vector2())
+  const nodesRef = useRef<Map<THREE.Mesh, any>>(new Map())
+  const connectionsRef = useRef<Map<THREE.Line, any>>(new Map())
+  
   const [loading, setLoading] = useState(true)
-  const [selectedNode, setSelectedNode] = useState<string | null>(null)
+  const [selectedNode, setSelectedNode] = useState<any | null>(null)
+  const [hoveredNode, setHoveredNode] = useState<any | null>(null)
+  const [hoveredConnection, setHoveredConnection] = useState<any | null>(null)
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
+  const [contextPanelVisible, setContextPanelVisible] = useState(false)
+  const [focusModeActive, setFocusModeActive] = useState(false)
+  const [filters, setFilters] = useState({
+    strongestOnly: false,
+    canonicalLinks: true,
+    prophecyLinks: true,
+    covenantThreads: true,
+    egwReferences: false,
+    showLabels: true,
+  })
+  
+  // Theological Question: Where does this passage sit in redemptive history?
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -153,6 +180,10 @@ export default function CanonicalConstellation({ focusPassage, onNodeClick }: Ca
           <div className="text-cyan-200">Loading Canonical Constellation...</div>
         </div>
       )}
+      <div className="absolute top-4 right-4 bg-gradient-to-br from-purple-900/90 to-indigo-900/90 p-4 rounded-lg border border-purple-500/50 max-w-md z-20">
+        <p className="text-sm font-semibold text-purple-200 mb-1">Theological Question:</p>
+        <p className="text-xs text-gray-300 italic">Where does this passage sit in redemptive history?</p>
+      </div>
       <div ref={containerRef} className="w-full h-full" />
       <div className="absolute top-4 left-4 bg-black/80 p-3 rounded-lg border border-white/10">
         <p className="text-xs text-gray-400 mb-2">Controls</p>

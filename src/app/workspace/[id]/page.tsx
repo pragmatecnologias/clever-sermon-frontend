@@ -4,15 +4,61 @@ import { useState, useEffect, useRef, ReactNode } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
-import { Sparkles, BookOpen, Lightbulb, MessageSquare, Search, Dna, Save, ChevronDown, ChevronUp, Plus, Trash2, Edit2, Check, X } from 'lucide-react'
+import { Book } from 'lucide-react'
 import AudioPlayer from '@/components/AudioPlayer'
 import StudyNotes from '@/components/StudyNotes'
-import CanonicalConstellation from '@/components/CanonicalConstellation'
-import ProphecyWeb from '@/components/ProphecyWeb'
-import SermonFlowSculptor from '@/components/SermonFlowSculptor'
+import InteractiveCanonicalConstellation from '@/components/InteractiveCanonicalConstellation'
+import InteractiveProphecyWeb from '@/components/InteractiveProphecyWeb'
+import InteractiveSermonFlowSculptor from '@/components/InteractiveSermonFlowSculptor'
 import EGWPassagePanel from '@/components/EGWPassagePanel'
 import SDASmartBoostBanner from '@/components/SDASmartBoostBanner'
 import WorkspaceEGWToggle from '@/components/WorkspaceEGWToggle'
+import StudyReportEGWSection from '@/components/StudyReportEGWSection'
+import OutlinePointEGWSupport from '@/components/OutlinePointEGWSupport'
+import { getBibleBookMatches, getBibleBookChapterCount, matchBibleBookFromInput } from '@/utils/bibleBooks'
+import PhaseNavigation, { Phase } from '@/components/PhaseNavigation'
+import ProgressIndicator from '@/components/ProgressIndicator'
+import NextStepSuggestion from '@/components/NextStepSuggestion'
+import CollapsibleSection from '@/components/CollapsibleSection'
+import LoadingOverlay from '@/components/LoadingOverlay'
+import KeyboardShortcutsHelp from '@/components/KeyboardShortcutsHelp'
+import SermonMentorDashboard from '@/components/SermonMentorDashboard'
+import SermonPatternDashboard from '@/components/SermonPatternDashboard'
+import CrossReferenceNarrativeDisplay from '@/components/CrossReferenceNarrativeDisplay'
+import CitationValidationBadge from '@/components/CitationValidationBadge'
+import CrossReferenceRanked from '@/components/CrossReferenceRanked'
+import StoryArcSelector from '@/components/StoryArcSelector'
+import TranslationComparisonEnhanced from '@/components/TranslationComparisonEnhanced'
+import PerVerseContextPanel from '@/components/PerVerseContextPanel'
+import CanonicalThemeTracing from '@/components/CanonicalThemeTracing'
+import VerseCommentaryPanel from '@/components/VerseCommentaryPanel'
+import StructuralAnalysisPanel from '@/components/StructuralAnalysisPanel'
+import InterpretiveChallengePanel from '@/components/InterpretiveChallengePanel'
+import SanctuaryProphecyMapper from '@/components/SanctuaryProphecyMapper'
+import PassageSummary from '@/components/PassageSummary'
+import StudySynthesis from '@/components/StudySynthesis'
+import SermonIntegrityDashboard from '@/components/SermonIntegrityDashboard'
+import MediaProductionStudio from '@/components/MediaProductionStudio'
+import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut'
+import { getLoadingMessage } from '@/utils/loadingMessages'
+
+type ScriptureLookupSnapshot = {
+  scriptureResult: any
+  scriptureLastLookup: string
+  scriptureQuery: string
+  scriptureTranslation: string
+  parallelTranslations: string
+  parallelResults: any[]
+  contextData: any
+  structuralAnalysis: any
+  interpretiveChallenges: any
+  perVerseContext: any
+  passageSummary: any
+  studySynthesis: any
+  canonicalThemes: any
+  translationComparison: any
+  cachedAt: string
+}
 
 export default function WorkspaceDetailPage() {
   const router = useRouter()
@@ -55,22 +101,38 @@ export default function WorkspaceDetailPage() {
     | 'word-study'
     | 'cross-references'
     | 'study-report'
-    | 'search'
     | 'dna'
     | 'visualizations'
+    | 'media'
   >('workspace')
+  const [activePhase, setActivePhase] = useState<Phase>('DISCOVER')
+  const [citationValidations, setCitationValidations] = useState<Record<string, any>>({})
   const [scriptureQuery, setScriptureQuery] = useState('')
   const [scriptureTranslation, setScriptureTranslation] = useState('KJV')
   const [scriptureResult, setScriptureResult] = useState<any>(null)
-  const [scriptureContextRange, setScriptureContextRange] = useState(2)
   const [parallelTranslations, setParallelTranslations] = useState('WEB')
-  const [availableTranslations] = useState(['KJV', 'WEB', 'NKJV', 'NBLA', 'ESV', 'NIV', 'NASB', 'NLT'])
+  
+  // Filter translations based on workspace language
+  const availableTranslations = workspace?.language === 'es' 
+    ? ['RVR1960', 'NVI', 'NBLA'] // Spanish Bibles only
+    : ['KJV', 'WEB', 'NKJV', 'ESV', 'NIV', 'NASB', 'NLT'] // English Bibles only
   const [parallelResults, setParallelResults] = useState<any[]>([])
   const [contextData, setContextData] = useState<any>(null)
   const [structuralAnalysis, setStructuralAnalysis] = useState<any>(null)
   const [interpretiveChallenges, setInterpretiveChallenges] = useState<any>(null)
+  const [perVerseContext, setPerVerseContext] = useState<any>(null)
+  const [passageSummary, setPassageSummary] = useState<any>(null)
+  const [studySynthesis, setStudySynthesis] = useState<any>(null)
+  const [canonicalThemes, setCanonicalThemes] = useState<any>(null)
+  const [translationComparison, setTranslationComparison] = useState<any>(null)
   const [scriptureError, setScriptureError] = useState<string | null>(null)
   const [scriptureLastLookup, setScriptureLastLookup] = useState<string>('')
+  const [scriptureSuggestions, setScriptureSuggestions] = useState<string[]>([])
+  const [showScriptureSuggestions, setShowScriptureSuggestions] = useState(false)
+  const [scriptureSuggestionIndex, setScriptureSuggestionIndex] = useState(-1)
+  const [scriptureInputWarning, setScriptureInputWarning] = useState<string | null>(null)
+  const [scriptureValidationWarning, setScriptureValidationWarning] = useState<string | null>(null)
+  const [scriptureLookupHistory, setScriptureLookupHistory] = useState<ScriptureLookupSnapshot[]>([])
   const [wordStudyWord, setWordStudyWord] = useState('')
   const [wordStudyLanguage, setWordStudyLanguage] = useState('greek')
   const [availableLanguages] = useState([{value: 'greek', label: 'Greek'}, {value: 'hebrew', label: 'Hebrew'}, {value: 'aramaic', label: 'Aramaic'}])
@@ -97,12 +159,332 @@ export default function WorkspaceDetailPage() {
   const [searchResults, setSearchResults] = useState<any[]>([])
   const autosaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const autosaveHashes = useRef<Record<string, string>>({})
+  const scriptureLookupRequestId = useRef(0)
 
   const storyArcLabels: Record<string, string> = {
     problem_truth_response: 'Problem → Truth → Response',
     tension_turn_resolution: 'Tension → Turn → Resolution',
     question_discovery_answer: 'Question → Discovery → Answer',
     challenge_journey_transformation: 'Challenge → Journey → Transformation',
+  }
+
+  const buildScriptureSuggestions = (value: string) => {
+    const cleaned = value.trim()
+    if (!cleaned) {
+      setScriptureSuggestions([])
+      setScriptureInputWarning(null)
+      return
+    }
+    const suggestionSet = new Set<string>()
+    setScriptureInputWarning(null)
+
+    const bookMatch = matchBibleBookFromInput(cleaned)
+    if (bookMatch) {
+      const { book, remainder, isFuzzy } = bookMatch
+      if (isFuzzy) {
+        setScriptureInputWarning(`Did you mean “${book.name}”?`)
+      }
+      const chapterCount = getBibleBookChapterCount(book.name)
+      const chapterMatch = remainder.match(/^(\d+)(?::([\d\-–—,\s]+))?$/)
+
+      if (!remainder) {
+        suggestionSet.add(`${book.name} 1`)
+        suggestionSet.add(`${book.name} 1:1`)
+        suggestionSet.add(`${book.name} 1:1-5`)
+      } else if (chapterMatch) {
+        const chapterNum = Number.parseInt(chapterMatch[1], 10)
+        if (chapterCount && chapterNum > chapterCount) {
+          setScriptureInputWarning(`Chapter ${chapterNum} exceeds ${book.name} (${chapterCount} chapters).`)
+        }
+        if (!chapterMatch[2]) {
+          suggestionSet.add(`${book.name} ${chapterNum}`)
+          suggestionSet.add(`${book.name} ${chapterNum}:1`)
+          suggestionSet.add(`${book.name} ${chapterNum}:1-5`)
+        } else {
+          const normalizedVerses = chapterMatch[2].replace(/[–—]/g, '-').trim()
+          suggestionSet.add(`${book.name} ${chapterNum}:${normalizedVerses}`)
+        }
+      }
+    }
+
+    const match = cleaned.match(/^([^\d]*)([\d:.,;\s-]*)$/)
+    const bookPart = (match?.[1] || cleaned).trim()
+    const rest = (match?.[2] || '').trim()
+    const matches = getBibleBookMatches(bookPart)
+    matches.forEach((book) => suggestionSet.add(rest ? `${book} ${rest}` : `${book} `))
+
+    const suggestions = Array.from(suggestionSet).slice(0, 8)
+    setScriptureSuggestions(suggestions)
+    setScriptureSuggestionIndex(suggestions.length ? 0 : -1)
+  }
+
+  const getVerseValidationWarning = (reference: string, verses: any[]) => {
+    const match = reference.match(/^(.*?)\s+(\d+):(\d+)$/)
+    if (!match) return null
+    const chapter = match[2]
+    const verseNumber = Number(match[3])
+    if (!Number.isFinite(verseNumber)) return null
+
+    const verseExists = verses.some((verse) => {
+      const verseRef = typeof verse?.reference === 'string' ? verse.reference : ''
+      const verseMatch = verseRef.match(/\b(\d+):(\d+)\b/)
+      if (!verseMatch) return false
+      return verseMatch[1] === chapter && Number(verseMatch[2]) === verseNumber
+    })
+
+    if (!verseExists) {
+      return `Verse ${chapter}:${verseNumber} not found in this passage. Check the reference.`
+    }
+
+    return null
+  }
+
+  const extractVerses = (result: any): any[] => {
+    if (!result) return []
+
+    const candidates = [
+      result?.verses,
+      result?.data?.verses,
+      result?.passage?.verses,
+      result?.payload?.verses,
+    ]
+
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) return candidate
+      if (candidate && typeof candidate === 'object') {
+        const asArray = Object.values(candidate)
+        if (asArray.length && asArray.every((item) => typeof item === 'object')) {
+          return asArray as any[]
+        }
+      }
+    }
+
+    const textCandidate =
+      result?.text ||
+      result?.content ||
+      result?.data?.text ||
+      result?.data?.content ||
+      result?.passage?.text ||
+      ''
+
+    if (typeof textCandidate === 'string' && textCandidate.trim()) {
+      return [
+        {
+          reference: result?.reference || result?.data?.reference || '',
+          text: textCandidate.trim(),
+        },
+      ]
+    }
+
+    return []
+  }
+
+  const getReferenceStartVerse = (reference: string) => {
+    const match = reference.match(/\b\d+:(\d+)(?:-(\d+))?$/)
+    if (!match) return null
+    const start = Number(match[1])
+    return Number.isFinite(start) ? start : null
+  }
+
+  const normalizeScriptureResult = (
+    raw: any,
+    reference: string,
+    translation: string,
+  ) => {
+    if (raw?.verses && Array.isArray(raw.verses)) {
+      return {
+        ...raw,
+        reference: raw.reference || reference,
+        translation: raw.translation || translation,
+      }
+    }
+
+    if (raw?.data?.verses && Array.isArray(raw.data.verses)) {
+      return {
+        ...raw.data,
+        reference: raw.data.reference || reference,
+        translation: raw.data.translation || translation,
+      }
+    }
+
+    if (typeof raw === 'string' && raw.trim()) {
+      return {
+        reference,
+        translation,
+        verses: [{ reference, text: raw.trim() }],
+      }
+    }
+
+    return null
+  }
+
+  const buildScriptureSnapshot = (
+    payload: Partial<ScriptureLookupSnapshot> & Pick<ScriptureLookupSnapshot, 'scriptureResult' | 'scriptureLastLookup' | 'scriptureQuery' | 'scriptureTranslation' | 'parallelTranslations'>,
+  ): ScriptureLookupSnapshot => ({
+    scriptureResult:
+      normalizeScriptureResult(
+        payload.scriptureResult,
+        payload.scriptureLastLookup || payload.scriptureQuery,
+        payload.scriptureTranslation,
+      ) || payload.scriptureResult,
+    scriptureLastLookup: payload.scriptureLastLookup,
+    scriptureQuery: payload.scriptureQuery,
+    scriptureTranslation: payload.scriptureTranslation,
+    parallelTranslations: payload.parallelTranslations,
+    parallelResults: payload.parallelResults || [],
+    contextData: payload.contextData || null,
+    structuralAnalysis: payload.structuralAnalysis || null,
+    interpretiveChallenges: payload.interpretiveChallenges || null,
+    perVerseContext: payload.perVerseContext || null,
+    passageSummary: payload.passageSummary || null,
+    studySynthesis: payload.studySynthesis || null,
+    canonicalThemes: payload.canonicalThemes || null,
+    translationComparison: payload.translationComparison || null,
+    cachedAt: payload.cachedAt || new Date().toISOString(),
+  })
+
+  const mergeScriptureLookupHistory = (
+    snapshot: ScriptureLookupSnapshot,
+    history: ScriptureLookupSnapshot[],
+  ) => {
+    const snapshotKey = `${snapshot.scriptureLastLookup}::${snapshot.scriptureTranslation}::${snapshot.parallelTranslations}`.toLowerCase()
+    const deduped = history.filter((entry) => {
+      const entryKey = `${entry.scriptureLastLookup}::${entry.scriptureTranslation}::${entry.parallelTranslations}`.toLowerCase()
+      return entryKey !== snapshotKey
+    })
+    return [snapshot, ...deduped].slice(0, 12)
+  }
+
+  const applyScriptureLookupSnapshot = (snapshot: ScriptureLookupSnapshot) => {
+    const verses = extractVerses(snapshot.scriptureResult)
+    setScriptureResult(snapshot.scriptureResult || null)
+    setScriptureLastLookup(snapshot.scriptureLastLookup || '')
+    setScriptureQuery(snapshot.scriptureQuery || snapshot.scriptureLastLookup || '')
+    setScriptureTranslation(snapshot.scriptureTranslation || 'KJV')
+    setParallelTranslations(snapshot.parallelTranslations || snapshot.scriptureTranslation || 'KJV')
+    setParallelResults(snapshot.parallelResults || [])
+    setContextData(snapshot.contextData || null)
+    setStructuralAnalysis(snapshot.structuralAnalysis || null)
+    setInterpretiveChallenges(snapshot.interpretiveChallenges || null)
+    setPerVerseContext(snapshot.perVerseContext || null)
+    setPassageSummary(snapshot.passageSummary || null)
+    setStudySynthesis(snapshot.studySynthesis || null)
+    setCanonicalThemes(snapshot.canonicalThemes || null)
+    setTranslationComparison(snapshot.translationComparison || null)
+    const warning = getVerseValidationWarning(snapshot.scriptureLastLookup || '', verses)
+    setScriptureValidationWarning(warning)
+    setScriptureError(null)
+  }
+
+  const persistScriptureSnapshot = async (snapshot: ScriptureLookupSnapshot) => {
+    let nextHistory: ScriptureLookupSnapshot[] = []
+    setScriptureLookupHistory((prev) => {
+      nextHistory = mergeScriptureLookupHistory(snapshot, prev)
+      return nextHistory
+    })
+    await saveScriptureLookupCache({
+      ...snapshot,
+      lookupHistory: nextHistory,
+    })
+  }
+
+  // Map sections to phases
+  const phaseContentMap: Record<Phase, (typeof activeSection)[]> = {
+    DISCOVER: ['scripture', 'word-study', 'cross-references'],
+    ANALYZE: ['study-report'],
+    STRATEGIZE: ['workspace'],
+    CREATE: ['outlines', 'manuscript', 'applications', 'questions', 'illustrations', 'citations'],
+    REFINE: ['dna', 'visualizations']
+  }
+
+  // Calculate progress
+  const progress = {
+    passageStudied: !!scriptureResult,
+    themesIdentified: !!workspace?.studyReports?.length,
+    strategySelected: !!workspace?.preachingStrategies?.length || !!workspace?.style,
+    outlineCreated: !!workspace?.outlines?.length,
+    manuscriptWritten: !!workspace?.manuscripts?.length
+  }
+
+  // Handle phase change
+  const handlePhaseChange = (phase: Phase) => {
+    setActivePhase(phase)
+    const firstSection = phaseContentMap[phase][0]
+    if (firstSection) {
+      setActiveSection(firstSection)
+    }
+  }
+
+  const handleScriptureSnapshotSelect = (snapshot: ScriptureLookupSnapshot) => {
+    // Cancel/ignore any in-flight lookup responses so they can't overwrite restored cache state.
+    scriptureLookupRequestId.current += 1
+    setActionLoading((prev) => prev.filter((item) => item !== 'scripture'))
+
+    const normalizedSnapshot = buildScriptureSnapshot(snapshot)
+    applyScriptureLookupSnapshot(normalizedSnapshot)
+  }
+
+  const handleSearchResultSelect = (item: any) => {
+    if (item?.workspaceId && item.workspaceId !== workspaceId) {
+      router.push(`/workspace/${item.workspaceId}`)
+      return
+    }
+    if (item?.type === 'workspace' && item.id && item.id !== workspaceId) {
+      router.push(`/workspace/${item.id}`)
+      return
+    }
+
+    if (item?.type === 'outline') setActiveSection('outlines')
+    if (item?.type === 'manuscript') setActiveSection('manuscript')
+    if (item?.type === 'note') setActiveSection('workspace')
+  }
+
+  // Handle next step suggestions
+  const handleNextStepAction = (action: string) => {
+    switch (action) {
+      case 'lookup-passage':
+        setActivePhase('DISCOVER')
+        setActiveSection('scripture')
+        break
+      case 'generate-study-report':
+        setActivePhase('ANALYZE')
+        setActiveSection('study-report')
+        handleGenerate('study-report', '')
+        break
+      case 'select-strategy':
+        setActivePhase('STRATEGIZE')
+        setActiveSection('workspace')
+        break
+      case 'create-outline':
+        setActivePhase('CREATE')
+        setActiveSection('outlines')
+        break
+      case 'write-manuscript':
+        setActivePhase('CREATE')
+        setActiveSection('manuscript')
+        break
+      case 'analyze-sermon':
+        setActivePhase('REFINE')
+        setActiveSection('dna')
+        break
+    }
+  }
+
+  // Validate citation
+  const validateCitation = async (statement: string, verseRef: string) => {
+    try {
+      const config = withToken()
+      if (!config) return { supportLevel: 'pending' }
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/scripture/validate-citation`,
+        { statement, verseReference: verseRef, translation: scriptureTranslation || 'KJV' },
+        config
+      )
+      return response.data
+    } catch (error) {
+      console.error('Citation validation failed:', error)
+      return { supportLevel: 'pending' }
+    }
   }
 
   const scheduleAutosave = (key: string, payload: any, endpoint: string) => {
@@ -123,6 +505,100 @@ export default function WorkspaceDetailPage() {
         console.error('Autosave failed', err)
       }
     }, 1200)
+  }
+
+  const restoreScriptureLookupCache = async (workspaceData?: any): Promise<boolean> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) return false
+
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/scripture-cache`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      )
+
+      const data = response.data
+      if (data) {
+        const history = Array.isArray(data.lookupHistory) ? data.lookupHistory : []
+        const normalizedHistory = history
+          .filter((entry: any) => entry?.scriptureLastLookup && entry?.scriptureResult)
+          .map((entry: any) => buildScriptureSnapshot(entry))
+          .sort((a: ScriptureLookupSnapshot, b: ScriptureLookupSnapshot) => {
+            const aDate = new Date(a.cachedAt).getTime() || 0
+            const bDate = new Date(b.cachedAt).getTime() || 0
+            return bDate - aDate
+          })
+
+        const defaultReference = workspaceData?.mainPassage?.trim().toLowerCase() || ''
+
+        if (normalizedHistory.length) {
+          setScriptureLookupHistory(normalizedHistory)
+          if (!defaultReference) {
+            applyScriptureLookupSnapshot(normalizedHistory[0])
+            return true
+          }
+          const defaultSnapshot = normalizedHistory.find(
+            (entry: ScriptureLookupSnapshot) =>
+              entry.scriptureLastLookup.trim().toLowerCase() === defaultReference,
+          )
+          if (defaultSnapshot) {
+            applyScriptureLookupSnapshot(defaultSnapshot)
+            return true
+          }
+          return false
+        }
+
+        if (data.scriptureResult && data.scriptureLastLookup) {
+          const fallbackTranslation = workspaceData?.language === 'es' ? 'RVR1960' : 'KJV'
+          const legacySnapshot = buildScriptureSnapshot({
+            scriptureResult: data.scriptureResult,
+            scriptureLastLookup: data.scriptureLastLookup,
+            scriptureQuery: data.scriptureQuery || data.scriptureLastLookup,
+            scriptureTranslation: data.scriptureTranslation || fallbackTranslation,
+            parallelTranslations: data.parallelTranslations || data.scriptureTranslation || fallbackTranslation,
+            parallelResults: data.parallelResults || [],
+            contextData: data.contextData || null,
+            structuralAnalysis: data.structuralAnalysis || null,
+            interpretiveChallenges: data.interpretiveChallenges || null,
+            perVerseContext: data.perVerseContext || null,
+            passageSummary: data.passageSummary || null,
+            studySynthesis: data.studySynthesis || null,
+            canonicalThemes: data.canonicalThemes || null,
+            translationComparison: data.translationComparison || null,
+            cachedAt: data.cachedAt,
+          })
+          setScriptureLookupHistory([legacySnapshot])
+          if (!defaultReference || legacySnapshot.scriptureLastLookup.trim().toLowerCase() === defaultReference) {
+            applyScriptureLookupSnapshot(legacySnapshot)
+            return true
+          }
+          return false
+        }
+      }
+      return false
+    } catch (err) {
+      console.error('Failed to restore scripture cache:', err)
+      return false
+    }
+  }
+
+  const saveScriptureLookupCache = async (data: any) => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) return
+
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/scripture-cache`,
+        data,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      )
+    } catch (err) {
+      console.error('Failed to save scripture cache:', err)
+    }
   }
 
   useEffect(() => {
@@ -481,6 +957,9 @@ export default function WorkspaceDetailPage() {
     return (
       <div className="space-y-6">
         {Object.entries(sections).map(([key, value]) => {
+          // Skip egw section - it will be rendered separately
+          if (key === 'egw' || key === 'egwSection') return null
+          
           // Format section title - handle both camelCase and numbered sections
           const formattedTitle = key
             .replace(/([0-9]+)\.?\s*/, '$1. ')  // Handle "4. " or "4"
@@ -499,6 +978,9 @@ export default function WorkspaceDetailPage() {
             </div>
           )
         })}
+        
+        {/* EGW Section - Rendered separately at the end */}
+        <StudyReportEGWSection section={sections.egw || sections.egwSection || null} />
       </div>
     )
   }
@@ -518,8 +1000,27 @@ export default function WorkspaceDetailPage() {
             headers: { Authorization: `Bearer ${token}` },
           },
         )
-        setWorkspace(response.data)
-        setWorkspaceDraft(response.data)
+        const workspaceData = response.data
+        setWorkspace(workspaceData)
+        setWorkspaceDraft(workspaceData)
+
+        const defaultReference = workspaceData?.mainPassage?.trim() || ''
+        const defaultTranslation = workspaceData?.language === 'es' ? 'RVR1960' : 'KJV'
+        if (defaultReference) {
+          setScriptureQuery(defaultReference)
+          setScriptureLastLookup(defaultReference)
+        }
+        setScriptureTranslation(defaultTranslation)
+        setParallelTranslations(defaultTranslation)
+
+        const restored = await restoreScriptureLookupCache(workspaceData)
+        if (!restored && defaultReference) {
+          await handleScriptureLookup({
+            reference: defaultReference,
+            translation: defaultTranslation,
+            parallelTranslation: defaultTranslation,
+          })
+        }
       } catch (err) {
         console.error('Failed to fetch workspace', err)
         setError('Unable to load workspace.')
@@ -542,6 +1043,40 @@ export default function WorkspaceDetailPage() {
     return { headers: { Authorization: `Bearer ${token}` } }
   }
 
+  // Keyboard shortcuts
+  useKeyboardShortcut('1', () => handlePhaseChange('DISCOVER'), { cmd: true })
+  useKeyboardShortcut('2', () => handlePhaseChange('ANALYZE'), { cmd: true })
+  useKeyboardShortcut('3', () => handlePhaseChange('STRATEGIZE'), { cmd: true })
+  useKeyboardShortcut('4', () => handlePhaseChange('CREATE'), { cmd: true })
+  useKeyboardShortcut('5', () => handlePhaseChange('REFINE'), { cmd: true })
+
+  // Validate citations when outlines change
+  useEffect(() => {
+    const validateOutlineCitations = async () => {
+      const selectedOutline = workspace?.outlines?.find((o: any) => o.isSelected) || workspace?.outlines?.[0]
+      if (!selectedOutline?.structure?.points) return
+      
+      const validations: Record<string, any> = {}
+      for (const point of selectedOutline.structure.points) {
+        if (point.supportingVerses && point.supportingVerses.length > 0) {
+          for (const verse of point.supportingVerses) {
+            if (!citationValidations[verse]) {
+              const result = await validateCitation(point.content || point.title, verse)
+              validations[verse] = result
+            }
+          }
+        }
+      }
+      if (Object.keys(validations).length > 0) {
+        setCitationValidations(prev => ({ ...prev, ...validations }))
+      }
+    }
+    
+    if (workspace?.outlines?.length) {
+      validateOutlineCitations()
+    }
+  }, [workspace?.outlines])
+
   const handleGenerate = async (type: string, override?: string) => {
     const config = withToken()
     if (!config) return
@@ -551,7 +1086,10 @@ export default function WorkspaceDetailPage() {
       if (type === 'outlines') {
         await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/outlines`,
-          { promptOverride: override },
+          { 
+            promptOverride: override,
+            includeEGW: workspace?.egwEnabled || false
+          },
           config,
         )
       }
@@ -563,14 +1101,21 @@ export default function WorkspaceDetailPage() {
         }
         await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/manuscript`,
-          { outlineId: selectedOutline.id, promptOverride: override },
+          { 
+            outlineId: selectedOutline.id, 
+            promptOverride: override,
+            includeEGW: workspace?.egwEnabled || false
+          },
           config,
         )
       }
       if (type === 'applications') {
         await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/applications`,
-          { promptOverride: override },
+          { 
+            promptOverride: override,
+            includeEGW: workspace?.egwEnabled || false
+          },
           config,
         )
       }
@@ -598,7 +1143,10 @@ export default function WorkspaceDetailPage() {
       if (type === 'study-report') {
         await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/study-report`,
-          { promptOverride: override },
+          { 
+            promptOverride: override,
+            includeEGW: workspace?.egwEnabled || false
+          },
           config,
         )
       }
@@ -642,35 +1190,102 @@ export default function WorkspaceDetailPage() {
     }
   }
 
-  const handleScriptureLookup = async () => {
+  const handleScriptureLookup = async (overrides?: {
+    reference?: string
+    translation?: string
+    parallelTranslation?: string
+  }) => {
+    const requestId = scriptureLookupRequestId.current + 1
+    scriptureLookupRequestId.current = requestId
     const config = withToken()
     if (!config) return
-    const normalizedReference = scriptureQuery.trim() || workspace?.mainPassage?.trim() || ''
+    const normalizedReference = overrides?.reference?.trim() || scriptureQuery.trim() || workspace?.mainPassage?.trim() || ''
     if (!normalizedReference) {
       setScriptureError('Enter a passage (ex: John 3:16) or use the workspace main passage.')
       return
     }
-    const normalizedTranslation = scriptureTranslation.trim().toUpperCase() || 'KJV'
-    const normalizedParallel = parallelTranslations.trim().toUpperCase() || normalizedTranslation
-    const normalizedContextRange = Number.isFinite(scriptureContextRange) && scriptureContextRange >= 0
-      ? scriptureContextRange
-      : 2
+    const normalizedTranslation = (overrides?.translation || scriptureTranslation).trim().toUpperCase() || 'KJV'
+    const normalizedParallel = (overrides?.parallelTranslation || parallelTranslations).trim().toUpperCase() || normalizedTranslation
     setScriptureError(null)
+    setScriptureValidationWarning(null)
     setScriptureQuery(normalizedReference)
     setScriptureTranslation(normalizedTranslation)
     setParallelTranslations(normalizedParallel)
-    setScriptureContextRange(normalizedContextRange)
     setScriptureLastLookup(normalizedReference)
+    
+    // Clear all cached data when doing a new lookup
+    setScriptureResult(null)
+    setParallelResults([])
+    setContextData(null)
+    setStructuralAnalysis(null)
+    setInterpretiveChallenges(null)
+    setPerVerseContext(null)
+    setPassageSummary(null)
+    setStudySynthesis(null)
+    setCanonicalThemes(null)
+    setTranslationComparison(null)
+    
     setActionLoading((prev) => (prev.includes('scripture') ? prev : [...prev, 'scripture']))
+    
     try {
-      const [passageRes, parallelRes, contextRes, analysisRes, challengesRes] = await Promise.allSettled([
-        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/passage-with-context`, {
-          ...config,
-          params: { reference: normalizedReference, translation: normalizedTranslation, contextRange: normalizedContextRange },
-        }),
+      // Load critical passage text first (fast, non-LLM)
+      const passageRes = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/passage-with-context`, {
+        ...config,
+        params: {
+          reference: normalizedReference,
+          translation: normalizedTranslation,
+          _ts: Date.now(),
+        },
+      })
+
+      if (requestId !== scriptureLookupRequestId.current) {
+        setActionLoading((prev) => prev.filter((item) => item !== 'scripture'))
+        return
+      }
+      
+      const fallbackSnapshot = scriptureLookupHistory.find(
+        (entry) =>
+          entry.scriptureLastLookup.trim().toLowerCase() === normalizedReference.toLowerCase() &&
+          entry.scriptureTranslation.trim().toUpperCase() === normalizedTranslation,
+      )
+      const normalizedPassageResult =
+        normalizeScriptureResult(passageRes.data, normalizedReference, normalizedTranslation) ||
+        fallbackSnapshot?.scriptureResult ||
+        null
+
+      if (normalizedPassageResult) {
+        const verses = extractVerses(normalizedPassageResult)
+        if (!verses.length) {
+          const details =
+            typeof normalizedPassageResult?.error === 'string' && normalizedPassageResult.error.trim()
+              ? normalizedPassageResult.error.trim()
+              : 'Passage response returned no verses. Try Lookup again.'
+          setScriptureError(details)
+          setActionLoading((prev) => prev.filter((item) => item !== 'scripture'))
+          return
+        }
+        setScriptureResult(normalizedPassageResult)
+        const warning = getVerseValidationWarning(normalizedReference, verses)
+        setScriptureValidationWarning(warning)
+      } else {
+        const details =
+          typeof passageRes?.data?.error === 'string' && passageRes.data.error.trim()
+            ? passageRes.data.error.trim()
+            : 'Passage response returned no verses. Try Lookup again.'
+        setScriptureError(details)
+        setActionLoading((prev) => prev.filter((item) => item !== 'scripture'))
+        return
+      }
+      
+      // Remove loading state immediately after passage loads
+      setActionLoading((prev) => prev.filter((item) => item !== 'scripture'))
+      
+      // Load secondary data asynchronously in background (these can take longer with LLM)
+      // These will populate their own component panels as they complete
+      Promise.allSettled([
         axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/parallel`, {
           ...config,
-          params: { reference: normalizedReference, translations: normalizedParallel, contextRange: normalizedContextRange },
+          params: { reference: normalizedReference, translations: normalizedParallel },
         }),
         axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/context`, {
           ...config,
@@ -678,57 +1293,90 @@ export default function WorkspaceDetailPage() {
         }),
         axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/structural-analysis`, {
           ...config,
-          params: { reference: normalizedReference, translation: normalizedTranslation },
+          params: { passage: normalizedReference, language: workspace?.language || 'en' },
         }),
-        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/interpretive-challenges`, {
+        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/interpretive-challenge`, {
           ...config,
-          params: { reference: normalizedReference, translation: normalizedTranslation },
+          params: { passage: normalizedReference, language: workspace?.language || 'en' },
         }),
-      ])
-
-      const failures: string[] = []
-      if (passageRes.status === 'fulfilled') {
-        setScriptureResult(passageRes.value.data)
-      } else {
-        failures.push('passage')
-        setScriptureResult(null)
-      }
-
-      if (parallelRes.status === 'fulfilled') {
-        setParallelResults(parallelRes.value.data?.translations || [])
-      } else {
-        failures.push('parallel')
-        setParallelResults([])
-      }
-
-      if (contextRes.status === 'fulfilled') {
-        setContextData(contextRes.value.data)
-      } else {
-        failures.push('context')
-        setContextData(null)
-      }
-
-      if (analysisRes.status === 'fulfilled') {
-        setStructuralAnalysis(analysisRes.value.data)
-      } else {
-        failures.push('analysis')
-        setStructuralAnalysis(null)
-      }
-
-      if (challengesRes.status === 'fulfilled') {
-        setInterpretiveChallenges(challengesRes.value.data)
-      } else {
-        failures.push('challenges')
-        setInterpretiveChallenges(null)
-      }
-
-      if (failures.length) {
-        setScriptureError(`Some data failed to load (${failures.join(', ')}). Try again or check backend logs.`)
-      }
+        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/verse-context`, {
+          ...config,
+          params: { reference: normalizedReference, language: workspace?.language || 'en' },
+        }),
+        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/passage-summary`, {
+          ...config,
+          params: { reference: normalizedReference, language: workspace?.language || 'en' },
+        }),
+        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/study-synthesis`, {
+          ...config,
+          params: { reference: normalizedReference, language: workspace?.language || 'en' },
+        }),
+        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/canonical-themes`, {
+          ...config,
+          params: { reference: normalizedReference },
+        }),
+        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/translation-comparison-enhanced`, {
+          ...config,
+          params: { reference: normalizedReference, language: workspace?.language || 'en' },
+        }),
+      ]).then(results => {
+        if (requestId !== scriptureLookupRequestId.current) {
+          return
+        }
+        // Extract and set all data after request-id guard
+        const parallelData = results[0].status === 'fulfilled' ? results[0].value?.data?.translations || [] : []
+        const contextDataResult = results[1].status === 'fulfilled' ? results[1].value?.data || null : null
+        const structuralAnalysisData = results[2].status === 'fulfilled' && results[2].value?.data?.dataSource !== 'unavailable' ? results[2].value?.data : null
+        const interpretiveChallengesData = results[3].status === 'fulfilled' && results[3].value?.data?.dataSource !== 'unavailable' ? results[3].value?.data : null
+        const perVerseContextData = results[4].status === 'fulfilled' && results[4].value?.data?.dataSource !== 'unavailable' ? results[4].value?.data : null
+        const passageSummaryData = results[5].status === 'fulfilled' && results[5].value?.data?.dataSource !== 'unavailable' ? results[5].value?.data : null
+        const studySynthesisData = results[6].status === 'fulfilled' && results[6].value?.data?.dataSource !== 'unavailable' ? results[6].value?.data : null
+        const canonicalThemesData = results[7].status === 'fulfilled' && results[7].value?.data?.dataSource !== 'unavailable' ? results[7].value?.data : null
+        const translationComparisonData = results[8].status === 'fulfilled' ? results[8].value?.data || null : null
+        
+        // Set all state updates together
+        setParallelResults(parallelData)
+        setContextData(contextDataResult)
+        setStructuralAnalysis(structuralAnalysisData)
+        setInterpretiveChallenges(interpretiveChallengesData)
+        setPerVerseContext(perVerseContextData)
+        setPassageSummary(passageSummaryData)
+        setStudySynthesis(studySynthesisData)
+        setCanonicalThemes(canonicalThemesData)
+        setTranslationComparison(translationComparisonData)
+        
+        const snapshot = buildScriptureSnapshot({
+          scriptureResult: normalizedPassageResult,
+          scriptureLastLookup: normalizedReference,
+          scriptureQuery: normalizedReference,
+          scriptureTranslation: normalizedTranslation,
+          parallelTranslations: normalizedParallel,
+          parallelResults: parallelData,
+          contextData: contextDataResult,
+          structuralAnalysis: structuralAnalysisData,
+          interpretiveChallenges: interpretiveChallengesData,
+          perVerseContext: perVerseContextData,
+          passageSummary: passageSummaryData,
+          studySynthesis: studySynthesisData,
+          canonicalThemes: canonicalThemesData,
+          translationComparison: translationComparisonData,
+        })
+        persistScriptureSnapshot(snapshot)
+      }).catch(err => {
+        if (requestId !== scriptureLookupRequestId.current) {
+          return
+        }
+        console.error('Secondary data load failed:', err)
+      })
+      
     } catch (err) {
+      if (requestId !== scriptureLookupRequestId.current) {
+        return
+      }
       console.error('Failed to fetch passage', err)
       setScriptureError('Unable to load passage. Check backend logs.')
-    } finally {
+      setScriptureResult(null)
+      setScriptureValidationWarning(null)
       setActionLoading((prev) => prev.filter((item) => item !== 'scripture'))
     }
   }
@@ -884,6 +1532,15 @@ export default function WorkspaceDetailPage() {
 
   const renderRail = () => (
     <div className="flex flex-col gap-4">
+      {/* Progress Indicator */}
+      <ProgressIndicator progress={progress} />
+      
+      {/* Next Step Suggestion */}
+      <NextStepSuggestion 
+        progress={progress}
+        onAction={handleNextStepAction}
+      />
+      
       <div className="cyber-panel rounded-2xl p-4 space-y-3">
         <p className="text-xs uppercase tracking-widest cyber-muted">Workspace</p>
         <h2 className="text-xl font-semibold text-white">{workspace.title}</h2>
@@ -905,7 +1562,6 @@ export default function WorkspaceDetailPage() {
 
       <div className="cyber-panel rounded-2xl p-4 space-y-2">
         {sectionNavButton('workspace', 'Workspace')}
-        {sectionNavButton('search', 'Search')}
         {sectionNavButton('outlines', 'Outlines')}
         {sectionNavButton('manuscript', 'Manuscript')}
         {sectionNavButton('applications', 'Applications')}
@@ -918,6 +1574,7 @@ export default function WorkspaceDetailPage() {
         {sectionNavButton('study-report', 'Study Report')}
         {sectionNavButton('dna', 'Sermon DNA')}
         {sectionNavButton('visualizations', 'Visualizations')}
+        {sectionNavButton('media', 'Media')}
       </div>
     </div>
   )
@@ -1141,10 +1798,33 @@ export default function WorkspaceDetailPage() {
   return (
     <div className="min-h-screen flex flex-col">
       <nav className="bg-black/40 backdrop-blur border-b border-white/10">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="container mx-auto px-1 py-4 flex flex-wrap items-center gap-3 justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.4em] text-cyan-400">Clever Sermon</p>
             <h1 className="text-2xl font-bold text-white">Workspace Core</h1>
+          </div>
+          <div className="w-full lg:w-auto lg:flex-1 lg:max-w-2xl">
+            <div className="flex items-center gap-2">
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleSearch()
+                  }
+                }}
+                placeholder="Global search (full text): notes, workspaces, outlines, manuscripts..."
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+              />
+              <button
+                onClick={handleSearch}
+                disabled={actionLoading.includes('search')}
+                className="cyber-outline text-xs px-3 py-2 rounded-full disabled:opacity-60"
+              >
+                {actionLoading.includes('search') ? 'Searching...' : 'Search'}
+              </button>
+            </div>
           </div>
           <button
             onClick={() => router.push('/dashboard')}
@@ -1155,7 +1835,42 @@ export default function WorkspaceDetailPage() {
         </div>
       </nav>
 
-      <div className="container mx-auto px-4 py-6">
+      {/* Phase Navigation */}
+      <PhaseNavigation 
+        activePhase={activePhase}
+        onPhaseChange={handlePhaseChange}
+        progress={progress}
+      />
+
+      <div className="container mx-auto px-1 py-6">
+        {searchQuery.trim().length > 0 && (
+          <div className="cyber-panel rounded-2xl p-4 mb-6 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-cyan-200/90">Global results for “{searchQuery.trim()}”</p>
+              {searchResults.length > 0 && (
+                <span className="text-xs uppercase tracking-widest text-cyan-200/70">{searchResults.length} result(s)</span>
+              )}
+            </div>
+            {searchResults.length ? (
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {searchResults.map((item: any) => (
+                  <button
+                    type="button"
+                    key={`${item.type}-${item.id}`}
+                    onClick={() => handleSearchResultSelect(item)}
+                    className="w-full text-left border border-white/10 rounded-xl p-3 bg-black/30 hover:border-cyan-400/40 transition-colors"
+                  >
+                    <p className="text-[10px] uppercase tracking-widest cyber-muted">{item.type}</p>
+                    <p className="text-sm text-gray-100/90 font-semibold">{item.title}</p>
+                    {item.snippet && <p className="text-xs text-gray-200/80 mt-1">{item.snippet}</p>}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              !actionLoading.includes('search') && <p className="text-xs text-gray-200/80">No search results yet.</p>
+            )}
+          </div>
+        )}
         <div className="lg:grid lg:grid-cols-[280px_minmax(0,1fr)] gap-6">
           <aside className="hidden lg:block">{renderRail()}</aside>
           <div className="space-y-6">
@@ -1286,6 +2001,27 @@ export default function WorkspaceDetailPage() {
                       ) : (
                         <p><span className="font-semibold text-cyan-300">Lens:</span> {workspace.theologicalLens || '—'}</p>
                       )}
+                      {editingWorkspace && (
+                        <StoryArcSelector
+                          value={workspaceDraft?.storyArc || ''}
+                          onChange={(arc) => setWorkspaceDraft({ ...workspaceDraft, storyArc: arc })}
+                          className="mt-4"
+                        />
+                      )}
+                      {!editingWorkspace && workspace.storyArc && (
+                        <p><span className="font-semibold text-cyan-300">Story Arc:</span> {storyArcLabels[workspace.storyArc] || workspace.storyArc}</p>
+                      )}
+                      {editingWorkspace && (
+                        <div className="mt-4">
+                          <WorkspaceEGWToggle
+                            includeEGW={workspaceDraft?.includeEGW ?? true}
+                            onToggle={(value: boolean) => setWorkspaceDraft({ ...workspaceDraft, includeEGW: value })}
+                          />
+                        </div>
+                      )}
+                      {!editingWorkspace && (
+                        <p><span className="font-semibold text-cyan-300">Include EGW:</span> {workspace.includeEGW !== false ? 'Yes' : 'No'}</p>
+                      )}
                     </div>
                     <div>
                       {editingWorkspace ? (
@@ -1349,16 +2085,6 @@ export default function WorkspaceDetailPage() {
                       <p><span className="font-semibold text-cyan-300">Created:</span> {new Date(workspace.createdAt).toLocaleDateString()}</p>
                     </div>
                   </div>
-                  {/* EGW Toggle */}
-                  {editingWorkspace && (
-                    <div className="mb-6">
-                      <WorkspaceEGWToggle
-                        includeEGW={workspaceDraft?.includeEGW ?? true}
-                        onToggle={(checked) => setWorkspaceDraft({ ...workspaceDraft, includeEGW: checked })}
-                      />
-                    </div>
-                  )}
-
                   <div className="grid lg:grid-cols-2 gap-6">
                     <div className="border border-white/10 rounded-xl p-4 bg-black/30">
                       <h3 className="text-xl font-semibold mb-3">Sermon Goals</h3>
@@ -1413,7 +2139,15 @@ export default function WorkspaceDetailPage() {
               {activeSection === 'outlines' && (
                 <div className="space-y-4 relative min-h-full">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-semibold">Outlines</h3>
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-xl font-semibold">Outlines</h3>
+                      {workspace?.egwEnabled && (
+                        <span className="text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-200 border border-blue-400/40 flex items-center gap-1">
+                          <Book className="w-3 h-3" />
+                          EGW Enabled
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => openPromptEditor('outline')}
@@ -1512,7 +2246,46 @@ export default function WorkspaceDetailPage() {
                               </div>
                             </div>
                           ) : (
-                            renderOutline(outline.structure)
+                            <div className="text-sm text-gray-100/90 space-y-2">
+                              {outline.structure?.introduction && (
+                                <div>
+                                  <p className="text-xs uppercase tracking-widest cyber-muted">Introduction</p>
+                                  <div className="mt-1">{renderMarkdown(outline.structure.introduction)}</div>
+                                </div>
+                              )}
+                              {outline.structure?.points?.length ? (
+                                <div>
+                                  <p className="text-xs uppercase tracking-widest cyber-muted">Main Points</p>
+                                  <ul className="list-disc list-inside mt-1 space-y-2">
+                                    {outline.structure.points.map((point: any, index: number) => (
+                                      <li key={`${outline.id}-point-${index}`} className="space-y-1">
+                                        <div>{renderMarkdown(typeof point === 'string' ? point : (point.title || point.content || ''))}</div>
+                                        {point.supportingVerses && point.supportingVerses.length > 0 && (
+                                          <div className="flex flex-wrap gap-2 ml-6">
+                                            {point.supportingVerses.map((verse: string) => (
+                                              <div key={verse} className="flex items-center gap-1">
+                                                <span className="text-xs text-cyan-300">{verse}</span>
+                                                <CitationValidationBadge
+                                                  supportLevel={citationValidations[verse]?.supportLevel || 'pending'}
+                                                  verseReference={verse}
+                                                  matchScore={citationValidations[verse]?.matchScore}
+                                                  compact={true}
+                                                />
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                        {/* EGW Support for this point */}
+                                        <OutlinePointEGWSupport
+                                          point={point.title || point.content || point}
+                                          supportingVerses={point.supportingVerses}
+                                        />
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ) : null}
+                            </div>
                           )}
                         </div>
                       ))}
@@ -1526,7 +2299,15 @@ export default function WorkspaceDetailPage() {
           {activeSection === 'manuscript' && (
             <div className="space-y-4 relative min-h-full">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold">Manuscript</h3>
+                <div className="flex items-center gap-3">
+                  <h3 className="text-xl font-semibold">Manuscript</h3>
+                  {workspace?.egwEnabled && (
+                    <span className="text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-200 border border-blue-400/40 flex items-center gap-1">
+                      <Book className="w-3 h-3" />
+                      EGW Enabled
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => openPromptEditor('manuscript')}
@@ -1602,7 +2383,15 @@ export default function WorkspaceDetailPage() {
           {activeSection === 'applications' && (
             <div className="space-y-4 relative min-h-full">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold">Applications</h3>
+                <div className="flex items-center gap-3">
+                  <h3 className="text-xl font-semibold">Applications</h3>
+                  {workspace?.egwEnabled && (
+                    <span className="text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-200 border border-blue-400/40 flex items-center gap-1">
+                      <Book className="w-3 h-3" />
+                      EGW Enabled
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => openPromptEditor('applications')}
@@ -1965,7 +2754,7 @@ export default function WorkspaceDetailPage() {
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-xl font-semibold">Scripture</h3>
                 <button
-                  onClick={handleScriptureLookup}
+                  onClick={() => handleScriptureLookup()}
                   disabled={actionLoading.includes('scripture')}
                   className="cyber-outline text-xs px-3 py-2 rounded-full disabled:opacity-60"
                 >
@@ -1973,45 +2762,95 @@ export default function WorkspaceDetailPage() {
                 </button>
               </div>
               <div className="cyber-panel rounded-2xl p-6 space-y-4">
-                <div className="grid md:grid-cols-4 gap-3">
-                  <input
-                    value={scriptureQuery}
-                    onChange={(e) => setScriptureQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        handleScriptureLookup()
-                      }
-                    }}
-                    placeholder="John 3:16"
-                    className="md:col-span-2 w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                  />
-                  <select
-                    value={scriptureTranslation}
-                    onChange={(e) => setScriptureTranslation(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                  >
-                    {availableTranslations.map(trans => (
-                      <option key={trans} value={trans}>{trans}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    value={scriptureContextRange}
-                    onChange={(e) => setScriptureContextRange(Number(e.target.value))}
-                    placeholder="Context"
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                  />
-                </div>
-                <div className="grid md:grid-cols-2 gap-3">
+                <div className="grid gap-4 md:grid-cols-[1.4fr_0.6fr] items-end">
+                  <div className="relative">
+                    <label className="text-xs uppercase tracking-widest cyber-muted mb-2 block">Scripture Reference</label>
+                    <input
+                      type="text"
+                      value={scriptureQuery}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setScriptureQuery(value)
+                        buildScriptureSuggestions(value)
+                        setShowScriptureSuggestions(true)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault()
+                          setShowScriptureSuggestions(true)
+                          setScriptureSuggestionIndex((prev) => {
+                            const next = Math.min(prev + 1, scriptureSuggestions.length - 1)
+                            return Number.isFinite(next) ? next : -1
+                          })
+                        }
+                        if (e.key === 'ArrowUp') {
+                          e.preventDefault()
+                          setScriptureSuggestionIndex((prev) => Math.max(prev - 1, 0))
+                        }
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          if (showScriptureSuggestions && scriptureSuggestionIndex >= 0) {
+                            const selected = scriptureSuggestions[scriptureSuggestionIndex]
+                            if (selected) {
+                              setScriptureQuery(selected.trim())
+                              setShowScriptureSuggestions(false)
+                              return
+                            }
+                          }
+                          setShowScriptureSuggestions(false)
+                          handleScriptureLookup()
+                        }
+                        if (e.key === 'Escape') {
+                          setShowScriptureSuggestions(false)
+                        }
+                      }}
+                      onBlur={() => setTimeout(() => setShowScriptureSuggestions(false), 150)}
+                      onFocus={() => {
+                        buildScriptureSuggestions(scriptureQuery)
+                        setShowScriptureSuggestions(true)
+                      }}
+                      placeholder="John 3:16"
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
+                    />
+                    {showScriptureSuggestions && scriptureSuggestions.length > 0 && (
+                      <div className="absolute z-20 mt-2 w-full rounded-xl border border-cyan-500/30 bg-black/90 shadow-lg">
+                        {scriptureSuggestions.map((suggestion, index) => (
+                          <button
+                            key={suggestion}
+                            type="button"
+                            onMouseDown={() => {
+                              setScriptureQuery(suggestion.trim())
+                              setShowScriptureSuggestions(false)
+                            }}
+                            onMouseEnter={() => setScriptureSuggestionIndex(index)}
+                            className={`w-full text-left px-3 py-2 text-sm text-gray-100 hover:bg-cyan-500/10 ${
+                              index === scriptureSuggestionIndex ? 'bg-cyan-500/10' : ''
+                            }`}
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {scriptureInputWarning && (
+                      <p className="mt-2 text-xs text-amber-300/90">
+                        {scriptureInputWarning}
+                      </p>
+                    )}
+                    {scriptureValidationWarning && (
+                      <p className="mt-2 text-xs text-amber-300/90">
+                        {scriptureValidationWarning}
+                      </p>
+                    )}
+                  </div>
                   <div>
-                    <label className="text-xs uppercase tracking-widest cyber-muted mb-2 block">Parallel Translation</label>
+                    <label className="text-xs uppercase tracking-widest cyber-muted mb-2 block">Translation</label>
                     <select
-                      value={parallelTranslations}
-                      onChange={(e) => setParallelTranslations(e.target.value)}
+                      value={scriptureTranslation}
+                      onChange={(e) => setScriptureTranslation(e.target.value)}
                       className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
                     >
-                      {availableTranslations.filter(t => t !== scriptureTranslation).map(trans => (
+                      {availableTranslations.map(trans => (
                         <option key={trans} value={trans}>{trans}</option>
                       ))}
                     </select>
@@ -2026,25 +2865,52 @@ export default function WorkspaceDetailPage() {
                     <span>Last lookup: {scriptureLastLookup}</span>
                     <span className="text-cyan-200/40">•</span>
                     <span>{scriptureTranslation}</span>
-                    <span className="text-cyan-200/40">•</span>
-                    <span>Context ±{scriptureContextRange}</span>
                   </div>
                 ) : null}
+
+                {scriptureLookupHistory.length > 0 && (
+                  <div className="border border-white/10 rounded-xl p-3 bg-black/20 space-y-2">
+                    <p className="text-xs uppercase tracking-widest cyber-muted">Saved Scripture Snapshots</p>
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {scriptureLookupHistory.map((entry, index) => (
+                        <button
+                          type="button"
+                          key={`${entry.scriptureLastLookup}-${entry.scriptureTranslation}-${index}`}
+                          onClick={() => handleScriptureSnapshotSelect(entry)}
+                          className="w-full text-left border border-white/10 rounded-lg px-3 py-2 hover:border-cyan-400/40 transition-colors"
+                        >
+                          <p className="text-sm text-gray-100/90 font-medium">{entry.scriptureLastLookup}</p>
+                          <p className="text-[11px] text-cyan-200/80 uppercase tracking-widest">
+                            {entry.scriptureTranslation}
+                            <span className="text-cyan-200/40 mx-2">•</span>
+                            saved {new Date(entry.cachedAt).toLocaleString()}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 
                 {/* SDA Smart Boost Banner */}
                 {scriptureLastLookup && (
                   <SDASmartBoostBanner passage={scriptureLastLookup} />
                 )}
                 
-                {scriptureResult?.verses?.length ? (
+                {extractVerses(scriptureResult).length ? (
                   <div className="space-y-4">
                     <div className="space-y-3 text-sm text-gray-100/90">
-                      {scriptureResult.verses.map((verse: any, index: number) => (
-                        <div key={`${verse.reference}-${index}`} className="border-l-2 border-cyan-400/40 pl-3 py-1 hover:border-cyan-400 transition-colors">
-                          <span className="text-cyan-200 font-semibold">{verse.reference}</span>
-                          <span className="ml-2">{verse.text}</span>
-                        </div>
-                      ))}
+                      {extractVerses(scriptureResult).map((verse: any, index: number) => {
+                        const reference = typeof verse?.reference === 'string' ? verse.reference : ''
+                        const match = reference.match(/\b(\d+):(\d+)\b/)
+                        const fallbackStart = getReferenceStartVerse(scriptureLastLookup)
+                        const verseNumber = match?.[2] || (fallbackStart ? `${fallbackStart + index}` : `${index + 1}`)
+                        return (
+                          <div key={`${reference}-${index}`} className="border-l-2 border-cyan-400/40 pl-3 py-1 hover:border-cyan-400 transition-colors">
+                            <span className="text-cyan-200 font-semibold text-xs align-super">{verseNumber}</span>
+                            <span className="ml-2">{verse.text}</span>
+                          </div>
+                        )
+                      })}
                     </div>
                     
                     {/* Audio Player */}
@@ -2062,6 +2928,109 @@ export default function WorkspaceDetailPage() {
                       />
                     )}
                     
+                    {/* Passage Summary - Interpretive Framing */}
+                    <PassageSummary 
+                      reference={scriptureLastLookup}
+                      token={localStorage.getItem('token') || ''}
+                      language={workspace?.language || 'en'}
+                      cachedData={passageSummary}
+                    />
+                    
+                    {/* Per-Verse Context Panel */}
+                    <PerVerseContextPanel 
+                      reference={scriptureLastLookup}
+                      token={localStorage.getItem('token') || ''}
+                      language={workspace?.language || 'en'}
+                      cachedData={perVerseContext}
+                    />
+                    
+                    {/* Translation Comparison */}
+                    <TranslationComparisonEnhanced 
+                      reference={scriptureLastLookup}
+                      token={localStorage.getItem('token') || ''}
+                      language={workspace?.language || 'en'}
+                      cachedData={translationComparison}
+                    />
+                    
+                    {/* Verse Commentary */}
+                    <VerseCommentaryPanel 
+                      reference={scriptureLastLookup}
+                      token={localStorage.getItem('token') || ''}
+                      language={workspace?.language || 'en'}
+                    />
+                    
+                    {/* Structural Analysis */}
+                    <StructuralAnalysisPanel 
+                      passage={scriptureLastLookup}
+                      token={localStorage.getItem('token') || ''}
+                      cachedData={structuralAnalysis}
+                    />
+                    
+                    {/* Interpretive Challenges */}
+                    <InterpretiveChallengePanel 
+                      passage={scriptureLastLookup}
+                      token={localStorage.getItem('token') || ''}
+                      cachedData={interpretiveChallenges}
+                    />
+                    
+                    {/* Canonical Theme Tracing */}
+                    <CanonicalThemeTracing 
+                      reference={scriptureLastLookup}
+                      token={localStorage.getItem('token') || ''}
+                      workspaceId={workspaceId}
+                      cachedData={canonicalThemes}
+                      onAddToOutline={async (theme, verses) => {
+                        // Add theme to the selected outline or first outline
+                        const selectedOutline = workspace.outlines?.find((o: any) => o.isSelected) || workspace.outlines?.[0]
+                        
+                        if (!selectedOutline) {
+                          console.error('No outline found to add theme to')
+                          return
+                        }
+                        
+                        // Create new point
+                        const newPoint = {
+                          id: Date.now().toString(),
+                          text: theme,
+                          level: 1,
+                          supportingVerses: verses,
+                          notes: `Canonical theme: ${verses.join(', ')}`
+                        }
+                        
+                        // Update outline structure
+                        const updatedPoints = [...(selectedOutline.structure?.points || []), newPoint]
+                        const updatedOutline = {
+                          ...selectedOutline,
+                          structure: {
+                            ...selectedOutline.structure,
+                            points: updatedPoints
+                          }
+                        }
+                        
+                        // Update workspace
+                        const updatedOutlines = workspace.outlines.map((o: any) => 
+                          o.id === selectedOutline.id ? updatedOutline : o
+                        )
+                        
+                        setWorkspace({ ...workspace, outlines: updatedOutlines })
+                        
+                        // Save to backend
+                        try {
+                          await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/outlines/${selectedOutline.id}`, {
+                            method: 'PUT',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              Authorization: `Bearer ${localStorage.getItem('token')}`
+                            },
+                            body: JSON.stringify(updatedOutline)
+                          })
+                          console.log('Theme added to outline successfully')
+                        } catch (error) {
+                          console.error('Failed to save outline:', error)
+                        }
+                      }}
+                    />
+                    
                     {/* Study Notes */}
                     {scriptureResult.studyNotes && scriptureResult.studyNotes.length > 0 && (
                       <StudyNotes 
@@ -2069,139 +3038,17 @@ export default function WorkspaceDetailPage() {
                         onVerseClick={handleVerseClick}
                       />
                     )}
+                    
+                    {/* Study Synthesis - Final Theological Takeaway */}
+                    <StudySynthesis 
+                      reference={scriptureLastLookup}
+                      token={localStorage.getItem('token') || ''}
+                      cachedData={studySynthesis}
+                    />
                   </div>
                 ) : (
                   <p className="text-gray-200/80">No passage loaded yet.</p>
                 )}
-                {parallelResults.length ? (
-                  <div className="grid md:grid-cols-2 gap-4">
-                    {parallelResults.map((entry: any) => (
-                      <div key={entry.translation} className="border border-white/10 rounded-xl p-4 bg-black/30">
-                        <p className="text-xs uppercase tracking-widest cyber-muted">{entry.translation}</p>
-                        {entry.passage?.verses?.length ? (
-                          <div className="mt-2 space-y-2 text-sm text-gray-100/90">
-                            {entry.passage.verses.map((verse: any, index: number) => (
-                              <div key={`${entry.translation}-${verse.reference}-${index}`} className="border-l-2 border-cyan-400/20 pl-2 py-1">
-                                <span className="text-cyan-200 font-medium text-xs">{verse.reference}</span>
-                                <span className="ml-2">{verse.text}</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-gray-200/70">No parallel verses loaded.</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                {contextData?.book ? (
-                  <div className="grid md:grid-cols-2 gap-4 text-sm">
-                    <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <p className="text-xs uppercase tracking-widest cyber-muted">Book Context</p>
-                      <p className="mt-2 text-gray-100/90">{contextData.metadata?.purpose || 'No metadata loaded.'}</p>
-                      <p className="text-xs cyber-muted mt-2">Author: {contextData.metadata?.author || 'Unknown'}</p>
-                      <p className="text-xs cyber-muted">Date: {contextData.metadata?.approximateDate || 'Unknown'}</p>
-                      {contextData.metadata?.outline?.length ? (
-                        <ul className="mt-3 list-disc list-inside text-gray-100/90 space-y-1">
-                          {contextData.metadata.outline.map((item: string) => (
-                            <li key={item}>{item}</li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </div>
-                    <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <p className="text-xs uppercase tracking-widest cyber-muted">Historical Context</p>
-                      <p className="mt-2 text-gray-100/90">{contextData.historical?.religiousContext || 'No historical context.'}</p>
-                      <p className="text-xs cyber-muted mt-2">Authority: {contextData.historical?.politicalAuthority || 'Unknown'}</p>
-                    </div>
-                    <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <p className="text-xs uppercase tracking-widest cyber-muted">Cultural Context</p>
-                      <ul className="mt-2 list-disc list-inside text-gray-100/90 space-y-1">
-                        {(contextData.cultural?.socialCustoms || []).map((item: string) => (
-                          <li key={item}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                    <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <p className="text-xs uppercase tracking-widest cyber-muted">Timeline</p>
-                      <ul className="mt-2 list-disc list-inside text-gray-100/90 space-y-1">
-                        {(contextData.timeline || []).map((item: any) => (
-                          <li key={item.year}>{item.year}: {item.event}</li>
-                        ))}
-                      </ul>
-                    </div>
-                    <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <p className="text-xs uppercase tracking-widest cyber-muted">Geography</p>
-                      <p className="mt-2 text-gray-100/90">{contextData.geography?.terrainNotes || 'No geography notes.'}</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {(contextData.geography?.places || []).map((place: string) => (
-                          <span key={place} className="px-2 py-1 rounded-full text-xs border border-white/10 text-gray-100/90">
-                            {place}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-                {structuralAnalysis ? (
-                  typeof structuralAnalysis === 'string' ? (
-                    <div className="border border-white/10 rounded-xl p-4 bg-black/30 text-sm">
-                      <p className="text-xs uppercase tracking-widest cyber-muted">Structural Analysis</p>
-                      <div className="mt-2">{renderMarkdown(structuralAnalysis)}</div>
-                    </div>
-                  ) : (
-                    <div className="grid md:grid-cols-2 gap-4 text-sm">
-                      <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                        <p className="text-xs uppercase tracking-widest cyber-muted">Structural Analysis</p>
-                        <div className="mt-2 space-y-2">
-                          <div>
-                            <p className="text-xs cyber-muted uppercase tracking-widest">Repeated Phrases</p>
-                            {renderSmartValue(structuralAnalysis.repeatedPhrases || [])}
-                          </div>
-                          <div>
-                            <p className="text-xs cyber-muted uppercase tracking-widest">Imperatives</p>
-                            {renderSmartValue(structuralAnalysis.imperatives || [])}
-                          </div>
-                          <div>
-                            <p className="text-xs cyber-muted uppercase tracking-widest">Promises</p>
-                            {renderSmartValue(structuralAnalysis.promises || [])}
-                          </div>
-                          <div>
-                            <p className="text-xs cyber-muted uppercase tracking-widest">Conditions</p>
-                            {renderSmartValue(structuralAnalysis.conditions || [])}
-                          </div>
-                          <div>
-                            <p className="text-xs cyber-muted uppercase tracking-widest">Chiastic</p>
-                            {renderSmartValue(structuralAnalysis.chiasticStructure || '—')}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                        <p className="text-xs uppercase tracking-widest cyber-muted">Outline (LLM)</p>
-                        {renderSmartValue(structuralAnalysis.outline || [])}
-                      </div>
-                    </div>
-                  )
-                ) : null}
-                {interpretiveChallenges?.challenges?.length ? (
-                  <div className="border border-white/10 rounded-xl p-4 bg-black/30 text-sm">
-                    <p className="text-xs uppercase tracking-widest cyber-muted">Interpretive Challenges</p>
-                    <div className="mt-3 space-y-4">
-                      {interpretiveChallenges.challenges.map((challenge: any, index: number) => (
-                        <div key={`${challenge.phrase}-${index}`} className="space-y-2">
-                          <p className="text-cyan-200">{challenge.phrase}</p>
-                          {renderSmartValue(challenge.issue)}
-                          {challenge.views?.length ? (
-                            <p className="text-xs text-gray-300/80">Views: {challenge.views.join(' / ')}</p>
-                          ) : null}
-                          {challenge.verses?.length ? (
-                            <p className="text-xs text-gray-300/80">Verses: {challenge.verses.join(', ')}</p>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
               </div>
             </div>
           )}
@@ -2358,59 +3205,20 @@ export default function WorkspaceDetailPage() {
                   placeholder="John 3:16"
                   className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
                 />
-                <select
-                  value={crossRefCategory}
-                  onChange={(e) => setCrossRefCategory(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                >
-                  <option value="">All categories</option>
-                  <option value="direct_quote">Direct quotation</option>
-                  <option value="explicit_fulfillment">Explicit fulfillment</option>
-                  <option value="thematic_parallel">Thematic parallel</option>
-                  <option value="typological">Typological</option>
-                  <option value="general_thematic">General thematic</option>
-                </select>
                 {crossRefError ? (
                   <div className="border border-red-400/40 bg-red-500/10 text-red-100 text-sm rounded-xl px-4 py-3">
                     {crossRefError}
                   </div>
                 ) : crossRefLastLookup ? (
-                  <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-widest text-cyan-200/80">
-                    <span>Last lookup: {crossRefLastLookup}</span>
-                    {crossRefCategory ? (
-                      <>
-                        <span className="text-cyan-200/40">•</span>
-                        <span>{crossRefCategory.replace(/_/g, ' ')}</span>
-                      </>
-                    ) : null}
-                  </div>
-                ) : null}
-                {(() => {
-                  const filtered = crossRefCategory
-                    ? crossRefResults.filter((ref) => ref.category === crossRefCategory)
-                    : crossRefResults
-                  if (!filtered.length) {
-                    return (
-                      <p className="text-gray-200/80">
-                        {crossRefCategory
-                          ? 'No cross references found for this category.'
-                          : 'No cross references loaded yet.'}
-                      </p>
-                    )
-                  }
-                  return (
-                    <ul className="space-y-2 text-gray-100/90">
-                      {filtered.map((ref, index) => (
-                        <li key={`${ref.reference}-${index}`} className="flex items-center justify-between border border-white/10 rounded-lg px-3 py-2 hover:border-cyan-400/40 transition-colors">
-                          {renderVerseReference(ref.reference)}
-                          <span className="text-[10px] uppercase tracking-widest text-cyan-200">
-                            {ref.category ? ref.category.replace(/_/g, ' ') : 'general thematic'}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )
-                })()}
+                  <CrossReferenceRanked
+                    verse={crossRefLastLookup}
+                    token={localStorage.getItem('token') || ''}
+                    showTopOnly={true}
+                    topLimit={3}
+                  />
+                ) : (
+                  <p className="text-gray-200/80">Enter a verse reference above to explore cross references.</p>
+                )}
               </div>
 
               {/* EGW Passage Panel - Below Cross References */}
@@ -2424,41 +3232,18 @@ export default function WorkspaceDetailPage() {
               )}
             </div>
           )}
-          {activeSection === 'search' && (
-            <div className="space-y-4 relative min-h-full">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold">Search</h3>
-                <button onClick={handleSearch} className="cyber-outline text-xs px-3 py-2 rounded-full">
-                  Search
-                </button>
-              </div>
-              <div className="cyber-panel rounded-2xl p-6 space-y-4">
-                <input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search notes, workspaces, outlines..."
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                />
-                {searchResults.length ? (
-                  <div className="space-y-3">
-                    {searchResults.map((item: any) => (
-                      <div key={`${item.type}-${item.id}`} className="border border-white/10 rounded-xl p-4 bg-black/30">
-                        <p className="text-xs uppercase tracking-widest cyber-muted">{item.type}</p>
-                        <p className="text-gray-100/90 font-semibold">{item.title}</p>
-                        {item.snippet && <p className="text-sm text-gray-200/80 mt-1">{item.snippet}</p>}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-200/80">No search results yet.</p>
-                )}
-              </div>
-            </div>
-          )}
           {activeSection === 'study-report' && (
             <div className="space-y-4 relative min-h-full">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold">Study Report</h3>
+                <div className="flex items-center gap-3">
+                  <h3 className="text-xl font-semibold">Study Report</h3>
+                  {workspace?.egwEnabled && (
+                    <span className="text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-200 border border-blue-400/40 flex items-center gap-1">
+                      <Book className="w-3 h-3" />
+                      EGW Enabled
+                    </span>
+                  )}
+                </div>
                 <button
                   onClick={() => handleGenerate('study-report')}
                   className="cyber-outline text-xs px-3 py-2 rounded-full"
@@ -2481,9 +3266,15 @@ export default function WorkspaceDetailPage() {
             <div className="space-y-4 relative min-h-full">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.4em] text-cyan-400">Sermon DNA</p>
-                  <h3 className="text-2xl font-semibold">Voice + Structure Profile</h3>
+                  <h3 className="text-xl font-semibold">Sermon DNA</h3>
+                  <p className="text-xs text-gray-400 mt-1">Analyze sermon structure, flow, and theological depth</p>
                 </div>
+              </div>
+              
+              {/* Sermon Integrity Dashboard */}
+              <SermonIntegrityDashboard workspaceId={workspaceId} />
+              
+              <div className="flex items-center justify-between mb-4">
                 <button
                   onClick={() => handleGenerate('dna')}
                   className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
@@ -2556,21 +3347,38 @@ export default function WorkspaceDetailPage() {
                   <p className="text-sm text-gray-200/80 mb-4">
                     Visualize cross-testament connections for {workspace.mainPassage}.
                   </p>
-                  <CanonicalConstellation focusPassage={workspace.mainPassage} />
+                  <InteractiveCanonicalConstellation focusPassage={workspace.mainPassage} />
                 </div>
+                
+                {/* Sanctuary/Prophecy Mapper for relevant passages */}
+                {workspace.mainPassage && (
+                  /Daniel|Revelation|Hebrews|Leviticus|Exodus 25/.test(workspace.mainPassage) && (
+                    <div className="cyber-panel rounded-2xl p-6">
+                      <h4 className="text-lg font-semibold mb-2">Sanctuary & Prophecy Connections</h4>
+                      <p className="text-sm text-gray-200/80 mb-4">
+                        Trace sanctuary and prophetic connections for {workspace.mainPassage}.
+                      </p>
+                      <SanctuaryProphecyMapper 
+                        passage={workspace.mainPassage}
+                        mode={/Daniel|Revelation/.test(workspace.mainPassage) ? 'prophecy' : 'sanctuary'}
+                      />
+                    </div>
+                  )
+                )}
+                
                 <div className="cyber-panel rounded-2xl p-6">
                   <h4 className="text-lg font-semibold mb-2">Prophecy Fulfillment Web</h4>
                   <p className="text-sm text-gray-200/80 mb-4">
                     Explore Daniel/Revelation connections and thematic threads.
                   </p>
-                  <ProphecyWeb theme="all" />
+                  <InteractiveProphecyWeb theme="all" />
                 </div>
                 <div className="cyber-panel rounded-2xl p-6">
                   <h4 className="text-lg font-semibold mb-2">Sermon Flow Sculptor</h4>
                   <p className="text-sm text-gray-200/80 mb-4">
                     Map your outline into a spatial integrity model.
                   </p>
-                  <SermonFlowSculptor
+                  <InteractiveSermonFlowSculptor
                     bigIdea={workspace.theme || workspace.title}
                     points={(workspace.outlines?.find((o: any) => o.isSelected) || workspace.outlines?.[0])?.structure?.points || []}
                     applications={(workspace.applications || []).map((app: any) => app.content)}
@@ -2581,61 +3389,48 @@ export default function WorkspaceDetailPage() {
               </div>
             </div>
           )}
+          {activeSection === 'media' && (
+            <MediaProductionStudio 
+              workspace={workspace} 
+              token={localStorage.getItem('token') || ''} 
+            />
+          )}
           </div>
           {actionLoading.includes('outlines') && activeSection === 'outlines' && (
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center rounded-2xl">
-              <div className="text-sm text-cyan-200">Generating outlines...</div>
-            </div>
+            <LoadingOverlay {...getLoadingMessage('outlines')} />
           )}
           {actionLoading.includes('manuscript') && activeSection === 'manuscript' && (
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center rounded-2xl">
-              <div className="text-sm text-purple-200">Generating manuscript...</div>
-            </div>
-          )}
-          {actionLoading.includes('applications') && activeSection === 'applications' && (
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center rounded-2xl">
-              <div className="text-sm text-cyan-200">Generating applications...</div>
-            </div>
-          )}
-          {actionLoading.includes('questions') && activeSection === 'questions' && (
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center rounded-2xl">
-              <div className="text-sm text-purple-200">Generating questions...</div>
-            </div>
-          )}
-          {actionLoading.includes('illustrations') && activeSection === 'illustrations' && (
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center rounded-2xl">
-              <div className="text-sm text-cyan-200">Generating illustrations...</div>
-            </div>
-          )}
-          {actionLoading.includes('citations') && activeSection === 'citations' && (
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center rounded-2xl">
-              <div className="text-sm text-purple-200">Generating citations...</div>
-            </div>
-          )}
-          {actionLoading.includes('scripture') && activeSection === 'scripture' && (
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center rounded-2xl">
-              <div className="text-sm text-cyan-200">Loading passage...</div>
-            </div>
-          )}
-          {actionLoading.includes('word-study') && activeSection === 'word-study' && (
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center rounded-2xl">
-              <div className="text-sm text-purple-200">Loading word study...</div>
-            </div>
-          )}
-          {actionLoading.includes('cross-references') && activeSection === 'cross-references' && (
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center rounded-2xl">
-              <div className="text-sm text-cyan-200">Loading cross references...</div>
-            </div>
+            <LoadingOverlay {...getLoadingMessage('manuscript')} />
           )}
           {actionLoading.includes('study-report') && activeSection === 'study-report' && (
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center rounded-2xl">
-              <div className="text-sm text-cyan-200">Generating study report...</div>
-            </div>
+            <LoadingOverlay {...getLoadingMessage('study-report')} />
+          )}
+          {actionLoading.includes('applications') && activeSection === 'applications' && (
+            <LoadingOverlay {...getLoadingMessage('applications')} />
+          )}
+          {actionLoading.includes('questions') && activeSection === 'questions' && (
+            <LoadingOverlay {...getLoadingMessage('questions')} />
+          )}
+          {actionLoading.includes('illustrations') && activeSection === 'illustrations' && (
+            <LoadingOverlay {...getLoadingMessage('illustrations')} />
+          )}
+          {actionLoading.includes('citations') && activeSection === 'citations' && (
+            <LoadingOverlay {...getLoadingMessage('citations')} />
+          )}
+          {actionLoading.includes('scripture') && activeSection === 'scripture' && (
+            <LoadingOverlay {...getLoadingMessage('scripture')} />
+          )}
+          {actionLoading.includes('word-study') && activeSection === 'word-study' && (
+            <LoadingOverlay {...getLoadingMessage('word-study')} />
+          )}
+          {actionLoading.includes('cross-references') && activeSection === 'cross-references' && (
+            <LoadingOverlay {...getLoadingMessage('cross-references')} />
+          )}
+          {actionLoading.includes('study-report') && activeSection === 'study-report' && (
+            <LoadingOverlay {...getLoadingMessage('study-report')} />
           )}
           {actionLoading.includes('dna') && activeSection === 'dna' && (
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center rounded-2xl">
-              <div className="text-sm text-cyan-200">Analyzing sermon DNA...</div>
-            </div>
+            <LoadingOverlay {...getLoadingMessage('dna')} />
           )}
             </div>
           </div>
@@ -2698,6 +3493,9 @@ export default function WorkspaceDetailPage() {
           </div>
         </div>
       )}
+      
+      {/* Keyboard Shortcuts Help - Floating Button */}
+      <KeyboardShortcutsHelp />
     </div>
   )
 }

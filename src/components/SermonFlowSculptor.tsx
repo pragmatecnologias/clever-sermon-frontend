@@ -22,6 +22,8 @@ export default function SermonFlowSculptor({
   const containerRef = useRef<HTMLDivElement>(null)
   const [flowData, setFlowData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  
+  // Theological Question: Does the weight of the text match the weight of the sermon?
 
   useEffect(() => {
     loadFlowData()
@@ -170,6 +172,10 @@ export default function SermonFlowSculptor({
             <div className="text-cyan-200">Sculpting Sermon Flow...</div>
           </div>
         )}
+        <div className="absolute top-4 right-4 bg-gradient-to-br from-green-900/90 to-teal-900/90 p-4 rounded-lg border border-green-500/50 max-w-md z-20">
+          <p className="text-sm font-semibold text-green-200 mb-1">Theological Question:</p>
+          <p className="text-xs text-gray-300 italic">Does the weight of the text match the weight of the sermon?</p>
+        </div>
         <div ref={containerRef} className="w-full h-full" />
         <div className="absolute top-4 left-4 bg-black/80 p-3 rounded-lg border border-white/10">
           <p className="text-xs text-gray-400 mb-2">Legend</p>

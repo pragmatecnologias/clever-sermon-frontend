@@ -1,0 +1,376 @@
+import axios from 'axios';
+
+const SLIDES_API_URL = process.env.NEXT_PUBLIC_SLIDES_API_URL || 'http://localhost:3001/api/v1';
+
+export interface SyncWorkspaceData {
+  workspaceId: string;
+  title: string;
+  seriesTitle?: string;
+  mainScriptureRef: string;
+  bigIdea: string;
+  mainPoints: string[];
+  audienceContext?: string;
+  tone?: string;
+  notes?: string;
+  outline?: any;
+  manuscript?: any;
+  applications?: any[];
+  questions?: any[];
+}
+
+export interface GenerateImageRequest {
+  sermonId?: string;
+  workspaceId?: string;
+  prompt: string;
+  provider: 'openai' | 'local';
+  preset?: string;
+}
+
+export interface GenerateAudioRequest {
+  sermonId?: string;
+  workspaceId?: string;
+  text: string;
+  voiceId?: string;
+  provider?: string;
+}
+
+export interface GenerateMusicRequest {
+  sermonId?: string;
+  workspaceId?: string;
+  prompt: string;
+  genre?: string;
+  durationSeconds?: number;
+  provider?: string;
+}
+
+export interface GenerateVideoRequest {
+  deckId?: string;
+  audioId?: string;
+  sermonId?: string;
+  workspaceId?: string;
+  resolution?: string;
+}
+
+export const slidesApi = {
+  // Sync workspace to slides app
+  syncWorkspace: async (workspaceData: SyncWorkspaceData, token: string) => {
+    const response = await axios.post(
+      `${SLIDES_API_URL}/sermons/from-workspace`,
+      workspaceData,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  // Images
+  generateImage: async (request: GenerateImageRequest, token: string) => {
+    const response = await axios.post(
+      `${SLIDES_API_URL}/images/generate`,
+      request,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  getImage: (imageId: string, token: string) => {
+    return `${SLIDES_API_URL}/images/${imageId}/download?token=${token}`;
+  },
+
+  listImages: async (workspaceId: string, token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/images/list/${workspaceId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  // Slides/Decks
+  generateDeck: async (sermonId: string, themeId: string | undefined, token: string) => {
+    const response = await axios.post(
+      `${SLIDES_API_URL}/sermons/${sermonId}/decks`,
+      { themeId },
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  getDeck: async (deckId: string, token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/decks/${deckId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  getDecks: async (token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/decks`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  getThemes: async (token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/themes`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  getSlides: async (deckId: string, token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/decks/${deckId}/slides`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  updateSlide: async (slideId: string, data: any, token: string) => {
+    const response = await axios.put(
+      `${SLIDES_API_URL}/slides/${slideId}`,
+      data,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  exportDeck: async (deckId: string, format: 'pptx' | 'pdf', token: string) => {
+    const response = await axios.post(
+      `${SLIDES_API_URL}/decks/${deckId}/exports`,
+      { type: format },
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob',
+      }
+    );
+    const blobUrl = URL.createObjectURL(response.data);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = `deck-${deckId}.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(blobUrl);
+  },
+
+  // Audio
+  generateAudio: async (request: GenerateAudioRequest, token: string) => {
+    const response = await axios.post(
+      `${SLIDES_API_URL}/audio/generate`,
+      request,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  getAudio: async (audioId: string, token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/audio/${audioId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  getAudioDownloadUrl: (audioId: string, token: string) => {
+    return `${SLIDES_API_URL}/audio/${audioId}/download?token=${token}`;
+  },
+
+  listAudio: async (workspaceId: string, token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/audio/list/${workspaceId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  getVoices: async (token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/audio/voices`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  // Music
+  generateMusic: async (request: GenerateMusicRequest, token: string) => {
+    const response = await axios.post(
+      `${SLIDES_API_URL}/music/generate`,
+      request,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  getMusic: async (musicId: string, token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/music/${musicId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  getMusicDownloadUrl: (musicId: string, token: string) => {
+    return `${SLIDES_API_URL}/music/${musicId}/download?token=${token}`;
+  },
+
+  listMusic: async (workspaceId: string, token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/music/list/${workspaceId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  getGenres: async (token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/music/genres`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  // Video
+  generateVideo: async (request: GenerateVideoRequest, token: string) => {
+    const response = await axios.post(
+      `${SLIDES_API_URL}/video/generate`,
+      request,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  getVideo: async (videoId: string, token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/video/${videoId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  getVideoDownloadUrl: (videoId: string, token: string) => {
+    return `${SLIDES_API_URL}/video/${videoId}/download?token=${token}`;
+  },
+
+  listVideo: async (workspaceId: string, token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/video/list/${workspaceId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  // Social Media
+  generateSocialKit: async (request: {
+    sermonId?: string;
+    workspaceId?: string;
+    quote: string;
+    caption: string;
+    title: string;
+    passage: string;
+  }, token: string) => {
+    const response = await axios.post(
+      `${SLIDES_API_URL}/social/generate`,
+      request,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  getSocialMedia: async (socialId: string, token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/social/${socialId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  listSocial: async (workspaceId: string, token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/social/list/${workspaceId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  // Sermon Song Generation
+  previewSermonSong: async (request: {
+    sermonId: string;
+    mode: string;
+    style?: string;
+    useCase?: string;
+  }, token: string) => {
+    const response = await axios.post(
+      `${SLIDES_API_URL}/music/sermon-song/preview`,
+      request,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  generateSermonSong: async (request: {
+    sermonId: string;
+    workspaceId?: string;
+    mode: string;
+    style?: string;
+    useCase?: string;
+    duration?: number;
+  }, token: string) => {
+    const response = await axios.post(
+      `${SLIDES_API_URL}/music/sermon-song/generate`,
+      request,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+};

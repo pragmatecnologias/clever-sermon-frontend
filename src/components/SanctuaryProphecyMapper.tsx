@@ -83,8 +83,11 @@ export default function SanctuaryProphecyMapper({ passage, mode }: SanctuaryProp
       )}
 
       {loading ? (
-        <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mx-auto"></div>
+        <div className="space-y-3 py-8">
+          <p className="text-sm text-gray-400 text-center">Loading connections...</p>
+          <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
+            <div className="h-full w-full animate-[progress_loop_1.1s_linear_infinite] bg-gradient-to-r from-transparent via-blue-300 to-transparent" />
+          </div>
         </div>
       ) : connections.length === 0 ? (
         <p className="text-gray-400 text-sm">No {mode} connections found for this passage</p>
