@@ -1259,6 +1259,31 @@ export default function WorkspaceDetailPage() {
         lists.flatMap((list) => (Array.isArray(list) ? list : [])),
       )
 
+    const normalizeMediaSuggestionCards = (items: any[]) =>
+      (Array.isArray(items) ? items : [])
+        .map((item: any) => {
+          if (!item) return null
+          if (typeof item === 'string') {
+            const prompt = String(item).trim()
+            if (!prompt) return null
+            return {
+              type: workspace?.language === 'es' ? 'Medio' : 'Media',
+              intent: workspace?.language === 'es' ? 'Sugerencia de estudio' : 'Study suggestion',
+              prompt,
+            }
+          }
+          const type = String(item?.type || item?.label || item?.name || '').trim()
+          const intent = String(item?.intent || item?.category || item?.purpose || '').trim()
+          const prompt = String(item?.prompt || item?.text || item?.content || '').trim()
+          if (!prompt) return null
+          return {
+            type: type || (workspace?.language === 'es' ? 'Medio' : 'Media'),
+            intent: intent || (workspace?.language === 'es' ? 'Sugerencia de estudio' : 'Study suggestion'),
+            prompt,
+          }
+        })
+        .filter(Boolean)
+
     return {
       applications: mergeLists(
         categoryAssets?.applications,
@@ -1279,6 +1304,10 @@ export default function WorkspaceDetailPage() {
         flattenMovement('illustrationIdeas'),
       ),
       mediaSuggestions: mergeLists(categoryAssets?.mediaSuggestions, flattenMovement('mediaSuggestions')),
+      mediaSuggestionCards: normalizeMediaSuggestionCards(
+        categoryAssets?.mediaSuggestionCards ||
+          (workspace?.studyReports?.[0]?.sections?.studyAssets?.categoryAssets?.mediaSuggestionCards || []),
+      ),
       egwSupport: [...(Array.isArray(categoryAssets?.egwSupport) ? categoryAssets.egwSupport : []), ...(Array.isArray(sections?.egw?.quotes) ? sections.egw.quotes : [])].filter(Boolean),
       references: mergeReferenceLists(categoryAssets?.references, flattenMovement('references'), workspace?.references || [], sections?.crossReferences || []),
     }
@@ -1286,79 +1315,10 @@ export default function WorkspaceDetailPage() {
 
   const getStudyMediaPrompts = () => {
     const studyAssets = getStudyAssetsSource()
-    const title = workspace?.title || 'Untitled Sermon'
-    const isSpanish = workspace?.language === 'es'
-    const theme = workspace?.theme || workspace?.sermonGoals || (isSpanish ? 'el mensaje central del sermón' : 'the main sermon message')
-    const passage = workspace?.mainPassage || ''
-    const manuscriptText = workspace?.manuscripts?.[0]?.content?.text || ''
-    const quoteSeed =
-      (workspace?.applications || []).find((item: any) => item?.content)?.content ||
-      manuscriptText.split(/[.!?]/).find((item: string) => item.trim().length > 30)?.trim() ||
-      theme
-
-    const prompts = isSpanish
-      ? [
-          {
-            type: 'Presentación',
-            intent: 'Estructura de presentación',
-            prompt: `Crea una presentación de sermón para "${title}" sobre ${passage}. Enfatiza ${theme}. Incluye diapositiva de título, movimientos principales, versículos de apoyo, diapositiva de respuesta y cierre con oración o llamado.`,
-          },
-          {
-            type: 'Visual Principal',
-            intent: 'Prompt visual principal',
-            prompt: `Visual cinematográfico de iglesia para el sermón "${title}" sobre ${theme}. Pasaje: ${passage}. Ambiente: reverente, esperanzador, congregacional y bíblicamente sólido.`,
-          },
-          {
-            type: 'Audio / Voz',
-            intent: 'Prompt de narración o pódcast',
-            prompt: `Genera audio narrado del sermón "${title}" sobre ${passage} con tono pastoral, claro y cálido. Mantén una dicción natural para escucha congregacional.`,
-          },
-          {
-            type: 'Canto Tema',
-            intent: 'Canción tema con letra',
-            prompt: `Genera un canto tema con letra para el sermón "${title}" basado en ${passage}. Tema: ${theme}. Modo: with_lyrics. Uso: theme-song. Estilo: adoración. Incluye coro memorable y líneas fáciles de cantar en congregación.`,
-          },
-          {
-            type: 'Social / Promoción',
-            intent: 'Prompt para pieza promocional',
-            prompt: `Crea una pieza social de promoción para "${title}" (${passage}). Cita principal: "${String(quoteSeed).slice(0, 180)}". Tema: ${theme}.`,
-          },
-        ]
-      : [
-          {
-            type: 'Slide Deck',
-            intent: 'Presentation structure',
-            prompt: `Create a sermon slide deck for "${title}" on ${passage}. Emphasize ${theme}. Include title slide, movement slides, supporting verses, response slide, and closing prayer/appeal.`,
-          },
-          {
-            type: 'Key Visual',
-            intent: 'Hero image prompt',
-            prompt: `Cinematic church visual for sermon "${title}" about ${theme}. Passage: ${passage}. Mood: reverent, hopeful, congregational, biblically grounded.`,
-          },
-          {
-            type: 'Audio / Voiceover',
-            intent: 'Narration or podcast prompt',
-            prompt: `Generate sermon narration audio for "${title}" on ${passage} with a pastoral, clear, warm tone. Keep phrasing natural for congregational listening.`,
-          },
-          {
-            type: 'Canto Tema',
-            intent: 'Theme song with lyrics',
-            prompt: `Generate a sermon theme song with lyrics for "${title}" based on ${passage}. Theme: ${theme}. Mode: with_lyrics. Use case: theme-song. Style: worship. Include memorable chorus and congregationally singable lines.`,
-          },
-          {
-            type: 'Social / Promo',
-            intent: 'Quote graphic or promo asset',
-            prompt: `Create a social promo asset for "${title}" (${passage}). Main quote: "${String(quoteSeed).slice(0, 180)}". Theme: ${theme}.`,
-          },
-        ]
-
-    const additional = (studyAssets.mediaSuggestions || []).map((item: string, index: number) => ({
-      type: isSpanish ? `Medio Adicional ${index + 1}` : `Additional Media ${index + 1}`,
-      intent: isSpanish ? 'Activo sugerido por el estudio' : 'Study-suggested asset',
-      prompt: item,
-    }))
-
-    return [...prompts, ...additional]
+    if (Array.isArray(studyAssets.mediaSuggestionCards) && studyAssets.mediaSuggestionCards.length) {
+      return studyAssets.mediaSuggestionCards
+    }
+    return []
   }
 
   const parsePassageForEgwPanel = (reference: string) => {
@@ -1539,6 +1499,7 @@ export default function WorkspaceDetailPage() {
     if (asset === 'applications') return actionLoading.includes('applications')
     if (asset === 'questions') return actionLoading.includes('questions')
     if (asset === 'illustrations') return actionLoading.includes('illustrations')
+    if (asset === 'media') return actionLoading.includes('media')
     return false
   }
 
@@ -1714,18 +1675,86 @@ export default function WorkspaceDetailPage() {
     const exegeticalFlow = arr(sections.exegeticalFlow || sections.argumentFlow || sections.flow)
     const exegeticalSummary = str(sections.exegeticalSummary || sections.summaryStatement)
 
-    const normalizedImplications =
-      sections.pastoralImplications && typeof sections.pastoralImplications === 'object' && !Array.isArray(sections.pastoralImplications)
-        ? {
-            personalLife: arr(sections.pastoralImplications.personalLife),
-            churchLife: arr(sections.pastoralImplications.churchLife),
-            mission: arr(sections.pastoralImplications.mission),
-          }
-        : {
-            personalLife: legacyImplications.slice(0, 4),
-            churchLife: legacyImplications.slice(4, 8),
-            mission: legacyImplications.slice(8, 12),
-          }
+    const normalizedImplications = (() => {
+      const source = sections.pastoralImplications && typeof sections.pastoralImplications === 'object' && !Array.isArray(sections.pastoralImplications)
+        ? sections.pastoralImplications
+        : null
+
+      const toCleanList = (value: any): string[] =>
+        arr(value)
+          .map((item: any) => String(item || '').trim())
+          .filter(Boolean)
+
+      if (!source) {
+        return {
+          personalLife: legacyImplications.slice(0, 4),
+          churchLife: legacyImplications.slice(4, 8),
+          mission: legacyImplications.slice(8, 12),
+        }
+      }
+
+      const pickFirst = (...candidates: any[]): string[] => {
+        for (const candidate of candidates) {
+          const values = toCleanList(candidate)
+          if (values.length) return values
+        }
+        return []
+      }
+
+      const personalLife = pickFirst(
+        source.personalLife,
+        source.personal,
+        source.vidaPersonal,
+        source.individualLife,
+      )
+      const churchLife = pickFirst(
+        source.churchLife,
+        source.churchApplication,
+        source.communityLife,
+        source.congregationalLife,
+        source.communalLife,
+        source.vidaIglesia,
+        source.iglesia,
+      )
+      const mission = pickFirst(
+        source.mission,
+        source.missional,
+        source.missionApplication,
+        source.outreach,
+        source.evangelism,
+        source.mision,
+      )
+
+      const combined = Array.from(
+        new Set([
+          ...toCleanList(source.implications),
+          ...toCleanList(source.applications),
+          ...personalLife,
+          ...churchLife,
+          ...mission,
+        ]),
+      )
+
+      const fillMissing = (items: string[], used: Set<string>, limit = 4): string[] => {
+        if (items.length) {
+          items.forEach((item) => used.add(item))
+          return items.slice(0, limit)
+        }
+        let fill = combined.filter((item) => !used.has(item)).slice(0, limit)
+        if (!fill.length && combined.length) {
+          fill = combined.slice(0, limit)
+        }
+        fill.forEach((item) => used.add(item))
+        return fill
+      }
+
+      const used = new Set<string>()
+      return {
+        personalLife: fillMissing(personalLife, used),
+        churchLife: fillMissing(churchLife, used),
+        mission: fillMissing(mission, used),
+      }
+    })()
 
     const reportTextForTiming = [
       str(sections.passageOverview || sections.overview || sections.summary),
@@ -2086,6 +2115,19 @@ export default function WorkspaceDetailPage() {
             promptOverride: override,
             includeEGW: workspace?.egwEnabled || false
           },
+          config,
+        )
+        if (generatedResponse?.data) {
+          setWorkspace((prev: any) => prev ? {
+            ...prev,
+            studyReports: [generatedResponse.data, ...(prev.studyReports || []).filter((item: any) => item.id !== generatedResponse.data.id)],
+          } : prev)
+        }
+      }
+      if (type === 'media') {
+        generatedResponse = await axios.post(
+          `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/media-suggestions`,
+          { promptOverride: override },
           config,
         )
         if (generatedResponse?.data) {
@@ -5078,11 +5120,8 @@ export default function WorkspaceDetailPage() {
                   'study-media',
                   'Media Suggestions',
                   <Film className="w-4 h-4" />,
-                  'Open Media',
-                  () => {
-                    setActivePhase('DELIVER')
-                    setActiveSection('media')
-                  },
+                  'Generate',
+                  () => handleGenerate('media'),
                   renderStudyAssetBoxes(studyMediaPrompts, 'study-assets-media', 'No media suggestions yet.', {
                     itemClassName: 'border border-violet-400/20 rounded-lg p-3 bg-violet-500/5',
                     renderItem: (item: any) => (
@@ -5095,13 +5134,16 @@ export default function WorkspaceDetailPage() {
                       </>
                     ),
                   }),
-                  undefined,
-                  undefined,
+                  'Open Media',
+                  () => {
+                    setActivePhase('DELIVER')
+                    setActiveSection('media')
+                  },
                   isStudyAssetLoading('media'),
-                  'Generating from Study Report',
+                  actionLoading.includes('study-report') ? 'Generating from Study Report' : 'Generating Media Suggestions',
                 )}
               </div>
-              <div className="space-y-4">
+              <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
                 <div className="flex items-center justify-between gap-3 mb-4">
                   <div className="flex items-center gap-3">
                     <Book className="w-5 h-5 text-amber-300" />

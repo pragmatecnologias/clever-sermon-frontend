@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Image, Sparkles, Loader2 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
+import { composeImagePrompt, type ImagePromptFields } from '@/lib/media-prompts'
 
 interface ImageGenerationPanelProps {
   workspaceId: string
@@ -14,6 +15,7 @@ interface ImageGenerationPanelProps {
   }
   token: string
   autoPrompt?: string
+  autoPromptFields?: ImagePromptFields
   onGenerated?: () => void
 }
 
@@ -23,6 +25,7 @@ export default function ImageGenerationPanel({
   workspaceData, 
   token,
   autoPrompt,
+  autoPromptFields,
   onGenerated 
 }: ImageGenerationPanelProps) {
   const [prompt, setPrompt] = useState('')
@@ -30,12 +33,32 @@ export default function ImageGenerationPanel({
   const [preset, setPreset] = useState('worship')
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fields, setFields] = useState<ImagePromptFields>(
+    autoPromptFields || {
+      subject: '',
+      environment: '',
+      action: '',
+      symbolism: '',
+      camera: '',
+      lighting: '',
+      style: '',
+      colorPalette: '',
+      quality: '',
+      negativePrompt: '',
+    },
+  )
 
   useEffect(() => {
     if (autoPrompt && !prompt.trim()) {
       setPrompt(autoPrompt)
     }
   }, [autoPrompt, prompt])
+
+  useEffect(() => {
+    if (autoPromptFields) {
+      setFields(autoPromptFields)
+    }
+  }, [autoPromptFields])
 
   const presets = [
     { value: 'worship', label: 'Worship' },
@@ -56,7 +79,20 @@ export default function ImageGenerationPanel({
   }
 
   const handleAutoGenerate = () => {
+    if (fields.subject || fields.environment || fields.style) {
+      setPrompt(composeImagePrompt(fields, false))
+      return
+    }
     setPrompt(generateAutoPrompt())
+  }
+
+  const updateField = (key: keyof ImagePromptFields, value: string) => {
+    setFields((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const composeFromFields = () => {
+    const next = composeImagePrompt(fields, false)
+    setPrompt(next)
   }
 
   const handleGenerate = async () => {
@@ -164,6 +200,45 @@ export default function ImageGenerationPanel({
           className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm min-h-[100px]"
           disabled={generating}
         />
+        <details className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
+          <summary className="cursor-pointer text-xs uppercase tracking-widest text-cyan-200/80">
+            Structured Prompt Fields
+          </summary>
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+            {(
+              [
+                ['subject', 'Subject'],
+                ['environment', 'Environment'],
+                ['action', 'Action'],
+                ['symbolism', 'Symbolism'],
+                ['camera', 'Camera'],
+                ['lighting', 'Lighting'],
+                ['style', 'Style'],
+                ['colorPalette', 'Color Palette'],
+                ['quality', 'Quality'],
+                ['negativePrompt', 'Negative Prompt'],
+              ] as Array<[keyof ImagePromptFields, string]>
+            ).map(([key, label]) => (
+              <label key={key} className="text-[11px] uppercase tracking-widest text-gray-400">
+                {label}
+                <input
+                  value={fields[key]}
+                  onChange={(e) => updateField(key, e.target.value)}
+                  className="mt-1 w-full bg-black/40 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-100 normal-case tracking-normal"
+                  disabled={generating}
+                />
+              </label>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={composeFromFields}
+            className="mt-3 cyber-outline text-xs px-3 py-2 rounded-full"
+            disabled={generating}
+          >
+            Compose Prompt
+          </button>
+        </details>
       </div>
 
       {/* Error */}

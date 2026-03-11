@@ -81,6 +81,17 @@ export const slidesApi = {
     return `${SLIDES_API_URL}/images/${imageId}/download?token=${token}`;
   },
 
+  getImageBlob: async (imageId: string, token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/images/${imageId}/download`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob',
+      }
+    );
+    return response.data as Blob;
+  },
+
   listImages: async (workspaceId: string, token: string) => {
     const response = await axios.get(
       `${SLIDES_API_URL}/images/list/${workspaceId}`,
@@ -252,6 +263,17 @@ export const slidesApi = {
     return `${SLIDES_API_URL}/audio/${audioId}/download?token=${token}`;
   },
 
+  getAudioBlob: async (audioId: string, token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/audio/${audioId}/download`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob',
+      }
+    );
+    return response.data as Blob;
+  },
+
   listAudio: async (workspaceId: string, token: string) => {
     const response = await axios.get(
       `${SLIDES_API_URL}/audio/list/${workspaceId}`,
@@ -298,6 +320,17 @@ export const slidesApi = {
     return `${SLIDES_API_URL}/music/${musicId}/download?token=${token}`;
   },
 
+  getMusicBlob: async (musicId: string, token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/music/${musicId}/download`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob',
+      }
+    );
+    return response.data as Blob;
+  },
+
   listMusic: async (workspaceId: string, token: string) => {
     const response = await axios.get(
       `${SLIDES_API_URL}/music/list/${workspaceId}`,
@@ -342,6 +375,17 @@ export const slidesApi = {
 
   getVideoDownloadUrl: (videoId: string, token: string) => {
     return `${SLIDES_API_URL}/video/${videoId}/download?token=${token}`;
+  },
+
+  getVideoBlob: async (videoId: string, token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/video/${videoId}/download`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob',
+      }
+    );
+    return response.data as Blob;
   },
 
   listVideo: async (workspaceId: string, token: string) => {

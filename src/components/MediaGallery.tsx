@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Image, FileText, Music, Mic, Video, Download, Trash2, Loader2, Edit } from 'lucide-react'
+import { Image, FileText, Music, Mic, Video, Download, Trash2, Loader2 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
-import DeckEditor from './DeckEditor'
 
 interface MediaItem {
   id: string
@@ -26,7 +25,6 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
   const [media, setMedia] = useState<MediaItem[]>([])
   const [decks, setDecks] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [editingDeckId, setEditingDeckId] = useState<string | null>(null)
 
   const activeFilter = filter ?? internalFilter
   const setActiveFilter = (next: 'all' | 'image' | 'slide' | 'audio' | 'music' | 'video') => {
@@ -88,23 +86,6 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
   useEffect(() => {
     loadMediaLibrary()
   }, [workspaceId, token])
-
-  useEffect(() => {
-    if (activeFilter === 'slide') {
-      const firstReadyDeck = decks.find((deck) => String(deck.status || '').toLowerCase() === 'ready')
-      const firstDeck = firstReadyDeck || decks[0]
-      if (firstDeck && editingDeckId !== firstDeck.id) {
-        setEditingDeckId(firstDeck.id)
-      }
-      if (!firstDeck) {
-        setEditingDeckId(null)
-      }
-      return
-    }
-    if (editingDeckId) {
-      setEditingDeckId(null)
-    }
-  }, [activeFilter, decks, editingDeckId])
 
   const loadMediaLibrary = async () => {
     try {
@@ -183,6 +164,71 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
     }
   }
 
+  const triggerDownload = async (item: MediaItem) => {
+    try {
+      if (item.type === 'image') {
+        const blob = await slidesApi.getImageBlob(item.id, token)
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `generated-image-${item.id}.png`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        URL.revokeObjectURL(url)
+        return
+      }
+
+      const url =
+        item.type === 'audio'
+          ? slidesApi.getAudioDownloadUrl(item.id, token)
+          : item.type === 'music'
+            ? slidesApi.getMusicDownloadUrl(item.id, token)
+            : item.type === 'video'
+              ? slidesApi.getVideoDownloadUrl(item.id, token)
+              : ''
+
+      if (!url) return
+      const a = document.createElement('a')
+      a.href = url
+      a.target = '_blank'
+      a.rel = 'noreferrer'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+    } catch (error) {
+      console.error('Failed to download media item:', error)
+    }
+  }
+
+  const openBlobInNewTab = (blob: Blob) => {
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank', 'noopener,noreferrer')
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+
+  const openAssetInNewTab = async (item: MediaItem) => {
+    try {
+      if (item.type === 'image') {
+        const blob = await slidesApi.getImageBlob(item.id, token)
+        openBlobInNewTab(blob)
+        return
+      }
+      if (item.type === 'music') {
+        const blob = await slidesApi.getMusicBlob(item.id, token)
+        openBlobInNewTab(blob)
+        return
+      }
+      if (item.type === 'video') {
+        const blob = await slidesApi.getVideoBlob(item.id, token)
+        openBlobInNewTab(blob)
+        return
+      }
+    } catch (error) {
+      console.error('Failed to open asset in new tab:', error)
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Filter Tabs */}
@@ -206,22 +252,10 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
         })}
       </div>
 
-      {/* Editing Deck - Full View when Slides filter active */}
-      {editingDeckId && activeFilter === 'slide' ? (
-        <div className="border border-cyan-400/40 rounded-xl p-6 bg-cyan-500/5">
-          <DeckEditor
-            deckId={editingDeckId}
-            token={token}
-            onClose={() => setEditingDeckId(null)}
-            onExport={() => {}}
-          />
-        </div>
-      ) : loading ? (
+      {loading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-cyan-300" />
         </div>
-      ) : activeFilter === 'slide' && editingDeckId ? (
-        null
       ) : filteredItems.length === 0 ? (
         <div className="text-center py-12 border border-white/10 rounded-xl bg-black/20">
           <p className="text-gray-400">No {activeFilter !== 'all' ? activeFilter : ''} media generated yet</p>
@@ -254,21 +288,23 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
                   <p className="text-xs text-gray-500 mb-3">
                     {deck.slides?.length || 0} slides • {deck.theme?.name || 'Default Theme'}
                   </p>
+                  <DeckFirstSlidePreview deck={deck} token={token} />
 
-                  {canEditDeck && (
+                  {canEditDeck ? (
                     <div className="flex gap-2">
                       <button
-                        onClick={() => setEditingDeckId(deck.id)}
-                        className="flex-1 cyber-button text-xs px-3 py-2 rounded-full flex items-center justify-center gap-2"
+                        onClick={() =>
+                          slidesApi.exportDeck(deck.id, 'pptx', token).catch((error) =>
+                            console.error('Failed to export deck:', error),
+                          )
+                        }
+                        className="w-full cyber-outline text-xs px-3 py-2 rounded-full flex items-center justify-center gap-2"
                       >
-                        <Edit className="w-3 h-3" />
-                        Edit Slides
-                      </button>
-                      <button className="cyber-outline text-xs px-3 py-2 rounded-full flex items-center justify-center gap-2">
                         <Download className="w-3 h-3" />
+                        Export PPTX
                       </button>
                     </div>
-                  )}
+                  ) : null}
 
                   <p className="text-xs text-gray-500 mt-2">
                     {new Date(deck.createdAt).toLocaleString()}
@@ -281,7 +317,16 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
             return (
               <div
                 key={item.id}
-                className="border border-white/10 rounded-xl p-4 bg-black/30 hover:bg-black/40 transition-all"
+                onClick={() => {
+                  if (item.status === 'completed' && (item.type === 'image' || item.type === 'music' || item.type === 'video')) {
+                    openAssetInNewTab(item)
+                  }
+                }}
+                className={`border border-white/10 rounded-xl p-4 bg-black/30 hover:bg-black/40 transition-all ${
+                  item.status === 'completed' && (item.type === 'image' || item.type === 'music' || item.type === 'video')
+                    ? 'cursor-pointer'
+                    : ''
+                }`}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2">
@@ -307,15 +352,28 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
 
                 {item.status === 'completed' && (
                   <div className="flex gap-2 mt-3">
-                    <button className="flex-1 cyber-outline text-xs px-3 py-2 rounded-full flex items-center justify-center gap-2">
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        triggerDownload(item)
+                      }}
+                      className="flex-1 cyber-outline text-xs px-3 py-2 rounded-full flex items-center justify-center gap-2"
+                    >
                       <Download className="w-3 h-3" />
                       Download
                     </button>
-                    <button className="cyber-outline text-xs px-3 py-2 rounded-full text-red-300 border-red-400/40 hover:bg-red-500/10">
+                    <button
+                      onClick={(event) => event.stopPropagation()}
+                      className="cyber-outline text-xs px-3 py-2 rounded-full text-red-300 border-red-400/40 hover:bg-red-500/10"
+                    >
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
                 )}
+
+                {item.type === 'image' && item.status === 'completed' ? (
+                  <GeneratedImagePreview imageId={item.id} token={token} />
+                ) : null}
 
                 <p className="text-xs text-gray-500 mt-2">
                   {new Date(item.createdAt).toLocaleString()}
@@ -325,6 +383,96 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+function DeckFirstSlidePreview({ deck, token }: { deck: any; token: string }) {
+  const slides = Array.isArray(deck?.slides) ? [...deck.slides] : []
+  const firstSlide = slides.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))[0]
+  const [imageSrc, setImageSrc] = useState<string | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+    let objectUrl: string | null = null
+
+    const load = async () => {
+      if (!firstSlide?.id) return
+      try {
+        const blob = await slidesApi.getSlideImageBlob(firstSlide.id, token)
+        if (!mounted) return
+        objectUrl = URL.createObjectURL(blob)
+        setImageSrc(objectUrl)
+      } catch {
+        setImageSrc(null)
+      }
+    }
+
+    load()
+    return () => {
+      mounted = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [firstSlide?.id, token])
+
+  if (!firstSlide) return null
+
+  const title =
+    firstSlide?.content?.title ||
+    firstSlide?.content?.reference ||
+    firstSlide?.layoutKey ||
+    'Slide'
+  const subtitle = firstSlide?.content?.subtitle || firstSlide?.content?.caption || ''
+
+  return (
+    <div className="mt-3 mb-3 rounded-lg overflow-hidden border border-white/10 bg-black/30">
+      <div className="aspect-video w-full relative">
+        {imageSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={imageSrc} alt="First slide preview" className="absolute inset-0 w-full h-full object-cover" />
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/40 via-slate-900/80 to-cyan-900/30" />
+        )}
+        <div className="absolute inset-0 p-3 flex flex-col justify-center">
+          <p className="text-sm font-semibold text-white line-clamp-2">{String(title)}</p>
+          {subtitle ? <p className="text-xs text-gray-200/80 mt-1 line-clamp-2">{String(subtitle)}</p> : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function GeneratedImagePreview({ imageId, token }: { imageId: string; token: string }) {
+  const [src, setSrc] = useState<string | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+    let objectUrl: string | null = null
+
+    const load = async () => {
+      try {
+        const blob = await slidesApi.getImageBlob(imageId, token)
+        if (!mounted) return
+        objectUrl = URL.createObjectURL(blob)
+        setSrc(objectUrl)
+      } catch (error) {
+        console.error('Failed to load image preview:', error)
+      }
+    }
+
+    load()
+    return () => {
+      mounted = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [imageId, token])
+
+  if (!src) return null
+
+  return (
+    <div className="mt-3 rounded-lg overflow-hidden border border-white/10 bg-black/40">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt="Generated media preview" className="w-full h-36 object-cover" />
     </div>
   )
 }

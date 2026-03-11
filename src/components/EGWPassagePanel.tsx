@@ -212,9 +212,13 @@ export default function EGWPassagePanel({
     );
   }
 
+  const containerClassName = showHeader
+    ? "bg-gradient-to-br from-amber-900/10 to-amber-800/10 rounded-lg p-6 border border-amber-500/30"
+    : "rounded-lg p-0 border-0 bg-transparent";
+
   return (
     <>
-      <div className="bg-gradient-to-br from-amber-900/10 to-amber-800/10 rounded-lg p-6 border border-amber-500/30">
+      <div className={containerClassName}>
         {showHeader && (
           <div className="flex items-center gap-2 mb-4">
             <Book className="w-5 h-5 text-amber-400" />

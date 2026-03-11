@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { Sparkles, FileText, Image, Mic, Music, Video, Share2, Loader2 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
+import { buildStructuredMediaPrompts, type ImagePromptFields } from '@/lib/media-prompts'
 import SlideGenerationPanel from './SlideGenerationPanel'
 import ImageGenerationPanel from './ImageGenerationPanel'
 import AudioGenerationPanel from './AudioGenerationPanel'
@@ -96,24 +97,45 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     }
   }, [workspace])
 
-  // Prompt source order: study media suggestions first, then fallback auto prompts.
+  const structuredPrompts = useMemo(() => {
+    const isSpanish = (workspace?.language || workspace?.metadata?.language) === 'es'
+    const quote = extractBestQuote(sermonSummary.manuscript, sermonSummary.applications)
+    const entries = buildStructuredMediaPrompts({
+      isSpanish,
+      title: sermonSummary.title,
+      passage: sermonSummary.passage,
+      theme: sermonSummary.theme || (isSpanish ? 'mensaje central del sermón' : 'main sermon message'),
+      quoteSeed: String(quote).slice(0, 220),
+      source: {
+        slides: studyMediaPrompts.all.find((entry) => /slide|deck|presentaci[oó]n|diapositiva/i.test(entry)),
+        image: studyMediaPrompts.image || undefined,
+        audio: studyMediaPrompts.audio || undefined,
+        music: studyMediaPrompts.music || undefined,
+        video: studyMediaPrompts.video || undefined,
+        social: studyMediaPrompts.social || undefined,
+      },
+    })
+    const pick = (key: string) => entries.find((entry) => entry.key === key)
+    return {
+      image: pick('image'),
+      audio: pick('audio'),
+      music: pick('music'),
+      video: pick('video'),
+      social: pick('social'),
+      quote,
+    }
+  }, [workspace, sermonSummary, studyMediaPrompts])
+
   const autoPrompts = {
-    image:
-      studyMediaPrompts.image ||
-      `Cinematic church background for sermon "${sermonSummary.title}" about ${sermonSummary.theme}. Passage: ${sermonSummary.passage}. Style: modern, inspiring, ${sermonSummary.tone}.`,
-    music:
-      studyMediaPrompts.music ||
-      `${sermonSummary.tone} worship background music for sermon about ${sermonSummary.theme}. Genre: contemporary worship with piano and strings. Mood: ${sermonSummary.tone}.`,
-    audio:
-      studyMediaPrompts.audio ||
-      `Generate sermon narration audio for "${sermonSummary.title}" on ${sermonSummary.passage} with a pastoral, clear, warm tone. Keep phrasing natural for congregational listening.`,
-    video:
-      studyMediaPrompts.video ||
-      `Compose a sermon video package for "${sermonSummary.title}" based on ${sermonSummary.passage}, combining deck pacing with clear narration and worshipful flow.`,
+    image: structuredPrompts.image?.prompt || '',
+    imageFields: (structuredPrompts.image?.fields || undefined) as ImagePromptFields | undefined,
+    music: structuredPrompts.music?.prompt || '',
+    audio: structuredPrompts.audio?.prompt || '',
+    video: structuredPrompts.video?.prompt || '',
     social: {
-      quote: extractBestQuote(sermonSummary.manuscript, sermonSummary.applications),
+      quote: structuredPrompts.quote,
       caption:
-        studyMediaPrompts.social ||
+        structuredPrompts.social?.prompt ||
         `${sermonSummary.title} | ${sermonSummary.passage}\n\n${sermonSummary.theme}`,
     },
   }
@@ -342,6 +364,8 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
               }}
               token={token}
               autoPrompt={autoPrompts.image}
+              autoPromptFields={autoPrompts.imageFields}
+              onGenerated={() => setRefreshKey((prev) => prev + 1)}
             />
           </div>
         )}
