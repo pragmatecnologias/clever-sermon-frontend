@@ -52,12 +52,21 @@ interface SlideLayout {
   boxes: SlideFieldBox[]
 }
 
+type LocalBackgroundPreset = 'cyberpunk' | 'modern' | 'aurora' | 'minimal'
+
+const LOCAL_BACKGROUND_PRESET_OPTIONS: Array<{ value: LocalBackgroundPreset; label: string }> = [
+  { value: 'cyberpunk', label: 'Cyberpunk Neon' },
+  { value: 'modern', label: 'Modern Geometric' },
+  { value: 'aurora', label: 'Aurora Glow' },
+  { value: 'minimal', label: 'Minimal Studio' },
+]
+
 const slideLayouts: SlideLayout[] = [
   {
     layoutKey: 'title_centered_v1',
     boxes: [
-      { field: 'title', x: 10, y: 25, w: 80, h: 18, variant: 'title' },
-      { field: 'subtitle', x: 15, y: 48, w: 70, h: 12, variant: 'subtitle' },
+      { field: 'title', x: 8, y: 22, w: 84, h: 18, variant: 'title' },
+      { field: 'subtitle', x: 12, y: 45, w: 76, h: 12, variant: 'subtitle' },
     ],
   },
   {
@@ -84,22 +93,22 @@ const slideLayouts: SlideLayout[] = [
   {
     layoutKey: 'scripture_centered_v1',
     boxes: [
-      { field: 'reference', x: 12, y: 12, w: 76, h: 10, variant: 'reference' },
-      { field: 'lines', x: 12, y: 26, w: 76, h: 56, variant: 'body', multiline: true },
+      { field: 'reference', x: 10, y: 10, w: 80, h: 9, variant: 'reference' },
+      { field: 'lines', x: 10, y: 23, w: 80, h: 62, variant: 'body', multiline: true },
     ],
   },
   {
     layoutKey: 'application_bullets_v1',
     boxes: [
-      { field: 'title', x: 8, y: 4, w: 84, h: 22, variant: 'title' },
-      { field: 'bullets', x: 10, y: 30, w: 80, h: 52, variant: 'body', multiline: true },
+      { field: 'title', x: 8, y: 4, w: 84, h: 18, variant: 'title' },
+      { field: 'bullets', x: 10, y: 24, w: 80, h: 60, variant: 'body', multiline: true },
     ],
   },
   {
     layoutKey: 'invitation_centered_v1',
     boxes: [
-      { field: 'title', x: 10, y: 25, w: 80, h: 14, variant: 'title' },
-      { field: 'message', x: 14, y: 44, w: 72, h: 32, variant: 'message', multiline: true },
+      { field: 'title', x: 8, y: 20, w: 84, h: 14, variant: 'title' },
+      { field: 'message', x: 12, y: 38, w: 76, h: 40, variant: 'message', multiline: true },
     ],
   },
 ]
@@ -134,11 +143,16 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
   const [notesDrafts, setNotesDrafts] = useState<Record<string, string>>({})
   const [styleDrafts, setStyleDrafts] = useState<Record<string, Record<string, FieldStyle>>>({})
   const [activeField, setActiveField] = useState<{ slideId: string; field: string } | null>(null)
-  const [lineSpacing, setLineSpacing] = useState(1.45)
+  const [lineSpacing, setLineSpacing] = useState(1.28)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [exporting, setExporting] = useState(false)
   const [columns, setColumns] = useState<1 | 2 | 3>(1)
+  const [imagePreviews, setImagePreviews] = useState<Record<string, string>>({})
+  const [globalImageProvider, setGlobalImageProvider] = useState<'local' | 'openai'>('local')
+  const [globalImagePreset, setGlobalImagePreset] = useState<LocalBackgroundPreset>('cyberpunk')
+  const [generatingAllBackgrounds, setGeneratingAllBackgrounds] = useState(false)
+  const previewScale = columns === 1 ? 1 : columns === 2 ? 0.62 : 0.48
 
   const fontOptions = useMemo(
     () => ['Playfair Display', 'Source Sans Pro', 'Lora', 'Merriweather', 'Montserrat', 'Poppins'],
@@ -167,45 +181,85 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
       case 'title':
         return {
           fontFamily: headingFont,
-          fontSize: 54,
+          fontSize: 42,
           color: deck?.theme?.primaryColor || '#1D4ED8',
           bold: true,
           align: 'center',
           verticalAlign: 'middle',
           backgroundColor: '#FFFFFF',
-          backgroundOpacity: 1,
+          backgroundOpacity: 0.86,
         }
       case 'subtitle':
         return {
           fontFamily: bodyFont,
-          fontSize: 28,
-          color: '#666666',
+          fontSize: 20,
+          color: '#334155',
           align: 'center',
           verticalAlign: 'middle',
           backgroundColor: '#FFFFFF',
-          backgroundOpacity: 1,
+          backgroundOpacity: 0.74,
         }
       case 'reference':
         return {
           fontFamily: headingFont,
-          fontSize: 24,
+          fontSize: 28,
           color: deck?.theme?.primaryColor || '#1D4ED8',
           bold: true,
           align: 'center',
           verticalAlign: 'top',
           backgroundColor: '#FFFFFF',
-          backgroundOpacity: 1,
+          backgroundOpacity: 0.86,
+        }
+      case 'message':
+        return {
+          fontFamily: bodyFont,
+          fontSize: 24,
+          color: '#0f172a',
+          align: 'center',
+          verticalAlign: 'middle',
+          backgroundColor: '#FFFFFF',
+          backgroundOpacity: 0.72,
         }
       default:
         return {
           fontFamily: bodyFont,
-          fontSize: 28,
-          color: '#333333',
+          fontSize: 21,
+          color: '#1e293b',
           align: 'left',
           verticalAlign: 'top',
           backgroundColor: '#FFFFFF',
-          backgroundOpacity: 1,
+          backgroundOpacity: 0.76,
         }
+    }
+  }
+
+  const normalizeFieldStyle = (variant: SlideFieldBox['variant'], style?: FieldStyle): FieldStyle => {
+    const base = defaultStyleForField(variant)
+    const candidate = { ...base, ...(style || {}) }
+    const fontSize = Number(candidate.fontSize || base.fontSize || 20)
+    const maxByVariant: Record<string, number> = {
+      title: 50,
+      subtitle: 28,
+      reference: 34,
+      body: 28,
+      message: 30,
+      caption: 24,
+    }
+    const minByVariant: Record<string, number> = {
+      title: 28,
+      subtitle: 16,
+      reference: 18,
+      body: 16,
+      message: 18,
+      caption: 14,
+    }
+    const key = String(variant || 'body')
+    const min = minByVariant[key] ?? 16
+    const max = maxByVariant[key] ?? 30
+    return {
+      ...candidate,
+      fontSize: Math.max(min, Math.min(max, fontSize)),
+      backgroundOpacity: Math.max(0.45, Math.min(1, Number(candidate.backgroundOpacity ?? base.backgroundOpacity ?? 0.8))),
     }
   }
 
@@ -232,10 +286,85 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
     })
   }
 
+  const getPreviewFieldScale = (
+    variant: SlideFieldBox['variant'],
+    value: string,
+    multiline: boolean | undefined,
+  ) => {
+    let scale = previewScale
+
+    if (variant === 'title') {
+      scale *= columns === 1 ? 1 : columns === 2 ? 0.86 : 0.78
+    } else if (variant === 'reference') {
+      scale *= columns === 1 ? 1 : columns === 2 ? 0.88 : 0.8
+    } else if (variant === 'subtitle') {
+      scale *= columns === 1 ? 1 : columns === 2 ? 0.9 : 0.84
+    } else {
+      scale *= columns === 1 ? 1 : columns === 2 ? 0.9 : 0.84
+    }
+
+    const length = String(value || '').trim().length
+    if (!multiline && length > 0) {
+      const singleLineLimit = columns === 1 ? 34 : columns === 2 ? 22 : 16
+      if (length > singleLineLimit) {
+        const ratio = singleLineLimit / length
+        scale *= Math.max(0.62, ratio + 0.18)
+      }
+    }
+
+    if (multiline && length > 0) {
+      const multilineLimit = columns === 1 ? 220 : columns === 2 ? 150 : 100
+      if (length > multilineLimit) {
+        const ratio = multilineLimit / length
+        scale *= Math.max(0.68, ratio + 0.22)
+      }
+    }
+
+    return Math.max(0.34, scale)
+  }
+
   useEffect(() => {
     loadDeck()
     loadSlides()
   }, [deckId])
+
+  useEffect(() => {
+    const hasPendingImages = slides.some(
+      (slide) =>
+        (String(slide.imageStatus || '').toLowerCase() === 'pending' && !slide.imageUrl) ||
+        (String(slide.contentImageStatus || '').toLowerCase() === 'pending' && !slide.contentImageUrl),
+    )
+    if (!hasPendingImages) return
+
+    const interval = setInterval(() => {
+      loadSlides()
+    }, 3000)
+
+    return () => clearInterval(interval)
+  }, [slides])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadPreviews = async () => {
+      for (const slide of slides) {
+        if (String(slide.imageStatus || '').toLowerCase() !== 'ready') continue
+        if (imagePreviews[slide.id]) continue
+        try {
+          const blob = await slidesApi.getSlideImageBlob(slide.id, token)
+          if (cancelled) return
+          const url = URL.createObjectURL(blob)
+          setImagePreviews((prev) => ({ ...prev, [slide.id]: url }))
+        } catch (err) {
+          // keep fallback rendering when image fetch fails
+          console.error(`Failed to load slide image preview for ${slide.id}`, err)
+        }
+      }
+    }
+    loadPreviews()
+    return () => {
+      cancelled = true
+    }
+  }, [slides, token, imagePreviews])
 
   useEffect(() => {
     const nextContentDrafts: Record<string, Record<string, string>> = {}
@@ -246,7 +375,8 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
       const fields = layout?.boxes?.map((box) => box.field) || Object.keys(slide.content || {})
 
       nextContentDrafts[slide.id] = {}
-      nextStyleDrafts[slide.id] = (slide.content?.__styles as Record<string, FieldStyle>) || {}
+      const existingStyles = (slide.content?.__styles as Record<string, FieldStyle>) || {}
+      nextStyleDrafts[slide.id] = {}
       fields.forEach((fieldKey: string) => {
         const value = slide.content?.[fieldKey]
         if (Array.isArray(value)) {
@@ -257,9 +387,7 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
           nextContentDrafts[slide.id][fieldKey] = ''
         }
         const variant = layout?.boxes?.find((box) => box.field === fieldKey)?.variant
-        if (!nextStyleDrafts[slide.id][fieldKey]) {
-          nextStyleDrafts[slide.id][fieldKey] = defaultStyleForField(variant)
-        }
+        nextStyleDrafts[slide.id][fieldKey] = normalizeFieldStyle(variant, existingStyles[fieldKey])
       })
       nextNotesDrafts[slide.id] = slide.speakerNotes || ''
     })
@@ -333,6 +461,28 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
     }
   }
 
+  const handleGenerateAllBackgrounds = async () => {
+    if (!slides.length) return
+    const provider = globalImageProvider
+    const preset = provider === 'local' ? globalImagePreset : undefined
+
+    setGeneratingAllBackgrounds(true)
+    setError('')
+    try {
+      setImagePreviews({})
+      await Promise.all(
+        slides.map((slide) =>
+          slidesApi.generateSlideImage(slide.id, provider, token, slide.imagePrompt, preset, 'background')
+        )
+      )
+      await loadSlides()
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to generate background image')
+    } finally {
+      setGeneratingAllBackgrounds(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -401,6 +551,38 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
             </button>
           )}
         </div>
+      </div>
+
+      <div className="border border-white/10 rounded-xl p-4 bg-black/20 space-y-3">
+        <p className="text-sm font-medium">Background Image (All Slides)</p>
+        <select
+          className="w-full px-3 py-2 border border-white/10 rounded-lg bg-black/40 text-sm text-gray-100"
+          value={globalImageProvider}
+          onChange={(e) => setGlobalImageProvider(e.target.value as 'local' | 'openai')}
+        >
+          <option value="local">Local Generated</option>
+          <option value="openai">OpenAI Generated</option>
+        </select>
+        {globalImageProvider === 'local' && (
+          <select
+            className="w-full px-3 py-2 border border-white/10 rounded-lg bg-black/40 text-sm text-gray-100"
+            value={globalImagePreset}
+            onChange={(e) => setGlobalImagePreset(e.target.value as LocalBackgroundPreset)}
+          >
+            {LOCAL_BACKGROUND_PRESET_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        )}
+        <button
+          onClick={handleGenerateAllBackgrounds}
+          disabled={generatingAllBackgrounds}
+          className="w-full cyber-outline px-4 py-2 rounded-lg text-sm disabled:opacity-60"
+        >
+          {generatingAllBackgrounds ? 'Generating Backgrounds...' : 'Generate Backgrounds for All Slides'}
+        </button>
       </div>
 
       {/* Text Formatting Toolbar */}
@@ -500,27 +682,43 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
                 <p className="text-xs text-gray-500">{slide.type}</p>
               </div>
               <div
-                className="relative w-full rounded-md border border-white/10 bg-slate-50"
-                style={{ aspectRatio: '16 / 9' }}
+                className="relative w-full rounded-md border border-white/10 overflow-hidden"
+                style={{
+                  aspectRatio: '16 / 9',
+                  background: imagePreviews[slide.id] || slide.imageUrl
+                    ? undefined
+                    : `linear-gradient(140deg, ${hexToRgba(deck?.theme?.primaryColor || '#1D4ED8', 0.14)} 0%, ${hexToRgba(deck?.theme?.secondaryColor || '#0f172a', 0.18)} 55%, rgba(248,250,252,0.96) 100%)`,
+                }}
               >
+                {(imagePreviews[slide.id] || slide.imageUrl) && (
+                  <>
+                    <div
+                      className="absolute inset-0 bg-cover bg-center"
+                      style={{ backgroundImage: `url(${imagePreviews[slide.id] || slide.imageUrl})` }}
+                    />
+                    <div className="absolute inset-0 bg-slate-900/20" />
+                  </>
+                )}
                 {layout?.boxes?.map((box) => {
                   const value = contentDrafts[slide.id]?.[box.field] || ''
                   const style = styleDrafts[slide.id]?.[box.field] || defaultStyleForField(box.variant)
+                  const fieldScale = getPreviewFieldScale(box.variant, value, box.multiline)
                   const textStyle: React.CSSProperties = {
                     fontFamily: style.fontFamily,
-                    fontSize: style.fontSize ? `${style.fontSize}px` : undefined,
+                    fontSize: style.fontSize ? `${Math.max(9, style.fontSize * fieldScale)}px` : undefined,
                     color: style.color,
                     fontWeight: style.bold ? 700 : 400,
                     fontStyle: style.italic ? 'italic' : 'normal',
                     textDecoration: style.underline ? 'underline' : 'none',
                     textAlign: style.align,
-                    lineHeight: box.multiline ? String(lineSpacing) : undefined,
+                    lineHeight: box.multiline ? String(Math.max(1.04, lineSpacing * fieldScale)) : undefined,
+                    overflow: 'hidden',
                   }
 
                   return (
                     <div
                       key={box.field}
-                      className="absolute flex rounded border border-slate-200"
+                      className="absolute flex rounded border border-slate-300/70 shadow-[0_8px_24px_-18px_rgba(0,0,0,0.55)]"
                       style={{
                         left: `${box.x}%`,
                         top: `${box.y}%`,
@@ -533,8 +731,8 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
                     >
                       {box.multiline ? (
                         <textarea
-                          className="w-full resize-none bg-transparent border-0 px-2 py-1 text-xs"
-                          style={textStyle}
+                          className="w-full resize-none bg-transparent border-0 text-xs"
+                          rows={box.variant === 'body' ? 8 : 5}
                           value={value}
                           onFocus={() => setActiveField({ slideId: slide.id, field: box.field })}
                           onChange={(e) =>
@@ -547,11 +745,17 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
                             }))
                           }
                           onBlur={() => saveEditingSlide(slide.id)}
+                          style={{
+                            ...textStyle,
+                            paddingLeft: `${Math.max(3, 10 * fieldScale)}px`,
+                            paddingRight: `${Math.max(3, 10 * fieldScale)}px`,
+                            paddingTop: `${Math.max(2, 7 * fieldScale)}px`,
+                            paddingBottom: `${Math.max(2, 7 * fieldScale)}px`,
+                          }}
                         />
                       ) : (
                         <input
-                          className="w-full h-full bg-transparent border-0 px-2 py-1 text-xs"
-                          style={textStyle}
+                          className="w-full h-full bg-transparent border-0 text-xs"
                           value={value}
                           onFocus={() => setActiveField({ slideId: slide.id, field: box.field })}
                           onChange={(e) =>
@@ -564,6 +768,13 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
                             }))
                           }
                           onBlur={() => saveEditingSlide(slide.id)}
+                          style={{
+                            ...textStyle,
+                            paddingLeft: `${Math.max(3, 10 * fieldScale)}px`,
+                            paddingRight: `${Math.max(3, 10 * fieldScale)}px`,
+                            paddingTop: `${Math.max(2, 7 * fieldScale)}px`,
+                            paddingBottom: `${Math.max(2, 7 * fieldScale)}px`,
+                          }}
                         />
                       )}
                     </div>

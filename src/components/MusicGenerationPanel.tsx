@@ -18,6 +18,7 @@ export default function MusicGenerationPanel({
   sermonId, 
   workspace,
   token,
+  autoPrompt,
   onGenerated 
 }: MusicGenerationPanelProps) {
   const [prompt, setPrompt] = useState('')
@@ -30,6 +31,12 @@ export default function MusicGenerationPanel({
   useEffect(() => {
     loadGenres()
   }, [])
+
+  useEffect(() => {
+    if (autoPrompt && !prompt.trim()) {
+      setPrompt(autoPrompt)
+    }
+  }, [autoPrompt, prompt])
 
   const loadGenres = async () => {
     try {
@@ -45,6 +52,7 @@ export default function MusicGenerationPanel({
   }
 
   const generateAutoPrompt = () => {
+    if (autoPrompt?.trim()) return autoPrompt.trim()
     const tone = workspace.metadata?.tone || 'encouraging'
     const theme = workspace.theme || 'faith'
     

@@ -24,10 +24,14 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
   const [progressMessage, setProgressMessage] = useState('')
   const [generatedDeckId, setGeneratedDeckId] = useState<string | null>(null)
   const [showEditor, setShowEditor] = useState(false)
+  const [existingDeckStatus, setExistingDeckStatus] = useState<string | null>(null)
+  const [backgroundProvider, setBackgroundProvider] = useState<'local' | 'openai'>('local')
+  const [backgroundPreset, setBackgroundPreset] = useState<'cyberpunk' | 'modern' | 'aurora' | 'minimal'>('modern')
 
   useEffect(() => {
     loadThemes()
-  }, [])
+    loadExistingDeckContext()
+  }, [workspace?.id, token])
 
   const loadThemes = async () => {
     try {
@@ -41,7 +45,52 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
     }
   }
 
-  const handleSyncWorkspace = async () => {
+  const loadExistingDeckContext = async () => {
+    if (!workspace?.id || !token) return
+    try {
+      // First restore synced sermon context, even when a deck was not generated yet.
+      const sermons = await slidesApi.getSermons(token)
+      const normalizedSermons = Array.isArray(sermons) ? sermons : []
+      const workspaceSermons = normalizedSermons.filter((sermon: any) => sermon?.workspaceId === workspace.id)
+      if (workspaceSermons.length) {
+        workspaceSermons.sort(
+          (a: any, b: any) =>
+            new Date(b?.updatedAt || b?.createdAt || 0).getTime() - new Date(a?.updatedAt || a?.createdAt || 0).getTime(),
+        )
+        if (workspaceSermons[0]?.id) {
+          setSermonId(workspaceSermons[0].id)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load existing sermon context:', err)
+    }
+
+    try {
+      const decks = await slidesApi.getDecks(token)
+      const normalizedDecks = Array.isArray(decks) ? decks : []
+      const workspaceDecks = normalizedDecks.filter((deck: any) => deck?.sermon?.workspaceId === workspace.id)
+      if (!workspaceDecks.length) return
+
+      workspaceDecks.sort(
+        (a: any, b: any) =>
+          new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime(),
+      )
+      const latest = workspaceDecks[0]
+      if (latest?.id) {
+        setGeneratedDeckId(latest.id)
+        setSermonId(latest?.sermon?.id || null)
+        const status = String(latest?.status || '').toLowerCase() || null
+        setExistingDeckStatus(status)
+        if (status === 'ready' || status === 'completed') {
+          setShowEditor(true)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load existing deck context:', err)
+    }
+  }
+
+  const handleSyncWorkspace = async (): Promise<string | null> => {
     setSyncing(true)
     setError(null)
 
@@ -112,18 +161,21 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
 
       const sermon = await slidesApi.syncWorkspace(syncData, token)
       setSermonId(sermon.id)
+      return sermon.id
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to sync workspace')
+      return null
     } finally {
       setSyncing(false)
     }
   }
 
   const handleGenerateDeck = async () => {
-    if (!sermonId) {
-      await handleSyncWorkspace()
-      return
+    let resolvedSermonId = sermonId
+    if (!resolvedSermonId) {
+      resolvedSermonId = await handleSyncWorkspace()
     }
+    if (!resolvedSermonId) return
 
     setGenerating(true)
     setError(null)
@@ -132,7 +184,10 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
 
     try {
       const themeId = selectedTheme && selectedTheme.trim() !== '' ? selectedTheme : undefined
-      const deck = await slidesApi.generateDeck(sermonId, themeId, token, 'long')
+      const deck = await slidesApi.generateDeck(resolvedSermonId, themeId, token, 'long', {
+        backgroundProvider,
+        backgroundPreset: backgroundProvider === 'local' ? backgroundPreset : undefined,
+      })
       
       // Track progress via SSE
       const SLIDES_API_URL = process.env.NEXT_PUBLIC_SLIDES_API_URL || 'http://localhost:3001/api/v1'
@@ -141,6 +196,7 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
       )
 
       setGeneratedDeckId(deck.id)
+      setExistingDeckStatus('generating')
       
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data)
@@ -152,11 +208,13 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
           setGenerating(false)
           setProgress(100)
           setProgressMessage('Deck generation complete!')
+          setExistingDeckStatus('ready')
           setShowEditor(true)
           onGenerated?.()
         } else if (data.status === 'failed') {
           eventSource.close()
           setGenerating(false)
+          setExistingDeckStatus('failed')
           setError('Deck generation failed')
         }
       }
@@ -164,6 +222,7 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
       eventSource.onerror = () => {
         eventSource.close()
         setGenerating(false)
+        setExistingDeckStatus('failed')
         setError('Connection lost during generation')
       }
     } catch (err: any) {
@@ -184,7 +243,7 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
         <div className="border border-yellow-400/40 bg-yellow-500/10 text-yellow-100 text-sm rounded-xl px-4 py-3">
           <p className="font-medium mb-1">Workspace not synced</p>
           <p className="text-xs text-yellow-200/80">
-            Click "Sync Workspace" to send your sermon content to the slides app
+            Click "Sync & Generate" to sync your sermon content and generate slides in one step.
           </p>
         </div>
       )}
@@ -193,8 +252,13 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
         <div className="border border-green-400/40 bg-green-500/10 text-green-100 text-sm rounded-xl px-4 py-3">
           <p className="flex items-center gap-2">
             <Sparkles className="w-4 h-4" />
-            Workspace synced! Ready to generate slides.
+            Workspace synced. {generatedDeckId ? 'Existing deck loaded.' : 'Ready to generate slides.'}
           </p>
+          {generatedDeckId ? (
+            <p className="text-xs text-green-200/80 mt-1">
+              Deck status: {existingDeckStatus || 'unknown'}.
+            </p>
+          ) : null}
         </div>
       )}
 
@@ -217,6 +281,32 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
           </select>
         </div>
       )}
+
+      <div>
+        <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+          Background Image
+        </label>
+        <select
+          value={backgroundProvider}
+          onChange={(e) => setBackgroundProvider(e.target.value as 'local' | 'openai')}
+          className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm mb-2"
+        >
+          <option value="local">Local Generated</option>
+          <option value="openai">OpenAI Generated</option>
+        </select>
+        {backgroundProvider === 'local' && (
+          <select
+            value={backgroundPreset}
+            onChange={(e) => setBackgroundPreset(e.target.value as 'cyberpunk' | 'modern' | 'aurora' | 'minimal')}
+            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+          >
+            <option value="cyberpunk">Cyberpunk Neon</option>
+            <option value="modern">Modern Geometric</option>
+            <option value="aurora">Aurora Glow</option>
+            <option value="minimal">Minimal Studio</option>
+          </select>
+        )}
+      </div>
 
       {/* Outline Preview */}
       {workspace.outlines?.[0] && (
@@ -294,26 +384,6 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
 
       {/* Action Buttons */}
       <div className="space-y-2">
-        {!sermonId && (
-          <button
-            onClick={handleSyncWorkspace}
-            disabled={syncing}
-            className="w-full cyber-outline text-sm px-4 py-3 rounded-xl disabled:opacity-60 flex items-center justify-center gap-2"
-          >
-            {syncing ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Syncing Workspace...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                Sync Workspace
-              </>
-            )}
-          </button>
-        )}
-
         <button
           onClick={handleGenerateDeck}
           disabled={generating || syncing}

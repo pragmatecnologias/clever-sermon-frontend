@@ -8,6 +8,7 @@ interface VideoGenerationPanelProps {
   workspaceId: string
   sermonId?: string
   token: string
+  videoPrompt?: string
   onGenerated?: () => void
 }
 
@@ -15,6 +16,7 @@ export default function VideoGenerationPanel({
   workspaceId, 
   sermonId,
   token,
+  videoPrompt,
   onGenerated 
 }: VideoGenerationPanelProps) {
   const [deckId, setDeckId] = useState('')
@@ -73,6 +75,13 @@ export default function VideoGenerationPanel({
           Combines your slide deck with audio narration or background music into a video file
         </p>
       </div>
+
+      {videoPrompt?.trim() ? (
+        <div className="border border-pink-400/30 bg-pink-500/10 text-pink-100 text-sm rounded-xl px-4 py-3">
+          <p className="text-[11px] uppercase tracking-wider text-pink-200/90 mb-1">Study Video Prompt</p>
+          <p className="text-xs text-pink-100/90 leading-relaxed">{videoPrompt}</p>
+        </div>
+      ) : null}
 
       {/* Deck Selection */}
       <div>

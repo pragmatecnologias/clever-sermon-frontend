@@ -1,6 +1,6 @@
 'use client'
 
-import { BookOpen, Brain, Compass, Layers, PenTool, Sparkles } from 'lucide-react'
+import { BookOpen, Brain, Compass, FileText, Layers, PenTool, Sparkles } from 'lucide-react'
 
 export type Phase = 'PASSAGE' | 'STUDY' | 'THEME' | 'OUTLINE' | 'WRITE' | 'REFINE' | 'DELIVER'
 
@@ -49,7 +49,7 @@ export default function PhaseNavigation({ activePhase, onPhaseChange, progress }
     { 
       id: 'WRITE' as Phase,
       label: 'Write',
-      icon: PenTool,
+      icon: FileText,
       description: 'Manuscript and notes',
       complete: progress.manuscriptWritten
     },

@@ -10,6 +10,7 @@ interface AudioGenerationPanelProps {
   workspace: any
   token: string
   autoText?: string
+  narrationPrompt?: string
   onGenerated?: () => void
 }
 
@@ -18,6 +19,7 @@ export default function AudioGenerationPanel({
   sermonId, 
   workspace,
   token,
+  narrationPrompt,
   onGenerated 
 }: AudioGenerationPanelProps) {
   const [source, setSource] = useState<'manuscript' | 'scripture' | 'custom'>('manuscript')
@@ -145,6 +147,12 @@ export default function AudioGenerationPanel({
 
       {/* Text Input */}
       <div>
+        {narrationPrompt?.trim() ? (
+          <div className="mb-3 border border-amber-400/30 bg-amber-500/10 rounded-lg px-3 py-2">
+            <p className="text-[11px] uppercase tracking-wider text-amber-200/90 mb-1">Study Narration Prompt</p>
+            <p className="text-xs text-amber-100/90 leading-relaxed">{narrationPrompt}</p>
+          </div>
+        ) : null}
         <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
           Text to Narrate
         </label>

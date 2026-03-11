@@ -134,6 +134,8 @@ export default function WorkspaceDetailPage() {
   const [citationValidations, setCitationValidations] = useState<Record<string, any>>({})
   const [dnaIntegrityReport, setDnaIntegrityReport] = useState<SermonIntegrityReport | null>(null)
   const [dnaIntegrityLoading, setDnaIntegrityLoading] = useState(false)
+  const [dnaIntegrityExpanded, setDnaIntegrityExpanded] = useState(false)
+  const [dnaFlowExpanded, setDnaFlowExpanded] = useState(false)
   const [coachMode, setCoachMode] = useState<'refine' | 'self_reflection'>('refine')
   const [coachListenerProfile, setCoachListenerProfile] = useState('general_congregation')
   const [socraticCoachSession, setSocraticCoachSession] = useState<any>(null)
@@ -1371,7 +1373,10 @@ export default function WorkspaceDetailPage() {
   }
 
   const openReferencePreview = async (reference: string, context?: string) => {
-    const normalized = String(reference || '').trim()
+    const normalized = String(reference || '')
+      .replace(/[–—]/g, '-')
+      .replace(/\s+/g, ' ')
+      .trim()
     if (!normalized) return
     setReferencePreview({ reference: normalized, text: '', context, loading: true })
 
@@ -1384,14 +1389,18 @@ export default function WorkspaceDetailPage() {
     try {
       const translation = workspace?.language === 'es' ? 'RVR1960' : 'KJV'
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/scripture/passage`,
+        `${process.env.NEXT_PUBLIC_API_URL}/scripture/passage-with-context`,
         {
           ...config,
-          params: { reference: normalized, translation },
+          params: { reference: normalized, translation, _ts: Date.now() },
         },
       )
-      const verses = Array.isArray(response.data?.verses) ? response.data.verses : []
-      const text = verses.map((item: any) => item?.text || '').filter(Boolean).join(' ')
+      const normalizedResult = normalizeScriptureResult(response.data, normalized, translation)
+      const verses = extractVerses(normalizedResult || response.data)
+      const text = verses
+        .map((item: any) => item?.text || item?.content || '')
+        .filter(Boolean)
+        .join(' ')
       setReferencePreview({ reference: normalized, text: text || 'Passage text not available.', context, loading: false })
     } catch (error) {
       console.error('Failed to load reference preview', error)
@@ -2097,6 +2106,7 @@ export default function WorkspaceDetailPage() {
       setWorkspace(refreshed.data)
       if (type === 'dna') {
         await fetchDnaIntegrityReport()
+        setDnaIntegrityExpanded(true)
       }
     } catch (err) {
       console.error('Generation failed', err)
@@ -2727,6 +2737,8 @@ export default function WorkspaceDetailPage() {
   )
 
   const latestDnaAnalysis = workspace?.dnaAnalyses?.[0] || null
+  const isSpanishWorkspace = workspace?.language === 'es'
+  const dnaText = (en: string, es: string) => (isSpanishWorkspace ? es : en)
   const latestManuscriptText = String(workspace?.manuscripts?.[0]?.content?.text || '')
   const latestOutline = workspace?.outlines?.find((o: any) => o.isSelected) || workspace?.outlines?.[0]
   const outlinePointsForDna = getOutlinePointNodes(latestOutline?.structure || {}).map((point: any) => String(point.title || '').trim()).filter(Boolean)
@@ -2772,10 +2784,10 @@ export default function WorkspaceDetailPage() {
   })()
   const sermonType = (() => {
     const style = String(workspace?.style || '').toLowerCase()
-    if (style.includes('narrative')) return 'Narrative'
-    if (style.includes('topical')) return 'Topical'
-    if (style.includes('devotional')) return 'Devotional'
-    return 'Expository'
+    if (style.includes('narrative')) return dnaText('Narrative', 'Narrativo')
+    if (style.includes('topical')) return dnaText('Topical', 'Temático')
+    if (style.includes('devotional')) return dnaText('Devotional', 'Devocional')
+    return dnaText('Expository', 'Expositivo')
   })()
 
   const renderRail = () => (
@@ -5376,151 +5388,131 @@ export default function WorkspaceDetailPage() {
             <div className="space-y-4 relative min-h-full">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="text-xl font-semibold">Sermon DNA</h3>
-                  <p className="text-xs text-gray-400 mt-1">Integrity, composition, and theological profile</p>
+                  <h3 className="text-xl font-semibold">{dnaText('Sermon DNA', 'ADN del Sermón')}</h3>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {dnaText('Integrity, composition, and theological profile', 'Integridad, composición y perfil teológico')}
+                  </p>
                 </div>
                 <button
                   onClick={() => handleGenerate('dna')}
                   className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
                 >
-                  {actionLoading.includes('dna') ? 'Analyzing...' : 'Run Full DNA'}
+                  {actionLoading.includes('dna') ? dnaText('Analyzing...', 'Analizando...') : dnaText('Run Full DNA', 'Ejecutar ADN Completo')}
                 </button>
               </div>
 
               <div className="cyber-panel rounded-2xl p-5 space-y-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-widest cyber-muted">Refine · Citation Validation</p>
-                    <p className="text-sm text-gray-200 mt-2">
-                      Validate drafted citations here, not in Write.
-                    </p>
-                  </div>
-                  <button
-                    onClick={handleCitationValidate}
-                    className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                    disabled={actionLoading.includes('citations-validate')}
-                  >
-                    {actionLoading.includes('citations-validate') ? 'Validating...' : 'Validate Citations'}
-                  </button>
-                </div>
-                <div className="grid md:grid-cols-3 gap-3">
-                  <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                    <p className="text-xs uppercase tracking-widest cyber-muted">Drafted Citations</p>
-                    <p className="text-2xl font-semibold text-cyan-200 mt-2">{workspace?.citations?.length || 0}</p>
-                  </div>
-                  <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                    <p className="text-xs uppercase tracking-widest cyber-muted">Verified</p>
-                    <p className="text-2xl font-semibold text-cyan-200 mt-2">
-                      {(workspace?.citations || []).filter((item: any) => item?.isVerified).length}
-                    </p>
-                  </div>
-                  <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                    <p className="text-xs uppercase tracking-widest cyber-muted">Pending</p>
-                    <p className="text-2xl font-semibold text-cyan-200 mt-2">
-                      {(workspace?.citations || []).filter((item: any) => !item?.isVerified).length}
-                    </p>
-                  </div>
-                </div>
+                <details
+                  open={dnaFlowExpanded}
+                  onToggle={(event) => setDnaFlowExpanded((event.currentTarget as HTMLDetailsElement).open)}
+                  className="border border-white/10 rounded-xl p-4 bg-black/20"
+                >
+                  <summary className="cursor-pointer text-sm text-cyan-200">
+                    {dnaText('Refine · Flow Visualization', 'Refinar · Visualización de Flujo')}
+                  </summary>
+                  <p className="text-sm text-gray-200 mt-3 mb-4">
+                    {dnaText(
+                      'Inspect movement, pacing, and structural grounding without leaving Sermon DNA.',
+                      'Inspecciona movimiento, ritmo y fundamento estructural sin salir de ADN del Sermón.',
+                    )}
+                  </p>
+                  {(() => {
+                    const selectedOutline = (workspace.outlines?.find((o: any) => o.isSelected) || workspace.outlines?.[0])?.structure || {}
+                    const selectedPointNodes = getOutlinePointNodes(selectedOutline)
+                    return (
+                      <InteractiveSermonFlowSculptor
+                        bigIdea={workspace.theme || workspace.title}
+                        points={selectedOutline?.points || []}
+                        applications={selectedPointNodes.flatMap((point: any) => point.applications || []).length
+                          ? selectedPointNodes.flatMap((point: any) => point.applications || [])
+                          : (workspace.applications || []).map((app: any) => app.content)}
+                        supportingVerses={{}}
+                        illustrations={selectedPointNodes.flatMap((point: any) => point.illustrationIdeas || []).length
+                          ? selectedPointNodes.flatMap((point: any) => point.illustrationIdeas || [])
+                          : (workspace.illustrations || []).map((ill: any) => ill.content)}
+                      />
+                    )
+                  })()}
+                </details>
               </div>
 
               <div className="cyber-panel rounded-2xl p-5 space-y-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-widest cyber-muted">Refine · Flow Visualization</p>
-                    <p className="text-sm text-gray-200 mt-2">
-                      Open the Sermon Flow Sculptor from Refine when you want to test movement, pacing, and structural grounding.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setActivePhase('REFINE')
-                      setVisualizationMode('refine')
-                      setActiveSection('visualizations')
-                    }}
-                    className="cyber-outline text-xs px-4 py-2 rounded-full"
-                  >
-                    Open Flow Tools
-                  </button>
-                </div>
-              </div>
-
-              <div className="cyber-panel rounded-2xl p-5 space-y-4">
-                <p className="text-xs uppercase tracking-widest cyber-muted">Layer 1 · Sermon Integrity</p>
+                <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Layer 1 · Sermon Integrity', 'Capa 1 · Integridad del Sermón')}</p>
                 {dnaIntegrityLoading ? (
-                  <p className="text-sm text-gray-300">Running integrity checks...</p>
+                  <p className="text-sm text-gray-300">{dnaText('Running integrity checks...', 'Ejecutando chequeos de integridad...')}</p>
                 ) : dnaIntegrityReport ? (
                   <div className="grid md:grid-cols-3 gap-3">
                     <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <p className="text-xs uppercase tracking-widest cyber-muted">Integrity Score</p>
+                      <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Integrity Score', 'Puntaje de Integridad')}</p>
                       <p className="text-2xl font-semibold text-cyan-200 mt-2">{dnaIntegrityReport.overallScore}%</p>
                     </div>
                     <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <p className="text-xs uppercase tracking-widest cyber-muted">Passage Alignment</p>
+                      <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Passage Alignment', 'Alineación con el Pasaje')}</p>
                       <p className="text-2xl font-semibold text-cyan-200 mt-2">
                         {passageAlignmentScore !== null ? `${passageAlignmentScore}%` : '—'}
                       </p>
                     </div>
                     <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <p className="text-xs uppercase tracking-widest cyber-muted">Issue Mix</p>
+                      <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Issue Mix', 'Resumen de Problemas')}</p>
                       <p className="text-sm text-gray-200 mt-2">
-                        Critical {criticalIssuesCount} · Warning {warningIssuesCount}
+                        {dnaText('Critical', 'Crítico')} {criticalIssuesCount} · {dnaText('Warning', 'Advertencia')} {warningIssuesCount}
                       </p>
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-300">No integrity report yet.</p>
+                  <p className="text-sm text-gray-300">{dnaText('No integrity report yet.', 'Aún no hay reporte de integridad.')}</p>
                 )}
               </div>
 
               <div className="cyber-panel rounded-2xl p-5 space-y-4">
-                <p className="text-xs uppercase tracking-widest cyber-muted">Layer 2 · Sermon Composition</p>
+                <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Layer 2 · Sermon Composition', 'Capa 2 · Composición del Sermón')}</p>
                 <div className="grid md:grid-cols-3 gap-3">
                   <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                    <p className="text-xs uppercase tracking-widest cyber-muted">Sermon Type</p>
+                    <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Sermon Type', 'Tipo de Sermón')}</p>
                     <p className="text-lg font-semibold text-gray-100 mt-2">{sermonType}</p>
                   </div>
                   <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                    <p className="text-xs uppercase tracking-widest cyber-muted">Outline Points</p>
+                    <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Outline Points', 'Puntos del Bosquejo')}</p>
                     <p className="text-lg font-semibold text-gray-100 mt-2">{outlinePointsForDna.length || 0}</p>
                   </div>
                   <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                    <p className="text-xs uppercase tracking-widest cyber-muted">Estimated Delivery</p>
+                    <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Estimated Delivery', 'Duración Estimada')}</p>
                     <p className="text-lg font-semibold text-gray-100 mt-2">{estimatedMinutesDna ? `${estimatedMinutesDna} min` : '—'}</p>
                   </div>
                 </div>
                 <div className="grid md:grid-cols-3 gap-3">
                   <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                    <p className="text-xs uppercase tracking-widest cyber-muted">Explanation</p>
+                    <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Explanation', 'Explicación')}</p>
                     <p className="text-xl font-semibold text-cyan-200 mt-2">{explanationPct}%</p>
                   </div>
                   <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                    <p className="text-xs uppercase tracking-widest cyber-muted">Application</p>
+                    <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Application', 'Aplicación')}</p>
                     <p className="text-xl font-semibold text-cyan-200 mt-2">{applicationPct}%</p>
                   </div>
                   <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                    <p className="text-xs uppercase tracking-widest cyber-muted">Illustration</p>
+                    <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Illustration', 'Ilustración')}</p>
                     <p className="text-xl font-semibold text-cyan-200 mt-2">{illustrationPct}%</p>
                   </div>
                 </div>
                 <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                  <p className="text-xs uppercase tracking-widest cyber-muted">Scripture Usage</p>
+                  <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Scripture Usage', 'Uso de Escritura')}</p>
                   <p className="text-sm text-gray-200 mt-2">
-                    References in manuscript: {scriptureReferencesInManuscript.length} · Paragraphs: {paragraphCount}
+                    {dnaText('References in manuscript', 'Referencias en manuscrito')}: {scriptureReferencesInManuscript.length} · {dnaText('Paragraphs', 'Párrafos')}: {paragraphCount}
                   </p>
                 </div>
               </div>
 
               <div className="cyber-panel rounded-2xl p-5 space-y-4">
-                <p className="text-xs uppercase tracking-widest cyber-muted">Layer 3 · Theological Profile</p>
+                <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Layer 3 · Theological Profile', 'Capa 3 · Perfil Teológico')}</p>
                 {latestDnaAnalysis ? (
                   <div className="space-y-4">
                     <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <p className="text-xs uppercase tracking-widest cyber-muted mb-2">DNA Summary</p>
+                      <p className="text-xs uppercase tracking-widest cyber-muted mb-2">{dnaText('DNA Summary', 'Resumen ADN')}</p>
                       <p className="text-sm text-gray-300 whitespace-pre-wrap">{latestDnaAnalysis.summary}</p>
                     </div>
                     <div className="grid md:grid-cols-2 gap-3">
                       <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                        <p className="text-xs uppercase tracking-widest cyber-muted mb-2">Theological Emphasis</p>
+                        <p className="text-xs uppercase tracking-widest cyber-muted mb-2">{dnaText('Theological Emphasis', 'Énfasis Teológico')}</p>
                         {theologicalThemeCounts.length ? (
                           <div className="flex flex-wrap gap-2">
                             {theologicalThemeCounts.map(([theme, count]) => (
@@ -5533,11 +5525,11 @@ export default function WorkspaceDetailPage() {
                             ))}
                           </div>
                         ) : (
-                          <p className="text-sm text-gray-300">No themes detected yet.</p>
+                          <p className="text-sm text-gray-300">{dnaText('No themes detected yet.', 'Aún no se detectan temas.')}</p>
                         )}
                       </div>
                       <div className="border border-white/10 rounded-xl p-4 bg-black/30 space-y-3">
-                        <p className="text-xs uppercase tracking-widest cyber-muted">Core Scores</p>
+                        <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Core Scores', 'Puntajes Base')}</p>
                         {latestDnaAnalysis.scores && Object.entries(latestDnaAnalysis.scores).map(([key, value]) => (
                           <div key={key}>
                             <div className="flex justify-between text-xs uppercase tracking-widest cyber-muted mb-1">
@@ -5559,13 +5551,13 @@ export default function WorkspaceDetailPage() {
                     </p>
                   </div>
                 ) : (
-                  <p className="text-gray-100/90">No DNA analysis yet. Run Full DNA.</p>
+                  <p className="text-gray-100/90">{dnaText('No DNA analysis yet. Run Full DNA.', 'Aún no hay análisis ADN. Ejecuta ADN Completo.')}</p>
                 )}
               </div>
 
               {dnaIntegrityReport?.issues?.length ? (
                 <div className="cyber-panel rounded-2xl p-5 space-y-3">
-                  <p className="text-xs uppercase tracking-widest cyber-muted">Integrity Findings</p>
+                  <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Integrity Findings', 'Hallazgos de Integridad')}</p>
                   <div className="space-y-2">
                     {dnaIntegrityReport.issues.slice(0, 8).map((issue, index) => (
                       <div key={`${issue.category}-${index}`} className="border border-white/10 rounded-lg p-3 bg-black/30">
@@ -5581,8 +5573,14 @@ export default function WorkspaceDetailPage() {
 
               {/* Keep existing detailed checker available */}
               <div className="pt-2">
-                <details className="border border-white/10 rounded-xl p-4 bg-black/20">
-                  <summary className="cursor-pointer text-sm text-cyan-200">Open Detailed Integrity Checker</summary>
+                <details
+                  open={dnaIntegrityExpanded}
+                  onToggle={(event) => setDnaIntegrityExpanded((event.currentTarget as HTMLDetailsElement).open)}
+                  className="border border-white/10 rounded-xl p-4 bg-black/20"
+                >
+                  <summary className="cursor-pointer text-sm text-cyan-200">
+                    {dnaText('Open Detailed Integrity Checker', 'Abrir Chequeador de Integridad Detallado')}
+                  </summary>
                   <div className="mt-4">
                     <SermonIntegrityDashboard workspaceId={workspaceId} />
                   </div>

@@ -97,10 +97,19 @@ export const slidesApi = {
     themeId: string | undefined,
     token: string,
     deckSize: 'short' | 'standard' | 'long' = 'long',
+    options?: {
+      backgroundProvider?: 'local' | 'openai'
+      backgroundPreset?: string
+    }
   ) => {
     const response = await axios.post(
       `${SLIDES_API_URL}/sermons/${sermonId}/decks`,
-      { themeId, deckSize },
+      {
+        themeId,
+        deckSize,
+        backgroundProvider: options?.backgroundProvider,
+        backgroundPreset: options?.backgroundPreset,
+      },
       {
         headers: { Authorization: `Bearer ${token}` },
       }
@@ -128,6 +137,16 @@ export const slidesApi = {
     return response.data;
   },
 
+  getSermons: async (token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/sermons`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
   getThemes: async (token: string) => {
     const response = await axios.get(
       `${SLIDES_API_URL}/themes`,
@@ -148,6 +167,24 @@ export const slidesApi = {
     return response.data;
   },
 
+  generateSlideImage: async (
+    slideId: string,
+    provider: 'local' | 'openai',
+    token: string,
+    prompt?: string,
+    preset?: string,
+    target: 'background' | 'content' = 'background',
+  ) => {
+    const response = await axios.post(
+      `${SLIDES_API_URL}/slides/${slideId}/image`,
+      { provider, prompt, preset, target },
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
   updateSlide: async (slideId: string, data: any, token: string) => {
     const response = await axios.put(
       `${SLIDES_API_URL}/slides/${slideId}`,
@@ -157,6 +194,17 @@ export const slidesApi = {
       }
     );
     return response.data;
+  },
+
+  getSlideImageBlob: async (slideId: string, token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/slides/${slideId}/image`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob',
+      }
+    );
+    return response.data as Blob;
   },
 
   exportDeck: async (deckId: string, format: 'pptx' | 'pdf', token: string) => {

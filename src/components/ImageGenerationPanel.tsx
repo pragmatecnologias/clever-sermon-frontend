@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Image, Sparkles, Loader2 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
 
@@ -22,6 +22,7 @@ export default function ImageGenerationPanel({
   sermonId, 
   workspaceData, 
   token,
+  autoPrompt,
   onGenerated 
 }: ImageGenerationPanelProps) {
   const [prompt, setPrompt] = useState('')
@@ -29,6 +30,12 @@ export default function ImageGenerationPanel({
   const [preset, setPreset] = useState('worship')
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (autoPrompt && !prompt.trim()) {
+      setPrompt(autoPrompt)
+    }
+  }, [autoPrompt, prompt])
 
   const presets = [
     { value: 'worship', label: 'Worship' },
@@ -40,6 +47,7 @@ export default function ImageGenerationPanel({
   ]
 
   const generateAutoPrompt = () => {
+    if (autoPrompt?.trim()) return autoPrompt.trim()
     const theme = workspaceData.theme || 'faith'
     const scripture = workspaceData.mainPassage
     const title = workspaceData.title

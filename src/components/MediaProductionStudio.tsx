@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Sparkles, FileText, Image, Mic, Music, Video, Share2, Loader2 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
 import SlideGenerationPanel from './SlideGenerationPanel'
@@ -39,18 +39,6 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     illustrations: workspace.illustrations || [],
   }
 
-  // Auto-generate prompts based on sermon content
-  const autoPrompts = {
-    image: `Cinematic church background for sermon "${sermonSummary.title}" about ${sermonSummary.theme}. Passage: ${sermonSummary.passage}. Style: modern, inspiring, ${sermonSummary.tone}.`,
-    
-    music: `${sermonSummary.tone} worship background music for sermon about ${sermonSummary.theme}. Genre: contemporary worship with piano and strings. Mood: ${sermonSummary.tone}.`,
-    
-    social: {
-      quote: extractBestQuote(sermonSummary.manuscript, sermonSummary.applications),
-      caption: `${sermonSummary.title} | ${sermonSummary.passage}\n\n${sermonSummary.theme}`,
-    },
-  }
-
   function extractBestQuote(manuscript: string, applications: any[]): string {
     // Extract a powerful quote from manuscript or applications
     if (applications.length > 0 && applications[0].content) {
@@ -67,6 +55,67 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     }
     
     return sermonSummary.theme
+  }
+
+  const studyMediaPrompts = useMemo(() => {
+    const sections = workspace?.studyReports?.[0]?.sections || {}
+    const studyAssets = sections?.studyAssets || {}
+    const categoryAssets = studyAssets?.categoryAssets || {}
+    const movementAssets = Array.isArray(studyAssets?.movementAssets) ? studyAssets.movementAssets : []
+
+    const flattenMovement = (key: string) =>
+      movementAssets.flatMap((item: any) => (Array.isArray(item?.[key]) ? item[key] : []))
+
+    const prompts = Array.from(
+      new Set(
+        [categoryAssets?.mediaSuggestions, flattenMovement('mediaSuggestions')]
+          .flatMap((list) => (Array.isArray(list) ? list : []))
+          .map((item) => String(item || '').trim())
+          .filter(Boolean),
+      ),
+    )
+
+    const byKeyword = (keywords: string[]) =>
+      prompts.find((prompt) => {
+        const lower = prompt.toLowerCase()
+        return keywords.some((keyword) => lower.includes(keyword))
+      })
+
+    return {
+      image:
+        byKeyword(['visual', 'imagen', 'key visual', 'visual principal', 'hero image']) || '',
+      audio:
+        byKeyword(['audio', 'voz', 'voice', 'narración', 'narration', 'podcast', 'pódcast']) || '',
+      music:
+        byKeyword(['canto', 'song', 'music', 'música', 'theme song', 'canción']) || '',
+      video:
+        byKeyword(['video', 'vídeo']) || '',
+      social:
+        byKeyword(['social', 'promo', 'promoción', 'promocional']) || '',
+      all: prompts,
+    }
+  }, [workspace])
+
+  // Prompt source order: study media suggestions first, then fallback auto prompts.
+  const autoPrompts = {
+    image:
+      studyMediaPrompts.image ||
+      `Cinematic church background for sermon "${sermonSummary.title}" about ${sermonSummary.theme}. Passage: ${sermonSummary.passage}. Style: modern, inspiring, ${sermonSummary.tone}.`,
+    music:
+      studyMediaPrompts.music ||
+      `${sermonSummary.tone} worship background music for sermon about ${sermonSummary.theme}. Genre: contemporary worship with piano and strings. Mood: ${sermonSummary.tone}.`,
+    audio:
+      studyMediaPrompts.audio ||
+      `Generate sermon narration audio for "${sermonSummary.title}" on ${sermonSummary.passage} with a pastoral, clear, warm tone. Keep phrasing natural for congregational listening.`,
+    video:
+      studyMediaPrompts.video ||
+      `Compose a sermon video package for "${sermonSummary.title}" based on ${sermonSummary.passage}, combining deck pacing with clear narration and worshipful flow.`,
+    social: {
+      quote: extractBestQuote(sermonSummary.manuscript, sermonSummary.applications),
+      caption:
+        studyMediaPrompts.social ||
+        `${sermonSummary.title} | ${sermonSummary.passage}\n\n${sermonSummary.theme}`,
+    },
   }
 
   const handleGenerateAll = async () => {
@@ -150,7 +199,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
       const audio = await slidesApi.generateAudio({
         sermonId: sermonId || undefined,
         workspaceId: workspace.id,
-        text: sermonSummary.manuscript.substring(0, 5000), // Limit for API
+        text: (sermonSummary.manuscript || autoPrompts.audio).substring(0, 5000), // Limit for API
         provider: 'elevenlabs',
       }, token)
       audioId = audio.id
@@ -305,6 +354,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
               workspace={workspace}
               token={token}
               autoText={sermonSummary.manuscript}
+              narrationPrompt={autoPrompts.audio}
             />
           </div>
         )}
@@ -316,6 +366,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
               workspace={workspace}
               sermonId={workspace.sermonId}
               token={token}
+              suggestedPrompt={autoPrompts.music}
             />
           </div>
         )}
@@ -323,7 +374,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
         {/* Video */}
         {(mediaFilter === 'all' || mediaFilter === 'video') && (
           <div className="lg:col-span-2">
-            <VideoGenerationPanel workspaceId={workspace.id} token={token} />
+            <VideoGenerationPanel workspaceId={workspace.id} token={token} videoPrompt={autoPrompts.video} />
           </div>
         )}
 

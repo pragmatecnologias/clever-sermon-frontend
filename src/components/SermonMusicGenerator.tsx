@@ -8,6 +8,7 @@ interface SermonMusicGeneratorProps {
   workspace: any
   sermonId?: string
   token: string
+  suggestedPrompt?: string
   onGenerated?: () => void
 }
 
@@ -15,7 +16,7 @@ type SongMode = 'ambient_only' | 'with_lyrics' | 'chorus_only' | 'background_bed
 type MusicStyle = 'worship' | 'acoustic' | 'cinematic' | 'orchestral' | 'piano_prayer' | 'youth_contemporary' | 'choir_inspired' | 'instrumental_ambient'
 type UseCase = 'sermon-intro' | 'prayer-reflection' | 'recap-video' | 'youth-promo' | 'closing-appeal' | 'offertory' | 'meditation' | 'theme-song'
 
-export default function SermonMusicGenerator({ workspace, sermonId, token, onGenerated }: SermonMusicGeneratorProps) {
+export default function SermonMusicGenerator({ workspace, sermonId, token, suggestedPrompt, onGenerated }: SermonMusicGeneratorProps) {
   const [mode, setMode] = useState<SongMode>('with_lyrics')
   const [style, setStyle] = useState<MusicStyle>('worship')
   const [useCase, setUseCase] = useState<UseCase>('theme-song')
@@ -124,6 +125,13 @@ export default function SermonMusicGenerator({ workspace, sermonId, token, onGen
           <p className="text-xs text-gray-400">Create worship music that belongs to this sermon</p>
         </div>
       </div>
+
+      {suggestedPrompt?.trim() ? (
+        <div className="border border-purple-400/30 bg-purple-500/10 rounded-xl px-4 py-3">
+          <p className="text-[11px] uppercase tracking-wider text-purple-200/90 mb-1">Study Music Prompt</p>
+          <p className="text-xs text-purple-100/90 leading-relaxed">{suggestedPrompt}</p>
+        </div>
+      ) : null}
 
       {/* Quick Actions */}
       <div className="grid grid-cols-2 gap-3">
