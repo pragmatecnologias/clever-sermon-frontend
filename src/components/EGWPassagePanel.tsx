@@ -31,6 +31,7 @@ interface EGWPassagePanelProps {
   verseStart?: number;
   verseEnd?: number;
   language?: string;
+  showHeader?: boolean;
 }
 
 function RankingBadge({ reason }: { reason: PassageEGWInsight['rankingReason'] }) {
@@ -116,7 +117,8 @@ export default function EGWPassagePanel({
   chapter, 
   verseStart, 
   verseEnd,
-  language = 'en'
+  language = 'en',
+  showHeader = true,
 }: EGWPassagePanelProps) {
   const [data, setData] = useState<EGWPanelData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -213,13 +215,15 @@ export default function EGWPassagePanel({
   return (
     <>
       <div className="bg-gradient-to-br from-amber-900/10 to-amber-800/10 rounded-lg p-6 border border-amber-500/30">
-        <div className="flex items-center gap-2 mb-4">
-          <Book className="w-5 h-5 text-amber-400" />
-          <h3 className="text-lg font-semibold text-amber-100">🕊 Spirit of Prophecy</h3>
-          <span className="ml-auto text-xs text-amber-400/60">
-            {data.insights.length} insight{data.insights.length !== 1 ? 's' : ''}
-          </span>
-        </div>
+        {showHeader && (
+          <div className="flex items-center gap-2 mb-4">
+            <Book className="w-5 h-5 text-amber-400" />
+            <h3 className="text-lg font-semibold text-amber-100">🕊 Spirit of Prophecy</h3>
+            <span className="ml-auto text-xs text-amber-400/60">
+              {data.insights.length} insight{data.insights.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+        )}
 
         <div className="space-y-2">
           {data.insights.map(insight => (

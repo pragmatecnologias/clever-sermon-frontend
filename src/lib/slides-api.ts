@@ -6,6 +6,7 @@ export interface SyncWorkspaceData {
   workspaceId: string;
   title: string;
   seriesTitle?: string;
+  language?: string;
   mainScriptureRef: string;
   bigIdea: string;
   mainPoints: string[];
@@ -91,10 +92,15 @@ export const slidesApi = {
   },
 
   // Slides/Decks
-  generateDeck: async (sermonId: string, themeId: string | undefined, token: string) => {
+  generateDeck: async (
+    sermonId: string,
+    themeId: string | undefined,
+    token: string,
+    deckSize: 'short' | 'standard' | 'long' = 'long',
+  ) => {
     const response = await axios.post(
       `${SLIDES_API_URL}/sermons/${sermonId}/decks`,
-      { themeId },
+      { themeId, deckSize },
       {
         headers: { Authorization: `Bearer ${token}` },
       }

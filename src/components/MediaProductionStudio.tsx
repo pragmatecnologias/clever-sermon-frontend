@@ -32,8 +32,10 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     theme: workspace.theme || workspace.sermonGoals || '',
     tone: workspace.metadata?.tone || 'encouraging',
     outline: workspace.outlines?.[0]?.structure?.points || [],
+    pointNodes: workspace.outlines?.[0]?.structure?.pointNodes || [],
     manuscript: workspace.manuscripts?.[0]?.content?.text || '',
     applications: workspace.applications || [],
+    discussionQuestions: workspace.questions || workspace.discussionQuestions || [],
     illustrations: workspace.illustrations || [],
   }
 
@@ -77,29 +79,55 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     try {
       // Step 0: Sync workspace to slides app
       setCurrentStep('Syncing workspace...')
+      const pointNodes = Array.isArray(sermonSummary.pointNodes) ? sermonSummary.pointNodes : []
+      const legacyPoints = Array.isArray(sermonSummary.outline) ? sermonSummary.outline : []
+      const normalizedPoints = (pointNodes.length ? pointNodes : legacyPoints)
+        .map((point: any) => {
+          const title = typeof point === 'string' ? point : (point?.title || point?.content || '')
+          const summary = typeof point === 'string' ? '' : (point?.summary || point?.preachingInsight || '')
+          const subpoint = Array.isArray(point?.subpoints) ? point.subpoints[0] : ''
+          const verse = Array.isArray(point?.supportingVerses) ? point.supportingVerses[0] : ''
+          return [title, summary, subpoint, verse].filter(Boolean).join(' — ')
+        })
+        .filter(Boolean)
+
+      const pointApplications = pointNodes.flatMap((point: any) =>
+        Array.isArray(point?.applications) ? point.applications : [],
+      )
+      const pointQuestions = pointNodes.flatMap((point: any) =>
+        Array.isArray(point?.discussionQuestions) ? point.discussionQuestions : [],
+      )
+
+      const dedupe = (items: any[]) => Array.from(new Set(items.map((item) => String(item).trim()).filter(Boolean)))
+
       const syncData = {
         workspaceId: workspace.id,
         title: sermonSummary.title,
         seriesTitle: workspace.seriesTitle,
+        language: workspace.language || workspace.metadata?.language || 'en',
         mainScriptureRef: sermonSummary.passage,
         bigIdea: sermonSummary.theme,
-        mainPoints: sermonSummary.outline.map((p: any) => 
-          typeof p === 'string' ? p : (p.title || p.content || '')
-        ),
+        mainPoints: normalizedPoints,
         audienceContext: workspace.audienceProfile,
         tone: sermonSummary.tone,
-        notes: sermonSummary.manuscript,
+        notes: [sermonSummary.manuscript, workspace.studyReports?.[0]?.sections?.summary].filter(Boolean).join('\n\n'),
         outline: workspace.outlines?.[0],
         manuscript: workspace.manuscripts?.[0],
-        applications: sermonSummary.applications,
-        questions: workspace.questions || [],
+        applications: dedupe([
+          ...sermonSummary.applications.map((item: any) => item?.content || item?.text || item).filter(Boolean),
+          ...pointApplications,
+        ]),
+        questions: dedupe([
+          ...sermonSummary.discussionQuestions.map((item: any) => item?.question || item?.text || item).filter(Boolean),
+          ...pointQuestions,
+        ]),
       }
       const sermon = await slidesApi.syncWorkspace(syncData, token)
       sermonId = sermon.id
       
       // Step 1: Generate Slides
       setCurrentStep('Generating slide deck...')
-      const deck = await slidesApi.generateDeck(sermonId!, undefined, token)
+      const deck = await slidesApi.generateDeck(sermonId!, undefined, token, 'long')
       deckId = deck.id
       
       // Wait for deck to be ready

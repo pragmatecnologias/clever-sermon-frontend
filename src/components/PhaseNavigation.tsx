@@ -1,8 +1,8 @@
 'use client'
 
-import { BookOpen, Brain, Compass, PenTool, Sparkles } from 'lucide-react'
+import { BookOpen, Brain, Compass, Layers, PenTool, Sparkles } from 'lucide-react'
 
-export type Phase = 'DISCOVER' | 'ANALYZE' | 'STRATEGIZE' | 'CREATE' | 'REFINE'
+export type Phase = 'PASSAGE' | 'STUDY' | 'THEME' | 'OUTLINE' | 'WRITE' | 'REFINE' | 'DELIVER'
 
 interface PhaseNavigationProps {
   activePhase: Phase
@@ -19,39 +19,53 @@ interface PhaseNavigationProps {
 export default function PhaseNavigation({ activePhase, onPhaseChange, progress }: PhaseNavigationProps) {
   const phases = [
     { 
-      id: 'DISCOVER' as Phase, 
-      label: 'Discover', 
-      icon: BookOpen,
-      description: 'Study the text',
-      complete: progress.passageStudied
-    },
-    { 
-      id: 'ANALYZE' as Phase, 
-      label: 'Analyze', 
-      icon: Brain,
-      description: 'Understand the message',
-      complete: progress.themesIdentified
-    },
-    { 
-      id: 'STRATEGIZE' as Phase, 
-      label: 'Strategize', 
+      id: 'THEME' as Phase, 
+      label: 'Theme', 
       icon: Compass,
-      description: 'Plan the sermon',
+      description: 'Direction and setup',
       complete: progress.strategySelected
     },
     { 
-      id: 'CREATE' as Phase, 
-      label: 'Create', 
+      id: 'PASSAGE' as Phase, 
+      label: 'Passage', 
+      icon: BookOpen,
+      description: 'Scripture intelligence',
+      complete: progress.passageStudied
+    },
+    { 
+      id: 'STUDY' as Phase, 
+      label: 'Study', 
+      icon: Brain,
+      description: 'Sermon material',
+      complete: progress.themesIdentified
+    },
+    { 
+      id: 'OUTLINE' as Phase, 
+      label: 'Outline', 
       icon: PenTool,
-      description: 'Build the sermon',
+      description: 'Point structure',
       complete: progress.outlineCreated
     },
     { 
+      id: 'WRITE' as Phase,
+      label: 'Write',
+      icon: PenTool,
+      description: 'Manuscript and notes',
+      complete: progress.manuscriptWritten
+    },
+    {
       id: 'REFINE' as Phase, 
       label: 'Refine', 
       icon: Sparkles,
       description: 'Polish and improve',
       complete: progress.manuscriptWritten
+    },
+    {
+      id: 'DELIVER' as Phase,
+      label: 'Deliver',
+      icon: Layers,
+      description: 'Slides and media',
+      complete: false
     },
   ]
 

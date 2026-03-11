@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, ReactNode } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
-import { AlertCircle, Book, BookOpen, Clock, Layers, Lightbulb, MessageSquare, Network, Rows } from 'lucide-react'
+import { AlertCircle, Book, BookOpen, Clock, Film, Layers, Lightbulb, MessageSquare, Network, Rows } from 'lucide-react'
 import AudioPlayer from '@/components/AudioPlayer'
 import StudyNotes from '@/components/StudyNotes'
 import InteractiveCanonicalConstellation from '@/components/InteractiveCanonicalConstellation'
@@ -14,7 +14,6 @@ import EGWPassagePanel from '@/components/EGWPassagePanel'
 import SDASmartBoostBanner from '@/components/SDASmartBoostBanner'
 import WorkspaceEGWToggle from '@/components/WorkspaceEGWToggle'
 import StudyReportEGWSection from '@/components/StudyReportEGWSection'
-import OutlinePointEGWSupport from '@/components/OutlinePointEGWSupport'
 import { getBibleBookMatches, getBibleBookChapterCount, matchBibleBookFromInput } from '@/utils/bibleBooks'
 import PhaseNavigation, { Phase } from '@/components/PhaseNavigation'
 import ProgressIndicator from '@/components/ProgressIndicator'
@@ -115,13 +114,12 @@ export default function WorkspaceDetailPage() {
     'outline' | 'manuscript' | 'applications' | 'questions' | 'illustrations' | 'citations' | 'study-report' | null
   >(null)
   const [promptText, setPromptText] = useState('')
+  const [studyAssetEditor, setStudyAssetEditor] = useState<'applications' | 'questions' | 'illustrations' | null>(null)
+  const [visualizationMode, setVisualizationMode] = useState<'passage' | 'refine'>('passage')
   const [activeSection, setActiveSection] = useState<
     | 'workspace'
     | 'outlines'
     | 'manuscript'
-    | 'applications'
-    | 'questions'
-    | 'illustrations'
     | 'citations'
     | 'scripture'
     | 'word-study'
@@ -132,7 +130,7 @@ export default function WorkspaceDetailPage() {
     | 'visualizations'
     | 'media'
   >('workspace')
-  const [activePhase, setActivePhase] = useState<Phase>('DISCOVER')
+  const [activePhase, setActivePhase] = useState<Phase>('THEME')
   const [citationValidations, setCitationValidations] = useState<Record<string, any>>({})
   const [dnaIntegrityReport, setDnaIntegrityReport] = useState<SermonIntegrityReport | null>(null)
   const [dnaIntegrityLoading, setDnaIntegrityLoading] = useState(false)
@@ -218,15 +216,14 @@ export default function WorkspaceDetailPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [expandedOutlineId, setExpandedOutlineId] = useState<string | null>(null)
-  const [expandedPointSections, setExpandedPointSections] = useState<Record<string, boolean>>({})
   const [expandedTextBlocks, setExpandedTextBlocks] = useState<Record<string, boolean>>({})
-  const [verseEvidencePanel, setVerseEvidencePanel] = useState<{
-    outlineId: string
-    pointTitle: string
-    verse: string
+  const [referencePreview, setReferencePreview] = useState<{
+    reference: string
     text: string
-    reason: string
+    context?: string
+    loading: boolean
   } | null>(null)
+  const [studyEgwRefreshKey, setStudyEgwRefreshKey] = useState(0)
   const autosaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const autosaveHashes = useRef<Record<string, string>>({})
   const scriptureLookupRequestId = useRef(0)
@@ -555,11 +552,28 @@ export default function WorkspaceDetailPage() {
 
   // Map sections to phases
   const phaseContentMap: Record<Phase, (typeof activeSection)[]> = {
-    DISCOVER: ['scripture', 'word-study', 'cross-references'],
-    ANALYZE: ['study-report'],
-    STRATEGIZE: ['workspace'],
-    CREATE: ['outlines', 'manuscript', 'applications', 'questions', 'illustrations', 'citations'],
-    REFINE: ['coach', 'dna', 'visualizations']
+    THEME: ['workspace'],
+    PASSAGE: ['scripture', 'word-study', 'cross-references', 'visualizations'],
+    STUDY: ['study-report'],
+    OUTLINE: ['outlines'],
+    WRITE: ['manuscript', 'citations'],
+    REFINE: ['coach', 'dna', 'visualizations'],
+    DELIVER: ['media']
+  }
+
+  const sectionPhaseMap: Partial<Record<typeof activeSection, Phase>> = {
+    scripture: 'PASSAGE',
+    'word-study': 'PASSAGE',
+    'cross-references': 'PASSAGE',
+    visualizations: activePhase === 'REFINE' ? 'REFINE' : 'PASSAGE',
+    'study-report': 'STUDY',
+    workspace: 'THEME',
+    outlines: 'OUTLINE',
+    manuscript: 'WRITE',
+    citations: 'WRITE',
+    coach: 'REFINE',
+    dna: 'REFINE',
+    media: 'DELIVER',
   }
 
   // Calculate progress
@@ -574,6 +588,12 @@ export default function WorkspaceDetailPage() {
   // Handle phase change
   const handlePhaseChange = (phase: Phase) => {
     setActivePhase(phase)
+    if (phase === 'PASSAGE') {
+      setVisualizationMode('passage')
+    }
+    if (phase === 'REFINE') {
+      setVisualizationMode('refine')
+    }
     const firstSection = phaseContentMap[phase][0]
     if (firstSection) {
       setActiveSection(firstSection)
@@ -608,24 +628,24 @@ export default function WorkspaceDetailPage() {
   const handleNextStepAction = (action: string) => {
     switch (action) {
       case 'lookup-passage':
-        setActivePhase('DISCOVER')
+        setActivePhase('PASSAGE')
         setActiveSection('scripture')
         break
       case 'generate-study-report':
-        setActivePhase('ANALYZE')
+        setActivePhase('STUDY')
         setActiveSection('study-report')
         handleGenerate('study-report', '')
         break
       case 'select-strategy':
-        setActivePhase('STRATEGIZE')
+        setActivePhase('THEME')
         setActiveSection('workspace')
         break
       case 'create-outline':
-        setActivePhase('CREATE')
+        setActivePhase('OUTLINE')
         setActiveSection('outlines')
         break
       case 'write-manuscript':
-        setActivePhase('CREATE')
+        setActivePhase('WRITE')
         setActiveSection('manuscript')
         break
       case 'analyze-sermon':
@@ -941,6 +961,41 @@ export default function WorkspaceDetailPage() {
     </div>
   )
 
+  const sanitizeManuscriptForDisplay = (text: string) => {
+    const cueLabelMap: Record<string, string> = {
+      slide: 'Key Cue',
+      keyline: 'Key Line',
+      transition: 'Key Transition',
+      pause: 'Key Pause',
+      visual: 'Key Visual',
+      read: 'Scripture Reading',
+      quote: 'Key Quote',
+      cta: 'Key Appeal',
+      calltoaction: 'Key Appeal',
+    }
+
+    const normalizedCueLabel = (rawCue: string) => {
+      const key = rawCue.toLowerCase().replace(/\s+/g, '')
+      return cueLabelMap[key] || 'Key Cue'
+    }
+
+    const replaceCueTag = (_match: string, cueType: string, cueText?: string) => {
+      const label = normalizedCueLabel(cueType)
+      const cleanText = String(cueText || '').trim()
+      return cleanText ? `${label}: ${cleanText}` : `${label}:`
+    }
+
+    return String(text || '')
+      // Replace explicit cue tags with readable labels.
+      .replace(/\[(Slide|Key\s*Line|Transition|Pause|Visual|Read|Quote|CTA|Call\s*to\s*Action)\]\s*([^\n]*)/gi, replaceCueTag)
+      // Handle markdown-bold wrapped cue tags like **[Slide] text** to avoid leftover asterisks.
+      .replace(/\*\*\s*\[(Slide|Key\s*Line|Transition|Pause|Visual|Read|Quote|CTA|Call\s*to\s*Action)\]\s*([^*]*)\*\*/gi, replaceCueTag)
+      // Remove any remaining unknown standalone bracket cues.
+      .replace(/^\s*\[[^\]]+\]\s*/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  }
+
   const handleVerseClick = (verseRef: string) => {
     setScriptureQuery(verseRef)
     setActiveSection('scripture')
@@ -1077,8 +1132,12 @@ export default function WorkspaceDetailPage() {
         canonicalThemes: Array.isArray(point?.canonicalThemes) ? point.canonicalThemes : [],
         crossReferences: Array.isArray(point?.crossReferences) ? point.crossReferences : [],
         subpoints: Array.isArray(point?.subpoints) ? point.subpoints : [],
+        applications: Array.isArray(point?.applications) ? point.applications : [],
+        discussionQuestions: Array.isArray(point?.discussionQuestions) ? point.discussionQuestions : [],
         illustrationIdeas: Array.isArray(point?.illustrationIdeas) ? point.illustrationIdeas : [],
         mediaSuggestions: Array.isArray(point?.mediaSuggestions) ? point.mediaSuggestions : [],
+        egwSupport: Array.isArray(point?.egwSupport) ? point.egwSupport : [],
+        references: Array.isArray(point?.references) ? point.references : [],
       }))
     }
 
@@ -1092,56 +1151,14 @@ export default function WorkspaceDetailPage() {
       canonicalThemes: Array.isArray(point?.canonicalThemes) ? point.canonicalThemes : [],
       crossReferences: Array.isArray(point?.crossReferences) ? point.crossReferences : [],
       subpoints: Array.isArray(point?.subpoints) ? point.subpoints : [],
+      applications: Array.isArray(point?.applications) ? point.applications : [],
+      discussionQuestions: Array.isArray(point?.discussionQuestions) ? point.discussionQuestions : [],
       illustrationIdeas: Array.isArray(point?.illustrationIdeas) ? point.illustrationIdeas : [],
       mediaSuggestions: Array.isArray(point?.mediaSuggestions) ? point.mediaSuggestions : [],
+      egwSupport: Array.isArray(point?.egwSupport) ? point.egwSupport : [],
+      references: Array.isArray(point?.references) ? point.references : [],
     }))
   }
-
-  const pointTextTokens = (value: string) =>
-    value
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .split(/\s+/)
-      .filter((token) => token.length > 2)
-
-  const scoreApplicationForPoint = (applicationText: string, point: any) => {
-    const appTokens = new Set(pointTextTokens(applicationText))
-    const pointTokens = new Set(pointTextTokens(point?.title || ''))
-    const overlap = Array.from(pointTokens).filter((token) => appTokens.has(token)).length
-
-    const verses = Array.isArray(point?.supportingVerses) ? point.supportingVerses : []
-    const verseScore = verses.reduce((score: number, verse: string) => {
-      const normalizedVerse = verse.toLowerCase()
-      return applicationText.toLowerCase().includes(normalizedVerse) ? score + 2 : score
-    }, 0)
-
-    return overlap + verseScore
-  }
-
-  const getRelatedApplicationsForPoint = (point: any) => {
-    const applications = Array.isArray(workspace?.applications) ? workspace.applications : []
-    if (!applications.length) return []
-
-    const ranked = applications
-      .map((app: any): { app: any; score: number } => ({
-        app,
-        score: scoreApplicationForPoint(app?.content || '', point),
-      }))
-      .filter((item: { app: any; score: number }) => item.score > 0)
-      .sort((a: { app: any; score: number }, b: { app: any; score: number }) => b.score - a.score)
-      .slice(0, 3)
-      .map((item: { app: any; score: number }) => item.app)
-
-    return ranked
-  }
-
-  const togglePointSection = (outlineId: string, pointIndex: number, section: string) => {
-    const key = `${outlineId}-${pointIndex}-${section}`
-    setExpandedPointSections((prev) => ({ ...prev, [key]: !prev[key] }))
-  }
-
-  const isPointSectionExpanded = (outlineId: string, pointIndex: number, section: string) =>
-    !!expandedPointSections[`${outlineId}-${pointIndex}-${section}`]
 
   const toggleTextBlock = (key: string) => {
     setExpandedTextBlocks((prev) => ({ ...prev, [key]: !prev[key] }))
@@ -1201,6 +1218,319 @@ export default function WorkspaceDetailPage() {
         )}
       </div>
     )
+  }
+
+  const normalizeReferenceList = (items: any[]) =>
+    (Array.isArray(items) ? items : [])
+      .map((item: any) => {
+        if (typeof item === 'string') {
+          return { reference: item.trim(), context: '' }
+        }
+        return {
+          reference: String(item?.reference || '').trim(),
+          context: String(item?.context || item?.connection || '').trim(),
+        }
+      })
+      .filter((item: any) => item.reference)
+
+  const getStudyAssetsSource = () => {
+    const sections = workspace?.studyReports?.[0]?.sections || {}
+    const studyAssets = sections?.studyAssets || {}
+    const categoryAssets = studyAssets?.categoryAssets || {}
+    const movementAssets = Array.isArray(studyAssets?.movementAssets) ? studyAssets.movementAssets : []
+
+    const flattenMovement = (key: string) =>
+      movementAssets.flatMap((item: any) => (Array.isArray(item?.[key]) ? item[key] : []))
+
+    const mergeLists = (...lists: any[][]) =>
+      Array.from(
+        new Set(
+          lists
+            .flatMap((list) => (Array.isArray(list) ? list : []))
+            .map((item) => String(item || '').trim())
+            .filter(Boolean),
+        ),
+      )
+
+    const mergeReferenceLists = (...lists: any[][]) =>
+      normalizeReferenceList(
+        lists.flatMap((list) => (Array.isArray(list) ? list : [])),
+      )
+
+    return {
+      applications: mergeLists(
+        categoryAssets?.applications,
+        (workspace?.applications || []).map((item: any) => item?.content).filter(Boolean),
+        flattenMovement('applications'),
+        sections?.pastoralImplications?.personalLife || [],
+        sections?.pastoralImplications?.churchLife || [],
+        sections?.pastoralImplications?.mission || [],
+      ),
+      discussionQuestions: mergeLists(
+        categoryAssets?.discussionQuestions,
+        (workspace?.discussionQuestions || []).map((item: any) => item?.question).filter(Boolean),
+        flattenMovement('discussionQuestions'),
+      ),
+      illustrationIdeas: mergeLists(
+        categoryAssets?.illustrationIdeas,
+        (workspace?.illustrations || []).map((item: any) => item?.content || item?.title).filter(Boolean),
+        flattenMovement('illustrationIdeas'),
+      ),
+      mediaSuggestions: mergeLists(categoryAssets?.mediaSuggestions, flattenMovement('mediaSuggestions')),
+      egwSupport: [...(Array.isArray(categoryAssets?.egwSupport) ? categoryAssets.egwSupport : []), ...(Array.isArray(sections?.egw?.quotes) ? sections.egw.quotes : [])].filter(Boolean),
+      references: mergeReferenceLists(categoryAssets?.references, flattenMovement('references'), workspace?.references || [], sections?.crossReferences || []),
+    }
+  }
+
+  const getStudyMediaPrompts = () => {
+    const studyAssets = getStudyAssetsSource()
+    const title = workspace?.title || 'Untitled Sermon'
+    const isSpanish = workspace?.language === 'es'
+    const theme = workspace?.theme || workspace?.sermonGoals || (isSpanish ? 'el mensaje central del sermón' : 'the main sermon message')
+    const passage = workspace?.mainPassage || ''
+    const manuscriptText = workspace?.manuscripts?.[0]?.content?.text || ''
+    const quoteSeed =
+      (workspace?.applications || []).find((item: any) => item?.content)?.content ||
+      manuscriptText.split(/[.!?]/).find((item: string) => item.trim().length > 30)?.trim() ||
+      theme
+
+    const prompts = isSpanish
+      ? [
+          {
+            type: 'Presentación',
+            intent: 'Estructura de presentación',
+            prompt: `Crea una presentación de sermón para "${title}" sobre ${passage}. Enfatiza ${theme}. Incluye diapositiva de título, movimientos principales, versículos de apoyo, diapositiva de respuesta y cierre con oración o llamado.`,
+          },
+          {
+            type: 'Visual Principal',
+            intent: 'Prompt visual principal',
+            prompt: `Visual cinematográfico de iglesia para el sermón "${title}" sobre ${theme}. Pasaje: ${passage}. Ambiente: reverente, esperanzador, congregacional y bíblicamente sólido.`,
+          },
+          {
+            type: 'Audio / Voz',
+            intent: 'Prompt de narración o pódcast',
+            prompt: `Genera audio narrado del sermón "${title}" sobre ${passage} con tono pastoral, claro y cálido. Mantén una dicción natural para escucha congregacional.`,
+          },
+          {
+            type: 'Canto Tema',
+            intent: 'Canción tema con letra',
+            prompt: `Genera un canto tema con letra para el sermón "${title}" basado en ${passage}. Tema: ${theme}. Modo: with_lyrics. Uso: theme-song. Estilo: adoración. Incluye coro memorable y líneas fáciles de cantar en congregación.`,
+          },
+          {
+            type: 'Social / Promoción',
+            intent: 'Prompt para pieza promocional',
+            prompt: `Crea una pieza social de promoción para "${title}" (${passage}). Cita principal: "${String(quoteSeed).slice(0, 180)}". Tema: ${theme}.`,
+          },
+        ]
+      : [
+          {
+            type: 'Slide Deck',
+            intent: 'Presentation structure',
+            prompt: `Create a sermon slide deck for "${title}" on ${passage}. Emphasize ${theme}. Include title slide, movement slides, supporting verses, response slide, and closing prayer/appeal.`,
+          },
+          {
+            type: 'Key Visual',
+            intent: 'Hero image prompt',
+            prompt: `Cinematic church visual for sermon "${title}" about ${theme}. Passage: ${passage}. Mood: reverent, hopeful, congregational, biblically grounded.`,
+          },
+          {
+            type: 'Audio / Voiceover',
+            intent: 'Narration or podcast prompt',
+            prompt: `Generate sermon narration audio for "${title}" on ${passage} with a pastoral, clear, warm tone. Keep phrasing natural for congregational listening.`,
+          },
+          {
+            type: 'Canto Tema',
+            intent: 'Theme song with lyrics',
+            prompt: `Generate a sermon theme song with lyrics for "${title}" based on ${passage}. Theme: ${theme}. Mode: with_lyrics. Use case: theme-song. Style: worship. Include memorable chorus and congregationally singable lines.`,
+          },
+          {
+            type: 'Social / Promo',
+            intent: 'Quote graphic or promo asset',
+            prompt: `Create a social promo asset for "${title}" (${passage}). Main quote: "${String(quoteSeed).slice(0, 180)}". Theme: ${theme}.`,
+          },
+        ]
+
+    const additional = (studyAssets.mediaSuggestions || []).map((item: string, index: number) => ({
+      type: isSpanish ? `Medio Adicional ${index + 1}` : `Additional Media ${index + 1}`,
+      intent: isSpanish ? 'Activo sugerido por el estudio' : 'Study-suggested asset',
+      prompt: item,
+    }))
+
+    return [...prompts, ...additional]
+  }
+
+  const parsePassageForEgwPanel = (reference: string) => {
+    const match = String(reference || '').trim().match(/^(.+?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/)
+    if (!match) return null
+    return {
+      book: match[1].trim(),
+      chapter: Number(match[2]),
+      verseStart: match[3] ? Number(match[3]) : undefined,
+      verseEnd: match[4] ? Number(match[4]) : undefined,
+    }
+  }
+
+  const openReferencePreview = async (reference: string, context?: string) => {
+    const normalized = String(reference || '').trim()
+    if (!normalized) return
+    setReferencePreview({ reference: normalized, text: '', context, loading: true })
+
+    const config = withToken()
+    if (!config) {
+      setReferencePreview(null)
+      return
+    }
+
+    try {
+      const translation = workspace?.language === 'es' ? 'RVR1960' : 'KJV'
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/scripture/passage`,
+        {
+          ...config,
+          params: { reference: normalized, translation },
+        },
+      )
+      const verses = Array.isArray(response.data?.verses) ? response.data.verses : []
+      const text = verses.map((item: any) => item?.text || '').filter(Boolean).join(' ')
+      setReferencePreview({ reference: normalized, text: text || 'Passage text not available.', context, loading: false })
+    } catch (error) {
+      console.error('Failed to load reference preview', error)
+      setReferencePreview({ reference: normalized, text: 'Unable to load passage text.', context, loading: false })
+    }
+  }
+
+  const renderOutlinePointSection = (
+    label: string,
+    items: any[],
+    key: string,
+    colorClass = 'text-gray-200',
+    onItemClick?: (value: string) => void,
+  ) => {
+    const values = (Array.isArray(items) ? items : []).map((item: any) => String(item).trim()).filter(Boolean)
+    if (!values.length) return null
+
+    return (
+      <div className="mt-3">
+        <p className="text-[10px] uppercase tracking-widest text-cyan-300/90 mb-2">{label}</p>
+        {onItemClick ? (
+          <div className="flex flex-wrap gap-2">
+            {values.map((item, index) => (
+              <button
+                key={`${key}-${index}`}
+                onClick={() => onItemClick(item)}
+                className="text-xs px-2 py-1 rounded-full border border-cyan-400/40 text-cyan-300 hover:bg-cyan-500/10"
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        ) : (
+          renderCompactList(values, key, '', colorClass)
+        )}
+      </div>
+    )
+  }
+
+  const renderStudyAssetCard = (
+    key: string,
+    title: string,
+    icon: ReactNode,
+    primaryActionLabel: string,
+    onPrimaryAction: () => void,
+    body: ReactNode,
+    secondaryActionLabel?: string,
+    onSecondaryAction?: () => void,
+    isLoading = false,
+    loadingLabel = 'Generating...',
+  ) => (
+    <div key={key} className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="text-cyan-200">{icon}</div>
+          <p className="text-sm font-semibold text-white">{title}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {secondaryActionLabel && onSecondaryAction ? (
+            <button onClick={onSecondaryAction} className="cyber-outline text-xs px-3 py-2 rounded-full">
+              {secondaryActionLabel}
+            </button>
+          ) : null}
+          <button onClick={onPrimaryAction} className="cyber-outline text-xs px-3 py-2 rounded-full">
+            {primaryActionLabel}
+          </button>
+        </div>
+      </div>
+      {isLoading ? (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-cyan-200/80">
+            <span>{loadingLabel}</span>
+            <span>In progress</span>
+          </div>
+          <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+            <div className="h-full w-2/3 bg-gradient-to-r from-cyan-400 via-sky-300 to-cyan-500 animate-pulse rounded-full" />
+          </div>
+          <div className="space-y-2">
+            <div className="h-3 rounded bg-white/10 animate-pulse w-5/6" />
+            <div className="h-3 rounded bg-white/10 animate-pulse w-3/4" />
+            <div className="h-3 rounded bg-white/10 animate-pulse w-2/3" />
+          </div>
+        </div>
+      ) : (
+        <div>{body}</div>
+      )}
+    </div>
+  )
+
+  const renderStudyAssetBoxes = (
+    items: any[],
+    key: string,
+    emptyText: string,
+    options?: {
+      accentClass?: string
+      itemClassName?: string
+      renderItem?: (item: any, index: number) => ReactNode
+    },
+  ) => {
+    const values = Array.isArray(items) ? items.filter(Boolean) : []
+    if (!values.length) {
+      return <p className="text-xs text-gray-300">{emptyText}</p>
+    }
+
+    const expanded = !!expandedTextBlocks[key]
+    const visible = expanded ? values : values.slice(0, 3)
+
+    return (
+      <div className="space-y-2">
+        {visible.map((item, index) => (
+          <div
+            key={`${key}-${index}`}
+            className={options?.itemClassName || 'border border-white/10 rounded-lg p-3 bg-black/30'}
+          >
+            {options?.renderItem ? (
+              options.renderItem(item, index)
+            ) : (
+              <p className={`text-sm leading-relaxed ${options?.accentClass || 'text-gray-100/90'}`}>{String(item)}</p>
+            )}
+          </div>
+        ))}
+        {values.length > 3 && (
+          <button
+            onClick={() => toggleTextBlock(key)}
+            className="cyber-outline text-[10px] px-2 py-1 rounded-full"
+          >
+            {expanded ? 'Show fewer' : `Show ${values.length - 3} more`}
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  const isStudyAssetLoading = (asset: 'report' | 'applications' | 'questions' | 'illustrations' | 'media' | 'egw' | 'references') => {
+    if (actionLoading.includes('study-report')) return true
+    if (asset === 'applications') return actionLoading.includes('applications')
+    if (asset === 'questions') return actionLoading.includes('questions')
+    if (asset === 'illustrations') return actionLoading.includes('illustrations')
+    return false
   }
 
   const getPassageFocusText = () => {
@@ -1510,12 +1840,17 @@ export default function WorkspaceDetailPage() {
             <summary className="cursor-pointer text-xs uppercase tracking-widest text-cyan-200/80">Cross References</summary>
             <div className="mt-3 space-y-2">
               {legacyCrossRefs.map((item: any, idx: number) => (
-                <div key={`xref-${idx}`} className="border border-white/10 rounded-lg p-3">
+                <button
+                  type="button"
+                  key={`xref-${idx}`}
+                  onClick={() => openReferencePreview(item?.reference || item?.verse || String(item), item?.connection || item?.explanation || '')}
+                  className="w-full text-left border border-white/10 rounded-lg p-3 hover:border-cyan-400/40 hover:bg-black/40 transition-colors"
+                >
                   <p className="text-sm text-cyan-100 font-medium">{item?.reference || item?.verse || String(item)}</p>
                   {item?.connection || item?.explanation ? (
                     <p className="text-xs text-gray-300 mt-1">{item.connection || item.explanation}</p>
                   ) : null}
-                </div>
+                </button>
               ))}
             </div>
           </details>
@@ -1653,40 +1988,13 @@ export default function WorkspaceDetailPage() {
   }
 
   // Keyboard shortcuts
-  useKeyboardShortcut('1', () => handlePhaseChange('DISCOVER'), { cmd: true })
-  useKeyboardShortcut('2', () => handlePhaseChange('ANALYZE'), { cmd: true })
-  useKeyboardShortcut('3', () => handlePhaseChange('STRATEGIZE'), { cmd: true })
-  useKeyboardShortcut('4', () => handlePhaseChange('CREATE'), { cmd: true })
-  useKeyboardShortcut('5', () => handlePhaseChange('REFINE'), { cmd: true })
-
-  // Validate citations when outlines change
-  useEffect(() => {
-    const validateOutlineCitations = async () => {
-      const selectedOutline = workspace?.outlines?.find((o: any) => o.isSelected) || workspace?.outlines?.[0]
-      if (!selectedOutline?.structure) return
-      const points = getOutlinePointNodes(selectedOutline.structure)
-      if (!points.length) return
-      
-      const validations: Record<string, any> = {}
-      for (const point of points) {
-        if (point.supportingVerses && point.supportingVerses.length > 0) {
-          for (const verse of point.supportingVerses) {
-            if (!citationValidations[verse]) {
-              const result = await validateCitation(point.content || point.title, verse)
-              validations[verse] = result
-            }
-          }
-        }
-      }
-      if (Object.keys(validations).length > 0) {
-        setCitationValidations(prev => ({ ...prev, ...validations }))
-      }
-    }
-    
-    if (workspace?.outlines?.length) {
-      validateOutlineCitations()
-    }
-  }, [workspace?.outlines])
+  useKeyboardShortcut('1', () => handlePhaseChange('THEME'), { cmd: true })
+  useKeyboardShortcut('2', () => handlePhaseChange('PASSAGE'), { cmd: true })
+  useKeyboardShortcut('3', () => handlePhaseChange('STUDY'), { cmd: true })
+  useKeyboardShortcut('4', () => handlePhaseChange('OUTLINE'), { cmd: true })
+  useKeyboardShortcut('5', () => handlePhaseChange('WRITE'), { cmd: true })
+  useKeyboardShortcut('6', () => handlePhaseChange('REFINE'), { cmd: true })
+  useKeyboardShortcut('7', () => handlePhaseChange('DELIVER'), { cmd: true })
 
   const handleGenerate = async (type: string, override?: string) => {
     const config = withToken()
@@ -1694,8 +2002,9 @@ export default function WorkspaceDetailPage() {
 
     setActionLoading((prev) => (prev.includes(type) ? prev : [...prev, type]))
     try {
+      let generatedResponse: any = null
       if (type === 'outlines') {
-        await axios.post(
+        generatedResponse = await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/outlines`,
           { 
             promptOverride: override,
@@ -1710,7 +2019,7 @@ export default function WorkspaceDetailPage() {
           setError('Create or generate an outline first.')
           return
         }
-        await axios.post(
+        generatedResponse = await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/manuscript`,
           { 
             outlineId: selectedOutline.id, 
@@ -1731,7 +2040,7 @@ export default function WorkspaceDetailPage() {
         )
       }
       if (type === 'applications') {
-        await axios.post(
+        generatedResponse = await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/applications`,
           { 
             promptOverride: override,
@@ -1741,28 +2050,28 @@ export default function WorkspaceDetailPage() {
         )
       }
       if (type === 'questions') {
-        await axios.post(
+        generatedResponse = await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/discussion-questions`,
           { promptOverride: override },
           config,
         )
       }
       if (type === 'illustrations') {
-        await axios.post(
+        generatedResponse = await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/illustrations`,
           { promptOverride: override },
           config,
         )
       }
       if (type === 'citations') {
-        await axios.post(
+        generatedResponse = await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/citations`,
           { promptOverride: override },
           config,
         )
       }
       if (type === 'study-report') {
-        await axios.post(
+        generatedResponse = await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/study-report`,
           { 
             promptOverride: override,
@@ -1770,9 +2079,15 @@ export default function WorkspaceDetailPage() {
           },
           config,
         )
+        if (generatedResponse?.data) {
+          setWorkspace((prev: any) => prev ? {
+            ...prev,
+            studyReports: [generatedResponse.data, ...(prev.studyReports || []).filter((item: any) => item.id !== generatedResponse.data.id)],
+          } : prev)
+        }
       }
       if (type === 'dna') {
-        await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/sermon-dna/analyze`, { workspaceId }, config)
+        generatedResponse = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/sermon-dna/analyze`, { workspaceId }, config)
       }
 
       const refreshed = await axios.get(
@@ -2392,6 +2707,13 @@ export default function WorkspaceDetailPage() {
       key={key}
       onClick={() => {
         setActiveSection(key)
+        const nextPhase = sectionPhaseMap[key]
+        if (nextPhase) {
+          setActivePhase(nextPhase)
+        }
+        if (key === 'visualizations') {
+          setVisualizationMode(nextPhase === 'REFINE' ? 'refine' : 'passage')
+        }
         setRailOpen(false)
       }}
       className={
@@ -2475,6 +2797,7 @@ export default function WorkspaceDetailPage() {
           <span className="cyber-tag">{workspace.status}</span>
           <button
             onClick={() => {
+              setActivePhase('THEME')
               setActiveSection('workspace')
               setRailOpen(false)
             }}
@@ -2487,24 +2810,311 @@ export default function WorkspaceDetailPage() {
       </div>
 
       <div className="cyber-panel rounded-2xl p-4 space-y-2">
+        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70">Theme</p>
         {sectionNavButton('workspace', 'Workspace')}
-        {sectionNavButton('outlines', 'Outlines')}
-        {sectionNavButton('manuscript', 'Manuscript')}
-        {sectionNavButton('applications', 'Applications')}
-        {sectionNavButton('questions', 'Questions')}
-        {sectionNavButton('illustrations', 'Illustrations')}
-        {sectionNavButton('citations', 'Citations')}
+        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70">Passage</p>
         {sectionNavButton('scripture', 'Scripture')}
         {sectionNavButton('word-study', 'Word Study')}
         {sectionNavButton('cross-references', 'Cross References')}
+        {sectionNavButton('visualizations', 'Visualizations')}
+        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Study</p>
         {sectionNavButton('study-report', 'Study Report')}
+        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Outline</p>
+        {sectionNavButton('outlines', 'Outlines')}
+        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Write</p>
+        {sectionNavButton('manuscript', 'Manuscript')}
+        {sectionNavButton('citations', 'Citations')}
+        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Refine</p>
         {sectionNavButton('coach', 'Socratic Coach')}
         {sectionNavButton('dna', 'Sermon DNA')}
-        {sectionNavButton('visualizations', 'Visualizations')}
+        <button
+          onClick={() => {
+            setActivePhase('REFINE')
+            setVisualizationMode('refine')
+            setActiveSection('visualizations')
+            setRailOpen(false)
+          }}
+          className={
+            activeSection === 'visualizations' && activePhase === 'REFINE'
+              ? 'cyber-button text-xs px-3 py-2 rounded-xl w-full text-left'
+              : 'cyber-outline text-xs px-3 py-2 rounded-xl w-full text-left'
+          }
+        >
+          Flow Tools
+        </button>
+        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Deliver</p>
         {sectionNavButton('media', 'Media')}
       </div>
     </div>
   )
+
+  const renderStudyAssetEditor = () => {
+    if (studyAssetEditor === 'applications') {
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
+              <div>
+                <h3 className="text-xl font-semibold">Applications</h3>
+                <p className="text-xs text-gray-400 mt-1">Study asset editor</p>
+              </div>
+              {workspace?.egwEnabled && (
+                <span className="text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-200 border border-blue-400/40 flex items-center gap-1">
+                  <Book className="w-3 h-3" />
+                  EGW Enabled
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => openPromptEditor('applications')}
+                className="cyber-outline text-xs px-4 py-2 rounded-full"
+              >
+                Prompt
+              </button>
+              <button
+                onClick={() => handleGenerate('applications')}
+                className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
+                disabled={actionLoading.includes('applications')}
+              >
+                {actionLoading.includes('applications') ? 'Generating...' : 'Generate'}
+              </button>
+            </div>
+          </div>
+          {workspace.applications?.length ? (
+            <ul className="space-y-3 text-gray-100/90 max-h-[60vh] overflow-y-auto pr-1">
+              {workspace.applications.map((app: any) => (
+                <li key={app.id} className="border border-white/10 rounded-xl p-4 bg-black/30">
+                  <div className="flex items-center justify-between">
+                    <span className="cyber-tag">{app.audienceType}</span>
+                    <button
+                      onClick={() => {
+                        setEditingApplicationId(app.id)
+                        setApplicationDraft(app.content)
+                      }}
+                      className="cyber-outline px-3 py-1 text-xs rounded-full"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  {editingApplicationId === app.id ? (
+                    <div className="space-y-3 mt-3">
+                      <label className="text-xs uppercase tracking-widest cyber-muted">Application Text</label>
+                      <textarea
+                        value={applicationDraft}
+                        onChange={(e) => setApplicationDraft(e.target.value)}
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
+                        rows={3}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleApplicationSave(app.id)}
+                          className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
+                          disabled={actionLoading.includes('application-edit')}
+                        >
+                          {actionLoading.includes('application-edit') ? 'Saving...' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingApplicationId(null)
+                            setApplicationDraft('')
+                          }}
+                          className="cyber-outline text-xs px-4 py-2 rounded-full"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-2">{renderMarkdown(app.content)}</div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-gray-100/90">No applications yet.</p>
+          )}
+        </div>
+      )
+    }
+
+    if (studyAssetEditor === 'questions') {
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h3 className="text-xl font-semibold">Discussion Questions</h3>
+              <p className="text-xs text-gray-400 mt-1">Study asset editor</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => openPromptEditor('questions')}
+                className="cyber-outline text-xs px-4 py-2 rounded-full"
+              >
+                Prompt
+              </button>
+              <button
+                onClick={() => handleGenerate('questions')}
+                className="cyber-button-secondary text-xs px-4 py-2 rounded-full disabled:opacity-60"
+                disabled={actionLoading.includes('questions')}
+              >
+                {actionLoading.includes('questions') ? 'Generating...' : 'Generate'}
+              </button>
+            </div>
+          </div>
+          {workspace.discussionQuestions?.length ? (
+            <ul className="space-y-3 text-gray-100/90 max-h-[60vh] overflow-y-auto pr-1">
+              {workspace.discussionQuestions.map((q: any) => (
+                <li key={q.id} className="border border-white/10 rounded-xl p-4 bg-black/30">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">{renderMarkdown(q.question)}</div>
+                    <button
+                      onClick={() => {
+                        setEditingQuestionId(q.id)
+                        setQuestionDraft(q.question)
+                      }}
+                      className="cyber-outline px-3 py-1 text-xs rounded-full"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  {editingQuestionId === q.id && (
+                    <div className="space-y-3 mt-3">
+                      <label className="text-xs uppercase tracking-widest cyber-muted">Question</label>
+                      <textarea
+                        value={questionDraft}
+                        onChange={(e) => setQuestionDraft(e.target.value)}
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
+                        rows={3}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleQuestionSave(q.id)}
+                          className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
+                          disabled={actionLoading.includes('question-edit')}
+                        >
+                          {actionLoading.includes('question-edit') ? 'Saving...' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingQuestionId(null)
+                            setQuestionDraft('')
+                          }}
+                          className="cyber-outline text-xs px-4 py-2 rounded-full"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-gray-100/90">No questions yet.</p>
+          )}
+        </div>
+      )
+    }
+
+    if (studyAssetEditor === 'illustrations') {
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h3 className="text-xl font-semibold">Illustrations</h3>
+              <p className="text-xs text-gray-400 mt-1">Study asset editor</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => openPromptEditor('illustrations')}
+                className="cyber-outline text-xs px-4 py-2 rounded-full"
+              >
+                Prompt
+              </button>
+              <button
+                onClick={() => handleGenerate('illustrations')}
+                className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
+                disabled={actionLoading.includes('illustrations')}
+              >
+                {actionLoading.includes('illustrations') ? 'Generating...' : 'Generate'}
+              </button>
+            </div>
+          </div>
+          {workspace.illustrations?.length ? (
+            <ul className="space-y-3 text-gray-100/90 max-h-[60vh] overflow-y-auto pr-1">
+              {workspace.illustrations.map((ill: any) => (
+                <li key={ill.id} className="border border-white/10 rounded-xl p-4 bg-black/30">
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold">{ill.title || 'Illustration'}</p>
+                    <button
+                      onClick={() => {
+                        setEditingIllustrationId(ill.id)
+                        setIllustrationDraft({ id: ill.id, title: ill.title || '', content: ill.content || '', source: ill.source || '' })
+                      }}
+                      className="cyber-outline px-3 py-1 text-xs rounded-full"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  {editingIllustrationId === ill.id && illustrationDraft ? (
+                    <div className="space-y-3 mt-3">
+                      <label className="text-xs uppercase tracking-widest cyber-muted">Illustration Title</label>
+                      <input
+                        value={illustrationDraft.title}
+                        onChange={(e) => setIllustrationDraft({ ...illustrationDraft, title: e.target.value })}
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
+                      />
+                      <label className="text-xs uppercase tracking-widest cyber-muted">Illustration Content</label>
+                      <textarea
+                        value={illustrationDraft.content}
+                        onChange={(e) => setIllustrationDraft({ ...illustrationDraft, content: e.target.value })}
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
+                        rows={4}
+                      />
+                      <label className="text-xs uppercase tracking-widest cyber-muted">Source</label>
+                      <input
+                        value={illustrationDraft.source}
+                        onChange={(e) => setIllustrationDraft({ ...illustrationDraft, source: e.target.value })}
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleIllustrationSave}
+                          className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
+                          disabled={actionLoading.includes('illustration-edit')}
+                        >
+                          {actionLoading.includes('illustration-edit') ? 'Saving...' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingIllustrationId(null)
+                            setIllustrationDraft(null)
+                          }}
+                          className="cyber-outline text-xs px-4 py-2 rounded-full"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-1">{renderMarkdown(ill.content)}</div>
+                      {ill.source && <p className="text-xs cyber-muted mt-2">Source: {ill.source}</p>}
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-gray-100/90">No illustrations yet.</p>
+          )}
+        </div>
+      )
+    }
+
+    return null
+  }
 
   const handleWorkspaceSave = async () => {
     const config = withToken()
@@ -2553,6 +3163,7 @@ export default function WorkspaceDetailPage() {
           structure: {
             introduction: outlineDraft.introduction,
             points: outlineDraft.points,
+            pointNodes: Array.isArray(outlineDraft.pointNodes) ? outlineDraft.pointNodes : [],
             conclusion: outlineDraft.conclusion,
             callToAction: outlineDraft.callToAction,
           },
@@ -3142,6 +3753,7 @@ export default function WorkspaceDetailPage() {
                                         title: outline.title,
                                         introduction: outline.structure?.introduction || '',
                                         points: outline.structure?.points || [],
+                                        pointNodes: Array.isArray(outline.structure?.pointNodes) ? outline.structure.pointNodes : [],
                                         conclusion: outline.structure?.conclusion || '',
                                         callToAction: outline.structure?.callToAction || '',
                                       })
@@ -3255,7 +3867,6 @@ export default function WorkspaceDetailPage() {
                                     <div className="space-y-2">
                                       <p className="text-xs uppercase tracking-widest cyber-muted">Main Points</p>
                                       {pointNodes.map((point: any, index: number) => {
-                                        const relatedApplications = getRelatedApplicationsForPoint(point)
                                         const supportingVerses = Array.isArray(point.supportingVerses) ? point.supportingVerses : []
                                         return (
                                           <div key={`${outline.id}-point-${index}`} className="border border-white/10 rounded-xl p-3 bg-black/20">
@@ -3272,101 +3883,45 @@ export default function WorkspaceDetailPage() {
                                                 )}
                                               </div>
                                             )}
-
-                                            <div className="flex flex-wrap gap-1 mt-2">
-                                              <button onClick={() => togglePointSection(outline.id, index, 'subpoints')} className="cyber-outline text-[10px] px-2 py-1 rounded-full">Subpoints</button>
-                                              <button onClick={() => togglePointSection(outline.id, index, 'verses')} className="cyber-outline text-[10px] px-2 py-1 rounded-full">Verses</button>
-                                              <button onClick={() => togglePointSection(outline.id, index, 'themes')} className="cyber-outline text-[10px] px-2 py-1 rounded-full">Themes</button>
-                                              <button onClick={() => togglePointSection(outline.id, index, 'apps')} className="cyber-outline text-[10px] px-2 py-1 rounded-full">Applications</button>
-                                              <button onClick={() => togglePointSection(outline.id, index, 'media')} className="cyber-outline text-[10px] px-2 py-1 rounded-full">Media</button>
-                                              <button onClick={() => togglePointSection(outline.id, index, 'egw')} className="cyber-outline text-[10px] px-2 py-1 rounded-full">EGW</button>
-                                            </div>
-
-                                            {isPointSectionExpanded(outline.id, index, 'subpoints') && (
+                                            {renderOutlinePointSection('Subpoints', point.subpoints, `${outline.id}-${index}-subpoints`, 'text-gray-200')}
+                                            {renderOutlinePointSection(
+                                              'Supporting Verses',
+                                              supportingVerses,
+                                              `${outline.id}-${index}-verses`,
+                                              'text-cyan-200',
+                                              (verse: string) => {
+                                                openReferencePreview(
+                                                  verse,
+                                                  point.summary || point.movement || 'This verse reinforces the point through direct thematic support.',
+                                                )
+                                              },
+                                            )}
+                                            {renderOutlinePointSection('Themes', point.canonicalThemes, `${outline.id}-${index}-themes`, 'text-emerald-200')}
+                                            {renderOutlinePointSection('Applications', point.applications, `${outline.id}-${index}-apps`, 'text-amber-200')}
+                                            {renderOutlinePointSection('Discussion Questions', point.discussionQuestions, `${outline.id}-${index}-questions`, 'text-sky-200')}
+                                            {renderOutlinePointSection('Illustration Ideas', point.illustrationIdeas, `${outline.id}-${index}-illustrations`, 'text-rose-200')}
+                                            {renderOutlinePointSection('Media Suggestions', point.mediaSuggestions, `${outline.id}-${index}-media`, 'text-violet-200')}
+                                            {Array.isArray(point.egwSupport) && point.egwSupport.length > 0 && (
                                               <div className="mt-3">
-                                                {renderCompactList(
-                                                  point.subpoints,
-                                                  `${outline.id}-${index}-subpoints`,
-                                                  'No subpoints available.',
-                                                  'text-gray-200'
-                                                )}
+                                                <p className="text-[10px] uppercase tracking-widest text-cyan-300/90 mb-2">EGW Support</p>
+                                                <div className="space-y-2">
+                                                  {point.egwSupport.map((item: any, egwIndex: number) => (
+                                                    <div key={`${outline.id}-${index}-egw-${egwIndex}`} className="border border-blue-400/20 rounded-lg p-3 bg-blue-500/5">
+                                                      {(item?.citation || item?.reference) && (
+                                                        <p className="text-xs font-semibold text-blue-200">{item?.citation || item?.reference}</p>
+                                                      )}
+                                                      {(item?.quote || item?.text) && (
+                                                        <p className="text-xs text-gray-100/90 mt-1 leading-relaxed">{item?.quote || item?.text}</p>
+                                                      )}
+                                                      {item?.relevance && (
+                                                        <p className="text-[11px] text-blue-200/80 mt-1">{item.relevance}</p>
+                                                      )}
+                                                    </div>
+                                                  ))}
+                                                </div>
                                               </div>
                                             )}
-
-                                            {isPointSectionExpanded(outline.id, index, 'verses') && (
-                                              <div className="mt-2">
-                                                {supportingVerses.length ? (
-                                                  <div className="flex flex-wrap gap-2">
-                                                    {supportingVerses.map((verse: string) => (
-                                                      <button
-                                                        key={`${outline.id}-${index}-${verse}`}
-                                                        onClick={() => {
-                                                          setVerseEvidencePanel({
-                                                            outlineId: outline.id,
-                                                            pointTitle: point.title,
-                                                            verse,
-                                                            text: getVerseEvidenceText(verse),
-                                                            reason: point.summary || point.movement || 'This verse reinforces the point through direct thematic support.',
-                                                          })
-                                                          handleVerseClick(verse)
-                                                        }}
-                                                        className="text-xs px-2 py-1 rounded-full border border-cyan-400/40 text-cyan-300 hover:bg-cyan-500/10"
-                                                      >
-                                                        {verse}
-                                                      </button>
-                                                    ))}
-                                                  </div>
-                                                ) : (
-                                                  <p className="text-xs text-gray-300">No supporting verses attached.</p>
-                                                )}
-                                              </div>
-                                            )}
-
-                                            {isPointSectionExpanded(outline.id, index, 'themes') && (
-                                              <div className="mt-3">
-                                                {renderCompactList(
-                                                  point.canonicalThemes,
-                                                  `${outline.id}-${index}-themes`,
-                                                  'No canonical themes attached.',
-                                                  'text-emerald-200'
-                                                )}
-                                              </div>
-                                            )}
-
-                                            {isPointSectionExpanded(outline.id, index, 'apps') && (
-                                              <div className="mt-3">
-                                                {relatedApplications.length ? (
-                                                  renderCompactList(
-                                                    relatedApplications.map((app: any) => app?.content),
-                                                    `${outline.id}-${index}-apps`,
-                                                    'No related applications found in current Applications tab.',
-                                                    'text-amber-200'
-                                                  )
-                                                ) : (
-                                                  <p className="text-xs text-gray-300">No related applications found in current Applications tab.</p>
-                                                )}
-                                              </div>
-                                            )}
-
-                                            {isPointSectionExpanded(outline.id, index, 'media') && (
-                                              <div className="mt-3">
-                                                {renderCompactList(
-                                                  point.mediaSuggestions,
-                                                  `${outline.id}-${index}-media`,
-                                                  'No media ideas available.',
-                                                  'text-violet-200'
-                                                )}
-                                              </div>
-                                            )}
-
-                                            {isPointSectionExpanded(outline.id, index, 'egw') && (
-                                              <div className="mt-2">
-                                                <OutlinePointEGWSupport
-                                                  point={point.title || point.content || point}
-                                                  supportingVerses={supportingVerses}
-                                                />
-                                              </div>
-                                            )}
+                                            {renderOutlinePointSection('References', point.references, `${outline.id}-${index}-references`, 'text-fuchsia-200')}
                                           </div>
                                         )
                                       })}
@@ -3379,19 +3934,6 @@ export default function WorkspaceDetailPage() {
                             </div>
                           )
                         })}
-                      {verseEvidencePanel && (
-                        <div className="border border-cyan-400/30 rounded-xl p-4 bg-cyan-500/10">
-                          <div className="flex items-center justify-between">
-                            <p className="text-sm font-semibold text-cyan-200">Verse Evidence</p>
-                            <button onClick={() => setVerseEvidencePanel(null)} className="cyber-outline text-xs px-3 py-1 rounded-full">Close</button>
-                          </div>
-                          <p className="text-xs text-cyan-100/90 mt-1">{verseEvidencePanel.verse} • {verseEvidencePanel.pointTitle}</p>
-                          <p className="text-sm text-gray-100/95 mt-2">
-                            {verseEvidencePanel.text || 'Verse text not available in the current scripture cache.'}
-                          </p>
-                          <p className="text-xs text-cyan-200/85 mt-2">Why it supports this point: {verseEvidencePanel.reason}</p>
-                        </div>
-                      )}
                     </div>
                   ) : (
                     <p className="text-gray-100/90">No outlines yet.</p>
@@ -3551,264 +4093,13 @@ export default function WorkspaceDetailPage() {
                           </div>
                         </div>
                       ) : (
-                        renderMarkdown(manuscript.content?.text || '')
+                        renderMarkdown(sanitizeManuscriptForDisplay(manuscript.content?.text || ''))
                       )}
                     </div>
                   ))}
                 </div>
               ) : (
                 <p className="text-gray-100/90">No manuscript yet.</p>
-              )}
-            </div>
-          )}
-
-          {activeSection === 'applications' && (
-            <div className="space-y-4 relative min-h-full">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-xl font-semibold">Applications</h3>
-                  {workspace?.egwEnabled && (
-                    <span className="text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-200 border border-blue-400/40 flex items-center gap-1">
-                      <Book className="w-3 h-3" />
-                      EGW Enabled
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => openPromptEditor('applications')}
-                    className="cyber-outline text-xs px-4 py-2 rounded-full"
-                  >
-                    Prompt
-                  </button>
-                  <button
-                    onClick={() => handleGenerate('applications')}
-                    className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                    disabled={actionLoading.includes('applications')}
-                  >
-                    {actionLoading.includes('applications') ? 'Generating...' : 'Generate'}
-                  </button>
-                </div>
-              </div>
-              {workspace.applications?.length ? (
-                <ul className="space-y-3 text-gray-100/90">
-                  {workspace.applications.map((app: any) => (
-                    <li key={app.id} className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <div className="flex items-center justify-between">
-                        <span className="cyber-tag">{app.audienceType}</span>
-                        <button
-                          onClick={() => {
-                            setEditingApplicationId(app.id)
-                            setApplicationDraft(app.content)
-                          }}
-                          className="cyber-outline px-3 py-1 text-xs rounded-full"
-                        >
-                          Edit
-                        </button>
-                      </div>
-                      {editingApplicationId === app.id ? (
-                        <div className="space-y-3 mt-3">
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Application Text</label>
-                          <textarea
-                            value={applicationDraft}
-                            onChange={(e) => setApplicationDraft(e.target.value)}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                            rows={3}
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleApplicationSave(app.id)}
-                              className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                              disabled={actionLoading.includes('application-edit')}
-                            >
-                              {actionLoading.includes('application-edit') ? 'Saving...' : 'Save'}
-                            </button>
-                            <button
-                              onClick={() => {
-                                setEditingApplicationId(null)
-                                setApplicationDraft('')
-                              }}
-                              className="cyber-outline text-xs px-4 py-2 rounded-full"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="mt-2">{renderMarkdown(app.content)}</div>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-gray-100/90">No applications yet.</p>
-              )}
-            </div>
-          )}
-
-          {activeSection === 'questions' && (
-            <div className="space-y-4 relative min-h-full">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold">Discussion Questions</h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => openPromptEditor('questions')}
-                    className="cyber-outline text-xs px-4 py-2 rounded-full"
-                  >
-                    Prompt
-                  </button>
-                  <button
-                    onClick={() => handleGenerate('questions')}
-                    className="cyber-button-secondary text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                    disabled={actionLoading.includes('questions')}
-                  >
-                    {actionLoading.includes('questions') ? 'Generating...' : 'Generate'}
-                  </button>
-                </div>
-              </div>
-              {workspace.discussionQuestions?.length ? (
-                <ul className="space-y-3 text-gray-100/90">
-                  {workspace.discussionQuestions.map((q: any) => (
-                    <li key={q.id} className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">{renderMarkdown(q.question)}</div>
-                        <button
-                          onClick={() => {
-                            setEditingQuestionId(q.id)
-                            setQuestionDraft(q.question)
-                          }}
-                          className="cyber-outline px-3 py-1 text-xs rounded-full"
-                        >
-                          Edit
-                        </button>
-                      </div>
-                      {editingQuestionId === q.id && (
-                        <div className="space-y-3 mt-3">
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Question</label>
-                          <textarea
-                            value={questionDraft}
-                            onChange={(e) => setQuestionDraft(e.target.value)}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                            rows={3}
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleQuestionSave(q.id)}
-                              className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                              disabled={actionLoading.includes('question-edit')}
-                            >
-                              {actionLoading.includes('question-edit') ? 'Saving...' : 'Save'}
-                            </button>
-                            <button
-                              onClick={() => {
-                                setEditingQuestionId(null)
-                                setQuestionDraft('')
-                              }}
-                              className="cyber-outline text-xs px-4 py-2 rounded-full"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-gray-100/90">No questions yet.</p>
-              )}
-            </div>
-          )}
-
-          {activeSection === 'illustrations' && (
-            <div className="space-y-4 relative min-h-full">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold">Illustrations</h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => openPromptEditor('illustrations')}
-                    className="cyber-outline text-xs px-4 py-2 rounded-full"
-                  >
-                    Prompt
-                  </button>
-                  <button
-                    onClick={() => handleGenerate('illustrations')}
-                    className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                    disabled={actionLoading.includes('illustrations')}
-                  >
-                    {actionLoading.includes('illustrations') ? 'Generating...' : 'Generate'}
-                  </button>
-                </div>
-              </div>
-              {workspace.illustrations?.length ? (
-                <ul className="space-y-3 text-gray-100/90">
-                  {workspace.illustrations.map((ill: any) => (
-                    <li key={ill.id} className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <div className="flex items-center justify-between">
-                        <p className="font-semibold">{ill.title || 'Illustration'}</p>
-                        <button
-                          onClick={() => {
-                            setEditingIllustrationId(ill.id)
-                            setIllustrationDraft({ id: ill.id, title: ill.title || '', content: ill.content || '', source: ill.source || '' })
-                          }}
-                          className="cyber-outline px-3 py-1 text-xs rounded-full"
-                        >
-                          Edit
-                        </button>
-                      </div>
-                      {editingIllustrationId === ill.id && illustrationDraft ? (
-                        <div className="space-y-3 mt-3">
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Illustration Title</label>
-                          <input
-                            value={illustrationDraft.title}
-                            onChange={(e) => setIllustrationDraft({ ...illustrationDraft, title: e.target.value })}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                          />
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Illustration Content</label>
-                          <textarea
-                            value={illustrationDraft.content}
-                            onChange={(e) => setIllustrationDraft({ ...illustrationDraft, content: e.target.value })}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                            rows={3}
-                          />
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Source</label>
-                          <input
-                            value={illustrationDraft.source}
-                            onChange={(e) => setIllustrationDraft({ ...illustrationDraft, source: e.target.value })}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={handleIllustrationSave}
-                              className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                              disabled={actionLoading.includes('illustration-edit')}
-                            >
-                              {actionLoading.includes('illustration-edit') ? 'Saving...' : 'Save'}
-                            </button>
-                            <button
-                              onClick={() => {
-                                setEditingIllustrationId(null)
-                                setIllustrationDraft(null)
-                              }}
-                              className="cyber-outline text-xs px-4 py-2 rounded-full"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="mt-1">{renderMarkdown(ill.content)}</div>
-                          {ill.source && (
-                            <p className="text-xs cyber-muted mt-2">Source: {ill.source}</p>
-                          )}
-                        </>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-gray-100/90">No illustrations yet.</p>
               )}
             </div>
           )}
@@ -3839,14 +4130,22 @@ export default function WorkspaceDetailPage() {
                   >
                     {actionLoading.includes('citations') ? 'Generating...' : 'Generate'}
                   </button>
-                  <button
-                    onClick={handleCitationValidate}
-                    className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                    disabled={actionLoading.includes('citations-validate')}
-                  >
-                    {actionLoading.includes('citations-validate') ? 'Validating...' : 'Validate'}
-                  </button>
                 </div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                <p className="text-xs uppercase tracking-widest cyber-muted">Write</p>
+                <p className="text-sm text-gray-200 mt-2">
+                  Citation drafting and editing live here. Validation now belongs in Refine.
+                </p>
+                <button
+                  onClick={() => {
+                    setActivePhase('REFINE')
+                    setActiveSection('dna')
+                  }}
+                  className="cyber-outline text-xs px-3 py-2 rounded-full mt-3"
+                >
+                  Open Refine
+                </button>
               </div>
               {workspace.citations?.length ? (
                 <ul className="space-y-3 text-gray-100/90">
@@ -4668,6 +4967,12 @@ export default function WorkspaceDetailPage() {
           )}
           {activeSection === 'study-report' && (
             <div className="space-y-4 relative min-h-full">
+              {(() => {
+                const studyAssets = getStudyAssetsSource()
+                const studyEgwPassage = parsePassageForEgwPanel(workspace.mainPassage)
+                const studyMediaPrompts = getStudyMediaPrompts()
+                return (
+                  <>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <h3 className="text-xl font-semibold">Study Report</h3>
@@ -4691,9 +4996,198 @@ export default function WorkspaceDetailPage() {
                 </div>
               ) : (
                 <div className="cyber-panel rounded-2xl p-6">
-                  <p className="text-gray-200/80">No study report yet.</p>
+                  {isStudyAssetLoading('report') ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-xs uppercase tracking-widest text-cyan-200/80">
+                        <span>Generating Study Report</span>
+                        <span>Compiling passage intelligence</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                        <div className="h-full w-2/3 bg-gradient-to-r from-cyan-400 via-sky-300 to-cyan-500 animate-pulse rounded-full" />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="h-3 rounded bg-white/10 animate-pulse w-5/6" />
+                        <div className="h-3 rounded bg-white/10 animate-pulse w-4/6" />
+                        <div className="h-3 rounded bg-white/10 animate-pulse w-3/6" />
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-gray-200/80">No study report yet.</p>
+                  )}
                 </div>
               )}
+              <div className="space-y-4">
+        {renderStudyAssetCard(
+          'study-applications',
+          'Applications',
+          <Lightbulb className="w-4 h-4" />,
+          'Generate',
+          () => handleGenerate('applications'),
+          renderStudyAssetBoxes(studyAssets.applications, 'study-assets-applications', 'No applications yet.', {
+            accentClass: 'text-amber-100',
+            itemClassName: 'border border-amber-400/20 rounded-lg p-3 bg-amber-500/5',
+          }),
+          'Edit',
+          () => setStudyAssetEditor('applications'),
+          isStudyAssetLoading('applications'),
+          actionLoading.includes('study-report') ? 'Generating from Study Report' : 'Generating Applications',
+        )}
+                {renderStudyAssetCard(
+                  'study-questions',
+                  'Discussion Questions',
+                  <MessageSquare className="w-4 h-4" />,
+          'Generate',
+          () => handleGenerate('questions'),
+          renderStudyAssetBoxes(studyAssets.discussionQuestions, 'study-assets-questions', 'No discussion questions yet.', {
+            accentClass: 'text-sky-100',
+            itemClassName: 'border border-sky-400/20 rounded-lg p-3 bg-sky-500/5',
+          }),
+          'Edit',
+          () => setStudyAssetEditor('questions'),
+          isStudyAssetLoading('questions'),
+          actionLoading.includes('study-report') ? 'Generating from Study Report' : 'Generating Questions',
+        )}
+                {renderStudyAssetCard(
+                  'study-illustrations',
+                  'Illustration Ideas',
+                  <Layers className="w-4 h-4" />,
+          'Generate',
+          () => handleGenerate('illustrations'),
+          renderStudyAssetBoxes(studyAssets.illustrationIdeas, 'study-assets-illustrations', 'No illustration ideas yet.', {
+            accentClass: 'text-rose-100',
+            itemClassName: 'border border-rose-400/20 rounded-lg p-3 bg-rose-500/5',
+          }),
+          'Edit',
+          () => setStudyAssetEditor('illustrations'),
+          isStudyAssetLoading('illustrations'),
+          actionLoading.includes('study-report') ? 'Generating from Study Report' : 'Generating Illustrations',
+        )}
+                {renderStudyAssetCard(
+                  'study-media',
+                  'Media Suggestions',
+                  <Film className="w-4 h-4" />,
+                  'Open Media',
+                  () => {
+                    setActivePhase('DELIVER')
+                    setActiveSection('media')
+                  },
+                  renderStudyAssetBoxes(studyMediaPrompts, 'study-assets-media', 'No media suggestions yet.', {
+                    itemClassName: 'border border-violet-400/20 rounded-lg p-3 bg-violet-500/5',
+                    renderItem: (item: any) => (
+                      <>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-semibold text-violet-100">{item.type}</p>
+                          <span className="text-[10px] uppercase tracking-widest text-violet-200/70">{item.intent}</span>
+                        </div>
+                        <p className="text-xs text-violet-50/90 mt-2 leading-relaxed">{item.prompt}</p>
+                      </>
+                    ),
+                  }),
+                  undefined,
+                  undefined,
+                  isStudyAssetLoading('media'),
+                  'Generating from Study Report',
+                )}
+              </div>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div className="flex items-center gap-3">
+                    <Book className="w-5 h-5 text-amber-300" />
+                    <div>
+                      <h4 className="text-lg font-semibold">Spirit of Prophecy Insight</h4>
+                      <p className="text-xs text-gray-400 mt-1">Direct EGW support for this study passage, without leaving Study.</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setStudyEgwRefreshKey((prev) => prev + 1)}
+                    className="cyber-outline text-xs px-3 py-2 rounded-full"
+                  >
+                    Refresh
+                  </button>
+                </div>
+                {workspace?.includeEGW === false ? (
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-sm text-gray-300">EGW support is disabled for this workspace.</p>
+                  </div>
+                ) : !studyEgwPassage ? (
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-sm text-gray-300">Unable to parse the main passage for EGW support.</p>
+                  </div>
+                ) : isStudyAssetLoading('egw') ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-cyan-200/80">
+                      <span>Refreshing EGW support</span>
+                      <span>In progress</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                      <div className="h-full w-2/3 bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 animate-pulse rounded-full" />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="h-3 rounded bg-white/10 animate-pulse w-5/6" />
+                      <div className="h-3 rounded bg-white/10 animate-pulse w-4/6" />
+                      <div className="h-3 rounded bg-white/10 animate-pulse w-3/6" />
+                    </div>
+                  </div>
+                ) : (
+                  <EGWPassagePanel
+                    key={`${workspace.mainPassage}-${studyEgwRefreshKey}`}
+                    passage={workspace.mainPassage}
+                    book={studyEgwPassage.book}
+                    chapter={studyEgwPassage.chapter}
+                    verseStart={studyEgwPassage.verseStart}
+                    verseEnd={studyEgwPassage.verseEnd}
+                    language={workspace?.language || 'en'}
+                    showHeader={false}
+                  />
+                )}
+              </div>
+              <div className="cyber-panel rounded-2xl p-6 space-y-6">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <Network className="w-5 h-5 text-cyan-300" />
+                    <div>
+                      <h4 className="text-lg font-semibold">Study Visualizations</h4>
+                      <p className="text-xs text-gray-400 mt-1">Keep the charts inside Study instead of bouncing to another page.</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setActivePhase('PASSAGE')
+                      setVisualizationMode('passage')
+                      setActiveSection('visualizations')
+                    }}
+                    className="cyber-outline text-xs px-3 py-2 rounded-full"
+                  >
+                    Open Full View
+                  </button>
+                </div>
+                <div className="space-y-6">
+                  <div className="cyber-panel rounded-2xl p-5">
+                    <h5 className="text-base font-semibold mb-3">Canonical Constellation</h5>
+                    <InteractiveCanonicalConstellation focusPassage={workspace.mainPassage} />
+                  </div>
+                  {workspace.mainPassage && (
+                    <div className="cyber-panel rounded-2xl p-5">
+                      <h5 className="text-base font-semibold mb-3">Sanctuary & Prophecy Connections</h5>
+                      <SanctuaryProphecyMapper
+                        passage={workspace.mainPassage}
+                        mode={/Daniel|Revelation/.test(workspace.mainPassage) ? 'prophecy' : 'sanctuary'}
+                      />
+                    </div>
+                  )}
+                  <div className="cyber-panel rounded-2xl p-5">
+                    <h5 className="text-base font-semibold mb-3">Prophecy Fulfillment Web</h5>
+                    <InteractiveProphecyWeb theme="all" />
+                  </div>
+                  <div className="cyber-panel rounded-2xl p-5">
+                    <h5 className="text-base font-semibold mb-3">Biblical Narrative Map</h5>
+                    <BiblicalNarrativeMap focusPassage={workspace.mainPassage} />
+                  </div>
+                </div>
+              </div>
+                  </>
+                )
+              })()}
             </div>
           )}
           {activeSection === 'coach' && (
@@ -4894,6 +5388,63 @@ export default function WorkspaceDetailPage() {
               </div>
 
               <div className="cyber-panel rounded-2xl p-5 space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-widest cyber-muted">Refine · Citation Validation</p>
+                    <p className="text-sm text-gray-200 mt-2">
+                      Validate drafted citations here, not in Write.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleCitationValidate}
+                    className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
+                    disabled={actionLoading.includes('citations-validate')}
+                  >
+                    {actionLoading.includes('citations-validate') ? 'Validating...' : 'Validate Citations'}
+                  </button>
+                </div>
+                <div className="grid md:grid-cols-3 gap-3">
+                  <div className="border border-white/10 rounded-xl p-4 bg-black/30">
+                    <p className="text-xs uppercase tracking-widest cyber-muted">Drafted Citations</p>
+                    <p className="text-2xl font-semibold text-cyan-200 mt-2">{workspace?.citations?.length || 0}</p>
+                  </div>
+                  <div className="border border-white/10 rounded-xl p-4 bg-black/30">
+                    <p className="text-xs uppercase tracking-widest cyber-muted">Verified</p>
+                    <p className="text-2xl font-semibold text-cyan-200 mt-2">
+                      {(workspace?.citations || []).filter((item: any) => item?.isVerified).length}
+                    </p>
+                  </div>
+                  <div className="border border-white/10 rounded-xl p-4 bg-black/30">
+                    <p className="text-xs uppercase tracking-widest cyber-muted">Pending</p>
+                    <p className="text-2xl font-semibold text-cyan-200 mt-2">
+                      {(workspace?.citations || []).filter((item: any) => !item?.isVerified).length}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="cyber-panel rounded-2xl p-5 space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-widest cyber-muted">Refine · Flow Visualization</p>
+                    <p className="text-sm text-gray-200 mt-2">
+                      Open the Sermon Flow Sculptor from Refine when you want to test movement, pacing, and structural grounding.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setActivePhase('REFINE')
+                      setVisualizationMode('refine')
+                      setActiveSection('visualizations')
+                    }}
+                    className="cyber-outline text-xs px-4 py-2 rounded-full"
+                  >
+                    Open Flow Tools
+                  </button>
+                </div>
+              </div>
+
+              <div className="cyber-panel rounded-2xl p-5 space-y-4">
                 <p className="text-xs uppercase tracking-widest cyber-muted">Layer 1 · Sermon Integrity</p>
                 {dnaIntegrityLoading ? (
                   <p className="text-sm text-gray-300">Running integrity checks...</p>
@@ -5047,6 +5598,40 @@ export default function WorkspaceDetailPage() {
                   <h3 className="text-2xl font-semibold">3D Insight Tools</h3>
                 </div>
               </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => {
+                    setVisualizationMode('passage')
+                    setActivePhase('PASSAGE')
+                  }}
+                  className={visualizationMode === 'passage' ? 'cyber-button text-xs px-4 py-2 rounded-full' : 'cyber-outline text-xs px-4 py-2 rounded-full'}
+                >
+                  Passage Tools
+                </button>
+                <button
+                  onClick={() => {
+                    setVisualizationMode('refine')
+                    setActivePhase('REFINE')
+                  }}
+                  className={visualizationMode === 'refine' ? 'cyber-button text-xs px-4 py-2 rounded-full' : 'cyber-outline text-xs px-4 py-2 rounded-full'}
+                >
+                  Refine Flow
+                </button>
+              </div>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="cyber-panel rounded-2xl p-5">
+                  <p className="text-xs uppercase tracking-[0.25em] text-cyan-300 mb-2">Passage</p>
+                  <p className="text-sm text-gray-200/80">
+                    Canonical Constellation, Prophecy Web, Sanctuary connections, and Narrative Map belong to passage discovery.
+                  </p>
+                </div>
+                <div className="cyber-panel rounded-2xl p-5">
+                  <p className="text-xs uppercase tracking-[0.25em] text-cyan-300 mb-2">Refine</p>
+                  <p className="text-sm text-gray-200/80">
+                    Sermon Flow Sculptor belongs to refinement. Use it after outline and manuscript work to test movement and grounding.
+                  </p>
+                </div>
+              </div>
               <div className="cyber-panel rounded-2xl p-5">
                 <p className="text-xs uppercase tracking-[0.25em] text-cyan-300 mb-2">Legend</p>
                 <div className="flex flex-wrap gap-2 text-xs">
@@ -5057,6 +5642,8 @@ export default function WorkspaceDetailPage() {
                 </div>
               </div>
               <div className="space-y-6">
+                {visualizationMode === 'passage' && (
+                  <>
                 <div className="cyber-panel rounded-2xl p-6">
                   <h4 className="text-lg font-semibold mb-2">Canonical Constellation</h4>
                   <p className="text-xs uppercase tracking-[0.25em] text-cyan-300 mb-2">What This Answers</p>
@@ -5092,6 +5679,9 @@ export default function WorkspaceDetailPage() {
                   </p>
                   <InteractiveProphecyWeb theme="all" />
                 </div>
+                  </>
+                )}
+                {visualizationMode === 'refine' && (
                 <div className="cyber-panel rounded-2xl p-6">
                   <h4 className="text-lg font-semibold mb-2">Sermon Flow Sculptor</h4>
                   <p className="text-xs uppercase tracking-[0.25em] text-cyan-300 mb-2">What This Answers</p>
@@ -5099,14 +5689,26 @@ export default function WorkspaceDetailPage() {
                   <p className="text-sm text-gray-200/80 mb-4">
                     Map your outline into a spatial integrity model.
                   </p>
+                  {(() => {
+                    const selectedOutline = (workspace.outlines?.find((o: any) => o.isSelected) || workspace.outlines?.[0])?.structure || {}
+                    const selectedPointNodes = getOutlinePointNodes(selectedOutline)
+                    return (
                   <InteractiveSermonFlowSculptor
                     bigIdea={workspace.theme || workspace.title}
-                    points={(workspace.outlines?.find((o: any) => o.isSelected) || workspace.outlines?.[0])?.structure?.points || []}
-                    applications={(workspace.applications || []).map((app: any) => app.content)}
+                    points={selectedOutline?.points || []}
+                    applications={selectedPointNodes.flatMap((point: any) => point.applications || []).length
+                      ? selectedPointNodes.flatMap((point: any) => point.applications || [])
+                      : (workspace.applications || []).map((app: any) => app.content)}
                     supportingVerses={{}}
-                    illustrations={(workspace.illustrations || []).map((ill: any) => ill.content)}
+                    illustrations={selectedPointNodes.flatMap((point: any) => point.illustrationIdeas || []).length
+                      ? selectedPointNodes.flatMap((point: any) => point.illustrationIdeas || [])
+                      : (workspace.illustrations || []).map((ill: any) => ill.content)}
                   />
+                    )
+                  })()}
                 </div>
+                )}
+                {visualizationMode === 'passage' && (
                 <div className="cyber-panel rounded-2xl p-6">
                   <h4 className="text-lg font-semibold mb-2">Biblical Narrative Map</h4>
                   <p className="text-xs uppercase tracking-[0.25em] text-cyan-300 mb-2">What This Answers</p>
@@ -5116,6 +5718,7 @@ export default function WorkspaceDetailPage() {
                   </p>
                   <BiblicalNarrativeMap focusPassage={workspace.mainPassage} />
                 </div>
+                )}
               </div>
             </div>
           )}
@@ -5132,18 +5735,6 @@ export default function WorkspaceDetailPage() {
           {actionLoading.includes('manuscript') && activeSection === 'manuscript' && (
             <LoadingOverlay {...getLoadingMessage('manuscript')} />
           )}
-          {actionLoading.includes('study-report') && activeSection === 'study-report' && (
-            <LoadingOverlay {...getLoadingMessage('study-report')} />
-          )}
-          {actionLoading.includes('applications') && activeSection === 'applications' && (
-            <LoadingOverlay {...getLoadingMessage('applications')} />
-          )}
-          {actionLoading.includes('questions') && activeSection === 'questions' && (
-            <LoadingOverlay {...getLoadingMessage('questions')} />
-          )}
-          {actionLoading.includes('illustrations') && activeSection === 'illustrations' && (
-            <LoadingOverlay {...getLoadingMessage('illustrations')} />
-          )}
           {actionLoading.includes('citations') && activeSection === 'citations' && (
             <LoadingOverlay {...getLoadingMessage('citations')} />
           )}
@@ -5155,9 +5746,6 @@ export default function WorkspaceDetailPage() {
           )}
           {actionLoading.includes('cross-references') && activeSection === 'cross-references' && (
             <LoadingOverlay {...getLoadingMessage('cross-references')} />
-          )}
-          {actionLoading.includes('study-report') && activeSection === 'study-report' && (
-            <LoadingOverlay {...getLoadingMessage('study-report')} />
           )}
           {actionLoading.includes('coach') && activeSection === 'coach' && (
             <LoadingOverlay {...getLoadingMessage('dna')} />
@@ -5223,6 +5811,64 @@ export default function WorkspaceDetailPage() {
                 Run Prompt
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {studyAssetEditor && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+          <div className="cyber-panel rounded-2xl p-6 max-w-4xl w-full">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-cyan-300">Study Asset Editor</p>
+                <h3 className="text-2xl font-semibold capitalize">{studyAssetEditor}</h3>
+              </div>
+              <button
+                onClick={() => setStudyAssetEditor(null)}
+                className="cyber-outline px-3 py-2 text-xs rounded-full"
+              >
+                Close
+              </button>
+            </div>
+            {renderStudyAssetEditor()}
+          </div>
+        </div>
+      )}
+
+      {referencePreview && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+          <div className="cyber-panel rounded-2xl p-6 max-w-3xl w-full">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-cyan-300">Reference Preview</p>
+                <h3 className="text-2xl font-semibold">{referencePreview.reference}</h3>
+              </div>
+              <button
+                onClick={() => setReferencePreview(null)}
+                className="cyber-outline px-3 py-2 text-xs rounded-full"
+              >
+                Close
+              </button>
+            </div>
+            {referencePreview.context ? (
+              <p className="text-sm text-cyan-100/90 mb-4">{referencePreview.context}</p>
+            ) : null}
+            {referencePreview.loading ? (
+              <div className="space-y-3">
+                <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                  <div className="h-full w-2/3 bg-gradient-to-r from-cyan-400 via-sky-300 to-cyan-500 animate-pulse rounded-full" />
+                </div>
+                <div className="space-y-2">
+                  <div className="h-3 rounded bg-white/10 animate-pulse w-5/6" />
+                  <div className="h-3 rounded bg-white/10 animate-pulse w-4/6" />
+                  <div className="h-3 rounded bg-white/10 animate-pulse w-3/6" />
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+                <p className="text-sm text-gray-100/90 leading-relaxed">{referencePreview.text}</p>
+              </div>
+            )}
           </div>
         </div>
       )}

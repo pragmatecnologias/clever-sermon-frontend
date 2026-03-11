@@ -46,22 +46,68 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
     setError(null)
 
     try {
+      const pointNodes = Array.isArray(workspace?.outlines?.[0]?.structure?.pointNodes)
+        ? workspace.outlines[0].structure.pointNodes
+        : []
+      const legacyPoints = Array.isArray(workspace?.outlines?.[0]?.structure?.points)
+        ? workspace.outlines[0].structure.points
+        : []
+
+      const normalizedPoints = (pointNodes.length ? pointNodes : legacyPoints)
+        .map((point: any) => {
+          const title = typeof point === 'string' ? point : (point?.title || point?.content || '')
+          const summary = typeof point === 'string' ? '' : (point?.summary || point?.preachingInsight || '')
+          const subpoints = Array.isArray(point?.subpoints) ? point.subpoints : []
+          const supportingVerses = Array.isArray(point?.supportingVerses) ? point.supportingVerses : []
+          const lineParts = [title, summary, subpoints[0], supportingVerses[0]].filter(Boolean)
+          return lineParts.join(' — ')
+        })
+        .filter(Boolean)
+
+      const pointApplications = pointNodes.flatMap((point: any) =>
+        Array.isArray(point?.applications) ? point.applications : [],
+      )
+      const pointQuestions = pointNodes.flatMap((point: any) =>
+        Array.isArray(point?.discussionQuestions) ? point.discussionQuestions : [],
+      )
+
+      const mergedApplications = [
+        ...(workspace.applications || []).map((item: any) => item?.content || item?.text || item).filter(Boolean),
+        ...pointApplications,
+      ]
+
+      const mergedQuestions = [
+        ...(workspace.questions || workspace.discussionQuestions || [])
+          .map((item: any) => item?.question || item?.text || item)
+          .filter(Boolean),
+        ...pointQuestions,
+      ]
+
+      const unique = (items: any[]) => Array.from(new Set(items.map((item) => String(item).trim()).filter(Boolean)))
+
+      const manuscriptText = workspace.manuscripts?.[0]?.content?.text || ''
+      const studyReport = workspace.studyReports?.[0]?.sections
+      const studySummaryParts = [
+        studyReport?.summary,
+        studyReport?.interpretiveCenter,
+        studyReport?.mainTension,
+      ].filter(Boolean)
+
       const syncData: SyncWorkspaceData = {
         workspaceId: workspace.id,
         title: workspace.title,
         seriesTitle: workspace.seriesTitle,
+        language: workspace.language || workspace.metadata?.language || 'en',
         mainScriptureRef: workspace.mainPassage,
         bigIdea: workspace.theme || workspace.sermonGoals || 'Sermon presentation',
-        mainPoints: workspace.outlines?.[0]?.structure?.points?.map((p: any) => 
-          typeof p === 'string' ? p : (p.title || p.content || '')
-        ) || [],
+        mainPoints: normalizedPoints,
         audienceContext: workspace.audienceProfile,
         tone: workspace.metadata?.tone,
-        notes: workspace.manuscripts?.[0]?.content?.text,
+        notes: [manuscriptText, ...studySummaryParts].filter(Boolean).join('\n\n'),
         outline: workspace.outlines?.[0],
         manuscript: workspace.manuscripts?.[0],
-        applications: workspace.applications || [],
-        questions: workspace.questions || [],
+        applications: unique(mergedApplications),
+        questions: unique(mergedQuestions),
       }
 
       const sermon = await slidesApi.syncWorkspace(syncData, token)
@@ -86,7 +132,7 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
 
     try {
       const themeId = selectedTheme && selectedTheme.trim() !== '' ? selectedTheme : undefined
-      const deck = await slidesApi.generateDeck(sermonId, themeId, token)
+      const deck = await slidesApi.generateDeck(sermonId, themeId, token, 'long')
       
       // Track progress via SSE
       const SLIDES_API_URL = process.env.NEXT_PUBLIC_SLIDES_API_URL || 'http://localhost:3001/api/v1'
@@ -180,8 +226,15 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
           </p>
           <p className="text-sm font-medium mb-2">{workspace.outlines[0].title}</p>
           <div className="text-xs text-gray-300 space-y-2">
-            {workspace.outlines[0].structure?.points?.slice(0, 3).map((point: any, idx: number) => {
-              const pointText = typeof point === 'string' ? point : (point.title || point.content || '')
+            {(() => {
+              const previewPoints =
+                Array.isArray(workspace.outlines[0].structure?.pointNodes) && workspace.outlines[0].structure.pointNodes.length
+                  ? workspace.outlines[0].structure.pointNodes
+                  : (workspace.outlines[0].structure?.points || [])
+              return previewPoints.slice(0, 3).map((point: any, idx: number) => {
+              const pointText = typeof point === 'string'
+                ? point
+                : [point.title || point.content || '', point.summary || point.preachingInsight || ''].filter(Boolean).join(' — ')
               return (
                 <div key={idx} className="flex gap-2">
                   <span className="text-gray-500 flex-shrink-0">•</span>
@@ -198,12 +251,20 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
                   </div>
                 </div>
               )
-            })}
-            {workspace.outlines[0].structure?.points?.length > 3 && (
+              })
+            })()}
+            {(() => {
+              const previewPoints =
+                Array.isArray(workspace.outlines[0].structure?.pointNodes) && workspace.outlines[0].structure.pointNodes.length
+                  ? workspace.outlines[0].structure.pointNodes
+                  : (workspace.outlines[0].structure?.points || [])
+              if (previewPoints.length <= 3) return null
+              return (
               <div className="text-gray-500 ml-4">
-                ... and {workspace.outlines[0].structure.points.length - 3} more
+                ... and {previewPoints.length - 3} more
               </div>
-            )}
+              )
+            })()}
           </div>
         </div>
       )}
