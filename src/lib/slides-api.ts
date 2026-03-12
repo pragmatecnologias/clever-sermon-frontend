@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 const SLIDES_API_URL = process.env.NEXT_PUBLIC_SLIDES_API_URL || 'http://localhost:3001/api/v1';
+const SERMON_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1';
 
 export interface SyncWorkspaceData {
   workspaceId: string;
@@ -99,6 +100,13 @@ export const slidesApi = {
         headers: { Authorization: `Bearer ${token}` },
       }
     );
+    return response.data;
+  },
+
+  deleteImage: async (imageId: string, token: string) => {
+    const response = await axios.delete(`${SLIDES_API_URL}/images/${imageId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     return response.data;
   },
 
@@ -284,6 +292,13 @@ export const slidesApi = {
     return response.data;
   },
 
+  deleteAudio: async (audioId: string, token: string) => {
+    const response = await axios.delete(`${SLIDES_API_URL}/audio/${audioId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data;
+  },
+
   getVoices: async (token: string) => {
     const response = await axios.get(
       `${SLIDES_API_URL}/audio/voices`,
@@ -338,6 +353,13 @@ export const slidesApi = {
         headers: { Authorization: `Bearer ${token}` },
       }
     );
+    return response.data;
+  },
+
+  deleteMusic: async (musicId: string, token: string) => {
+    const response = await axios.delete(`${SLIDES_API_URL}/music/${musicId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     return response.data;
   },
 
@@ -398,6 +420,13 @@ export const slidesApi = {
     return response.data;
   },
 
+  deleteVideo: async (videoId: string, token: string) => {
+    const response = await axios.delete(`${SLIDES_API_URL}/video/${videoId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data;
+  },
+
   // Social Media
   generateSocialKit: async (request: {
     sermonId?: string;
@@ -406,6 +435,31 @@ export const slidesApi = {
     caption: string;
     title: string;
     passage: string;
+    prompt?: string;
+    mode?: 'auto_multi_network' | 'core4' | 'manual';
+    useCase?: string;
+    overlay?: {
+      eventTitle?: string;
+      eventSubtitle?: string;
+      serviceDate?: string;
+      serviceTime?: string;
+      timezone?: string;
+      locationOverride?: string;
+      churchName?: string;
+      website?: string;
+      phone?: string;
+      logoUrl?: string;
+      ctaText?: string;
+      hashtags?: string;
+      showLogo?: boolean;
+      showAddress?: boolean;
+      showWebsite?: boolean;
+      showPhone?: boolean;
+      showServiceTime?: boolean;
+      preset?: 'minimal' | 'bold' | 'announcement';
+      imageProvider?: 'local' | 'openai';
+      imagePreset?: string;
+    };
   }, token: string) => {
     const response = await axios.post(
       `${SLIDES_API_URL}/social/generate`,
@@ -437,12 +491,72 @@ export const slidesApi = {
     return response.data;
   },
 
+  deleteSocial: async (socialId: string, token: string) => {
+    const response = await axios.delete(`${SLIDES_API_URL}/social/${socialId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data;
+  },
+
+  getSocialBlob: async (socialId: string, token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/social/${socialId}/download`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob',
+      }
+    );
+    return response.data as Blob;
+  },
+
+  getChurchSettings: async (token: string) => {
+    const response = await axios.get(`${SERMON_API_URL}/church-settings/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data;
+  },
+
+  updateChurchSettings: async (
+    request: {
+      churchName?: string;
+      addressLine1?: string;
+      addressLine2?: string;
+      city?: string;
+      state?: string;
+      postalCode?: string;
+      country?: string;
+      phone?: string;
+      website?: string;
+      logoUrl?: string;
+      defaultTimezone?: string;
+    },
+    token: string,
+  ) => {
+    const response = await axios.patch(`${SERMON_API_URL}/church-settings/me`, request, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data;
+  },
+
+  uploadChurchLogo: async (file: File, token: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await axios.post(`${SERMON_API_URL}/church-settings/me/logo`, formData, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
   // Sermon Song Generation
   previewSermonSong: async (request: {
     sermonId: string;
     mode: string;
     style?: string;
     useCase?: string;
+    studyPrompt?: string;
   }, token: string) => {
     const response = await axios.post(
       `${SLIDES_API_URL}/music/sermon-song/preview`,
@@ -461,9 +575,27 @@ export const slidesApi = {
     style?: string;
     useCase?: string;
     duration?: number;
+    studyPrompt?: string;
   }, token: string) => {
     const response = await axios.post(
       `${SLIDES_API_URL}/music/sermon-song/generate`,
+      request,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  generateSermonLyrics: async (request: {
+    sermonId: string;
+    style?: string;
+    mode?: 'with_lyrics' | 'chorus_only';
+    useCase?: string;
+    studyPrompt?: string;
+  }, token: string) => {
+    const response = await axios.post(
+      `${SLIDES_API_URL}/music/sermon-song/lyrics`,
       request,
       {
         headers: { Authorization: `Bearer ${token}` },

@@ -9,6 +9,7 @@ interface SermonMusicGeneratorProps {
   sermonId?: string
   token: string
   suggestedPrompt?: string
+  suggestedPromptOptions?: Array<{ id: string; label: string; description?: string; prompt: string }>
   onGenerated?: () => void
 }
 
@@ -16,15 +17,38 @@ type SongMode = 'ambient_only' | 'with_lyrics' | 'chorus_only' | 'background_bed
 type MusicStyle = 'worship' | 'acoustic' | 'cinematic' | 'orchestral' | 'piano_prayer' | 'youth_contemporary' | 'choir_inspired' | 'instrumental_ambient'
 type UseCase = 'sermon-intro' | 'prayer-reflection' | 'recap-video' | 'youth-promo' | 'closing-appeal' | 'offertory' | 'meditation' | 'theme-song'
 
-export default function SermonMusicGenerator({ workspace, sermonId, token, suggestedPrompt, onGenerated }: SermonMusicGeneratorProps) {
+export default function SermonMusicGenerator({
+  workspace,
+  sermonId,
+  token,
+  suggestedPrompt,
+  suggestedPromptOptions = [],
+  onGenerated,
+}: SermonMusicGeneratorProps) {
   const [mode, setMode] = useState<SongMode>('with_lyrics')
   const [style, setStyle] = useState<MusicStyle>('worship')
   const [useCase, setUseCase] = useState<UseCase>('theme-song')
   const [duration, setDuration] = useState(180)
   const [previewing, setPreviewing] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [generatingLyrics, setGeneratingLyrics] = useState(false)
+  const [resolvingSermon, setResolvingSermon] = useState(false)
   const [preview, setPreview] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
+  const [selectedPromptOption, setSelectedPromptOption] = useState<string>('')
+  const [resolvedSermonId, setResolvedSermonId] = useState<string | null>(sermonId || null)
+
+  useEffect(() => {
+    if (!suggestedPromptOptions.length) return
+    if (selectedPromptOption) return
+    setSelectedPromptOption(suggestedPromptOptions[0].id)
+  }, [suggestedPromptOptions, selectedPromptOption])
+
+  useEffect(() => {
+    if (sermonId) {
+      setResolvedSermonId(sermonId)
+    }
+  }, [sermonId])
 
   const musicStyles: { value: MusicStyle; label: string }[] = [
     { value: 'worship', label: 'Worship' },
@@ -48,17 +72,86 @@ export default function SermonMusicGenerator({ workspace, sermonId, token, sugge
     { value: 'meditation', label: 'Meditation', description: 'Peaceful reflection' },
   ]
 
+  const selectedPromptText =
+    suggestedPromptOptions.find((item) => item.id === selectedPromptOption)?.prompt ||
+    suggestedPrompt ||
+    ''
+
+  const resolveSermonId = async (): Promise<string | null> => {
+    if (resolvedSermonId) return resolvedSermonId
+    setResolvingSermon(true)
+    try {
+      const sermons = await slidesApi.getSermons(token)
+      const workspaceSermons = (Array.isArray(sermons) ? sermons : [])
+        .filter((sermon: any) => sermon?.workspaceId === workspace?.id)
+        .sort(
+          (a: any, b: any) =>
+            new Date(b?.updatedAt || b?.createdAt || 0).getTime() - new Date(a?.updatedAt || a?.createdAt || 0).getTime(),
+        )
+      if (workspaceSermons[0]?.id) {
+        setResolvedSermonId(workspaceSermons[0].id)
+        return workspaceSermons[0].id
+      }
+
+      const pointNodes = Array.isArray(workspace?.outlines?.[0]?.structure?.pointNodes)
+        ? workspace.outlines[0].structure.pointNodes
+        : []
+      const legacyPoints = Array.isArray(workspace?.outlines?.[0]?.structure?.points)
+        ? workspace.outlines[0].structure.points
+        : []
+      const normalizedPoints = (pointNodes.length ? pointNodes : legacyPoints)
+        .map((point: any) => {
+          const title = typeof point === 'string' ? point : (point?.title || point?.content || '')
+          const summary = typeof point === 'string' ? '' : (point?.summary || point?.preachingInsight || '')
+          return [title, summary].filter(Boolean).join(' — ')
+        })
+        .filter(Boolean)
+
+      const syncData = {
+        workspaceId: workspace.id,
+        title: workspace.title || 'Untitled Sermon',
+        seriesTitle: workspace.seriesTitle,
+        language: workspace.language || workspace.metadata?.language || 'en',
+        mainScriptureRef: workspace.mainPassage || '',
+        bigIdea: workspace.theme || workspace.sermonGoals || 'Sermon',
+        mainPoints: normalizedPoints,
+        audienceContext: workspace.audienceProfile,
+        tone: workspace.metadata?.tone,
+        notes: workspace.manuscripts?.[0]?.content?.text || '',
+        outline: workspace.outlines?.[0],
+        manuscript: workspace.manuscripts?.[0],
+        applications: workspace.applications || [],
+        questions: workspace.questions || workspace.discussionQuestions || [],
+      }
+
+      const sermon = await slidesApi.syncWorkspace(syncData as any, token)
+      if (sermon?.id) {
+        setResolvedSermonId(sermon.id)
+        return sermon.id
+      }
+      return null
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to sync sermon context for music generation')
+      return null
+    } finally {
+      setResolvingSermon(false)
+    }
+  }
+
   const handlePreview = async () => {
+    const sermonTargetId = await resolveSermonId()
+    if (!sermonTargetId) return
     setPreviewing(true)
     setError(null)
     setPreview(null)
 
     try {
       const previewData = await slidesApi.previewSermonSong({
-        sermonId: sermonId!,
+        sermonId: sermonTargetId,
         mode,
         style,
         useCase,
+        studyPrompt: selectedPromptText || undefined,
       }, token)
 
       setPreview(previewData)
@@ -70,17 +163,20 @@ export default function SermonMusicGenerator({ workspace, sermonId, token, sugge
   }
 
   const handleGenerate = async () => {
+    const sermonTargetId = await resolveSermonId()
+    if (!sermonTargetId) return
     setGenerating(true)
     setError(null)
 
     try {
       await slidesApi.generateSermonSong({
-        sermonId: sermonId!,
+        sermonId: sermonTargetId,
         workspaceId: workspace.id,
         mode,
         style,
         useCase,
         duration,
+        studyPrompt: selectedPromptText || undefined,
       }, token)
 
       onGenerated?.()
@@ -93,18 +189,21 @@ export default function SermonMusicGenerator({ workspace, sermonId, token, sugge
   }
 
   const handleQuickGenerate = async (quickMode: SongMode) => {
+    const sermonTargetId = await resolveSermonId()
+    if (!sermonTargetId) return
     setMode(quickMode)
     setGenerating(true)
     setError(null)
 
     try {
       await slidesApi.generateSermonSong({
-        sermonId: sermonId!,
+        sermonId: sermonTargetId,
         workspaceId: workspace.id,
         mode: quickMode,
         style: quickMode === 'ambient_only' ? 'instrumental_ambient' : 'worship',
         useCase: quickMode === 'ambient_only' ? 'sermon-intro' : 'theme-song',
         duration: quickMode === 'ambient_only' ? 120 : 180,
+        studyPrompt: selectedPromptText || undefined,
       }, token)
 
       onGenerated?.()
@@ -112,6 +211,36 @@ export default function SermonMusicGenerator({ workspace, sermonId, token, sugge
       setError(err.response?.data?.message || 'Failed to generate music')
     } finally {
       setGenerating(false)
+    }
+  }
+
+  const handleGenerateLyrics = async () => {
+    const sermonTargetId = await resolveSermonId()
+    if (!sermonTargetId) return
+    setGeneratingLyrics(true)
+    setError(null)
+    setPreview(null)
+    try {
+      const lyricMode = mode === 'chorus_only' ? 'chorus_only' : 'with_lyrics'
+      const lyricData = await slidesApi.generateSermonLyrics(
+        {
+          sermonId: sermonTargetId,
+          style,
+          mode: lyricMode,
+          useCase,
+          studyPrompt: selectedPromptText || undefined,
+        },
+        token,
+      )
+      setPreview({
+        type: 'lyrics',
+        elements: lyricData.elements,
+        lyrics: lyricData.lyrics,
+      })
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to generate lyrics')
+    } finally {
+      setGeneratingLyrics(false)
     }
   }
 
@@ -126,7 +255,25 @@ export default function SermonMusicGenerator({ workspace, sermonId, token, sugge
         </div>
       </div>
 
-      {suggestedPrompt?.trim() ? (
+      {suggestedPromptOptions.length ? (
+        <div className="border border-purple-400/30 bg-purple-500/10 rounded-xl px-4 py-3 space-y-2">
+          <label className="text-[11px] uppercase tracking-wider text-purple-200/90 block">Study Music Prompt</label>
+          <select
+            value={selectedPromptOption}
+            onChange={(e) => setSelectedPromptOption(e.target.value)}
+            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+          >
+            {suggestedPromptOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}{option.description ? ` — ${option.description}` : ''}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-purple-100/90 leading-relaxed">
+            {suggestedPromptOptions.find((item) => item.id === selectedPromptOption)?.prompt || ''}
+          </p>
+        </div>
+      ) : suggestedPrompt?.trim() ? (
         <div className="border border-purple-400/30 bg-purple-500/10 rounded-xl px-4 py-3">
           <p className="text-[11px] uppercase tracking-wider text-purple-200/90 mb-1">Study Music Prompt</p>
           <p className="text-xs text-purple-100/90 leading-relaxed">{suggestedPrompt}</p>
@@ -134,10 +281,10 @@ export default function SermonMusicGenerator({ workspace, sermonId, token, sugge
       ) : null}
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <button
           onClick={() => handleQuickGenerate('ambient_only')}
-          disabled={generating || !sermonId}
+          disabled={generating || resolvingSermon}
           className="cyber-outline px-4 py-3 rounded-xl text-sm flex items-center justify-center gap-2"
         >
           <Sparkles className="w-4 h-4" />
@@ -145,7 +292,7 @@ export default function SermonMusicGenerator({ workspace, sermonId, token, sugge
         </button>
         <button
           onClick={() => handleQuickGenerate('with_lyrics')}
-          disabled={generating || !sermonId}
+          disabled={generating || resolvingSermon}
           className="cyber-button px-4 py-3 rounded-xl text-sm flex items-center justify-center gap-2"
         >
           <Sparkles className="w-4 h-4" />
@@ -232,7 +379,7 @@ export default function SermonMusicGenerator({ workspace, sermonId, token, sugge
       <div className="flex gap-3">
         <button
           onClick={handlePreview}
-          disabled={previewing || !sermonId}
+          disabled={previewing || resolvingSermon}
           className="flex-1 cyber-outline px-4 py-3 rounded-xl text-sm flex items-center justify-center gap-2"
         >
           {previewing ? (
@@ -249,7 +396,7 @@ export default function SermonMusicGenerator({ workspace, sermonId, token, sugge
         </button>
         <button
           onClick={handleGenerate}
-          disabled={generating || !sermonId}
+          disabled={generating || resolvingSermon}
           className="flex-1 cyber-button px-4 py-3 rounded-xl text-sm flex items-center justify-center gap-2"
         >
           {generating ? (
@@ -261,6 +408,23 @@ export default function SermonMusicGenerator({ workspace, sermonId, token, sugge
             <>
               <Music className="w-4 h-4" />
               Generate Music
+            </>
+          )}
+        </button>
+        <button
+          onClick={handleGenerateLyrics}
+          disabled={generatingLyrics || resolvingSermon}
+          className="cyber-outline px-4 py-3 rounded-xl text-sm flex items-center justify-center gap-2 border-purple-400/40 text-purple-200"
+        >
+          {generatingLyrics ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Generating Lyrics...
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4" />
+              Generate Lyrics
             </>
           )}
         </button>

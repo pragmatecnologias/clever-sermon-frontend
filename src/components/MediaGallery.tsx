@@ -1,33 +1,45 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Image, FileText, Music, Mic, Video, Download, Trash2, Loader2 } from 'lucide-react'
+import { Image, FileText, Music, Mic, Video, Download, Trash2, Loader2, Share2 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
 
 interface MediaItem {
   id: string
-  type: 'image' | 'slide' | 'audio' | 'music' | 'video'
+  type: 'image' | 'slide' | 'audio' | 'music' | 'video' | 'social'
   status: 'pending' | 'processing' | 'completed' | 'failed'
   filePath?: string
   createdAt: string
   errorMessage?: string
+  label?: string
+  dimensions?: string
+}
+
+function formatSocialToken(value?: string): string {
+  if (!value) return ''
+  return value
+    .split(/[_\-\s]+/)
+    .filter(Boolean)
+    .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
+    .join(' ')
 }
 
 interface MediaGalleryProps {
   workspaceId: string
   token: string
-  filter?: 'all' | 'image' | 'slide' | 'audio' | 'music' | 'video'
-  onFilterChange?: (filter: 'all' | 'image' | 'slide' | 'audio' | 'music' | 'video') => void
+  filter?: 'all' | 'image' | 'slide' | 'audio' | 'music' | 'video' | 'social'
+  onFilterChange?: (filter: 'all' | 'image' | 'slide' | 'audio' | 'music' | 'video' | 'social') => void
 }
 
 export default function MediaGallery({ workspaceId, token, filter, onFilterChange }: MediaGalleryProps) {
-  const [internalFilter, setInternalFilter] = useState<'all' | 'image' | 'slide' | 'audio' | 'music' | 'video'>('all')
+  const [internalFilter, setInternalFilter] = useState<'all' | 'image' | 'slide' | 'audio' | 'music' | 'video' | 'social'>('all')
   const [media, setMedia] = useState<MediaItem[]>([])
   const [decks, setDecks] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
+  const [deletingIds, setDeletingIds] = useState<Record<string, boolean>>({})
 
   const activeFilter = filter ?? internalFilter
-  const setActiveFilter = (next: 'all' | 'image' | 'slide' | 'audio' | 'music' | 'video') => {
+  const setActiveFilter = (next: 'all' | 'image' | 'slide' | 'audio' | 'music' | 'video' | 'social') => {
     if (onFilterChange) {
       onFilterChange(next)
       return
@@ -58,6 +70,7 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
     { value: 'audio', label: 'Audio', icon: Mic },
     { value: 'music', label: 'Music', icon: Music },
     { value: 'video', label: 'Video', icon: Video },
+    { value: 'social', label: 'Social', icon: Share2 },
   ] as const
 
   const getStatusColor = (status: string) => {
@@ -79,6 +92,7 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
       case 'audio': return <Mic className="w-5 h-5" />
       case 'music': return <Music className="w-5 h-5" />
       case 'video': return <Video className="w-5 h-5" />
+      case 'social': return <Share2 className="w-5 h-5" />
       default: return null
     }
   }
@@ -90,12 +104,13 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
   const loadMediaLibrary = async () => {
     try {
       setLoading(true)
-      const [decksResult, imagesResult, audioResult, musicResult, videoResult] = await Promise.allSettled([
+      const [decksResult, imagesResult, audioResult, musicResult, videoResult, socialResult] = await Promise.allSettled([
         slidesApi.getDecks(token),
         slidesApi.listImages(workspaceId, token),
         slidesApi.listAudio(workspaceId, token),
         slidesApi.listMusic(workspaceId, token),
         slidesApi.listVideo(workspaceId, token),
+        slidesApi.listSocial(workspaceId, token),
       ])
 
       const decksData = decksResult.status === 'fulfilled' ? decksResult.value : []
@@ -155,6 +170,24 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
         )
       }
 
+      if (socialResult.status === 'fulfilled' && Array.isArray(socialResult.value)) {
+        mappedMedia.push(
+          ...socialResult.value.map((item: any) => ({
+            id: item.id,
+            type: 'social' as const,
+            status: (String(item.status || '').toLowerCase() === 'ready' ? 'completed' : String(item.status || '').toLowerCase()) as MediaItem['status'],
+            filePath: item.filePath,
+            createdAt: item.createdAt,
+            errorMessage: item.errorMessage,
+            label: [item.platform, item.variant].filter(Boolean).join(' • ') || item.type,
+            dimensions:
+              item.width && item.height
+                ? `${item.width}x${item.height} ${String(item.format || 'png').toUpperCase()}`
+                : undefined,
+          }))
+        )
+      }
+
       mappedMedia.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
       setMedia(mappedMedia)
     } catch (err) {
@@ -172,6 +205,18 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
         const a = document.createElement('a')
         a.href = url
         a.download = `generated-image-${item.id}.png`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        URL.revokeObjectURL(url)
+        return
+      }
+      if (item.type === 'social') {
+        const blob = await slidesApi.getSocialBlob(item.id, token)
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `social-${item.id}.png`
         document.body.appendChild(a)
         a.click()
         a.remove()
@@ -214,18 +259,51 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
         openBlobInNewTab(blob)
         return
       }
-      if (item.type === 'music') {
-        const blob = await slidesApi.getMusicBlob(item.id, token)
-        openBlobInNewTab(blob)
-        return
-      }
-      if (item.type === 'video') {
-        const blob = await slidesApi.getVideoBlob(item.id, token)
-        openBlobInNewTab(blob)
+              if (item.type === 'music') {
+                const blob = await slidesApi.getMusicBlob(item.id, token)
+                openBlobInNewTab(blob)
+                return
+              }
+              if (item.type === 'social') {
+                const blob = await slidesApi.getSocialBlob(item.id, token)
+                openBlobInNewTab(blob)
+                return
+              }
+              if (item.type === 'video') {
+                const blob = await slidesApi.getVideoBlob(item.id, token)
+                openBlobInNewTab(blob)
         return
       }
     } catch (error) {
       console.error('Failed to open asset in new tab:', error)
+    }
+  }
+
+  const deleteMediaItem = async (item: MediaItem) => {
+    try {
+      setDeletingIds((prev) => ({ ...prev, [item.id]: true }))
+      if (item.type === 'image') {
+        await slidesApi.deleteImage(item.id, token)
+      } else if (item.type === 'audio') {
+        await slidesApi.deleteAudio(item.id, token)
+      } else if (item.type === 'music') {
+        await slidesApi.deleteMusic(item.id, token)
+      } else if (item.type === 'video') {
+        await slidesApi.deleteVideo(item.id, token)
+      } else if (item.type === 'social') {
+        await slidesApi.deleteSocial(item.id, token)
+      } else {
+        return
+      }
+      await loadMediaLibrary()
+    } catch (error) {
+      console.error('Failed to delete media item:', error)
+    } finally {
+      setDeletingIds((prev) => {
+        const next = { ...prev }
+        delete next[item.id]
+        return next
+      })
     }
   }
 
@@ -314,31 +392,56 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
             }
 
             // Render regular media card
+            const mediaItem = item as MediaItem
             return (
               <div
-                key={item.id}
+                key={mediaItem.id}
                 onClick={() => {
-                  if (item.status === 'completed' && (item.type === 'image' || item.type === 'music' || item.type === 'video')) {
-                    openAssetInNewTab(item)
+                  if (mediaItem.status === 'completed' && (mediaItem.type === 'image' || mediaItem.type === 'music' || mediaItem.type === 'video' || mediaItem.type === 'social')) {
+                    openAssetInNewTab(mediaItem)
                   }
                 }}
                 className={`border border-white/10 rounded-xl p-4 bg-black/30 hover:bg-black/40 transition-all ${
-                  item.status === 'completed' && (item.type === 'image' || item.type === 'music' || item.type === 'video')
+                  mediaItem.status === 'completed' && (mediaItem.type === 'image' || mediaItem.type === 'music' || mediaItem.type === 'video' || mediaItem.type === 'social')
                     ? 'cursor-pointer'
                     : ''
                 }`}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    {getTypeIcon(item.type)}
-                    <span className="text-sm font-medium capitalize">{item.type}</span>
+                    {getTypeIcon(mediaItem.type)}
+                    <span className="text-sm font-medium capitalize">
+                      {mediaItem.type === 'social' ? 'Social Asset' : mediaItem.type}
+                    </span>
                   </div>
-                  <span className={`text-xs px-2 py-1 rounded-full border ${getStatusColor(item.status)}`}>
-                    {item.status}
+                  <span className={`text-xs px-2 py-1 rounded-full border ${getStatusColor(mediaItem.status)}`}>
+                    {mediaItem.status}
                   </span>
                 </div>
 
-                {item.status === 'processing' && (
+                {mediaItem.type === 'social' ? (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {mediaItem.label?.split('•').map((part, idx) => {
+                      const token = formatSocialToken(part.trim())
+                      if (!token) return null
+                      return (
+                        <span
+                          key={`${mediaItem.id}-social-tag-${idx}`}
+                          className="text-[11px] px-2 py-1 rounded-full border border-cyan-400/40 bg-cyan-500/10 text-cyan-200"
+                        >
+                          {token}
+                        </span>
+                      )
+                    })}
+                    {mediaItem.dimensions ? (
+                      <span className="text-[11px] px-2 py-1 rounded-full border border-white/20 bg-white/5 text-gray-300">
+                        {mediaItem.dimensions}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {mediaItem.status === 'processing' && (
                   <div className="mb-3">
                     <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
                       <div className="h-full w-full animate-[progress_loop_1.1s_linear_infinite] bg-gradient-to-r from-transparent via-cyan-300 to-transparent" />
@@ -346,37 +449,56 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
                   </div>
                 )}
 
-                {item.status === 'failed' && 'errorMessage' in item && item.errorMessage && (
-                  <p className="text-xs text-red-300 mb-3">{item.errorMessage}</p>
+                {mediaItem.status === 'failed' && mediaItem.errorMessage && (
+                  <p className="text-xs text-red-300 mb-3">{mediaItem.errorMessage}</p>
                 )}
 
-                {item.status === 'completed' && (
+                {(mediaItem.status === 'completed' || mediaItem.status === 'failed') && (
                   <div className="flex gap-2 mt-3">
+                    {mediaItem.status === 'completed' ? (
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          triggerDownload(mediaItem)
+                        }}
+                        className="flex-1 cyber-outline text-xs px-3 py-2 rounded-full flex items-center justify-center gap-2"
+                      >
+                        <Download className="w-3 h-3" />
+                        Download
+                      </button>
+                    ) : null}
                     <button
                       onClick={(event) => {
                         event.stopPropagation()
-                        triggerDownload(item)
+                        deleteMediaItem(mediaItem)
                       }}
-                      className="flex-1 cyber-outline text-xs px-3 py-2 rounded-full flex items-center justify-center gap-2"
+                      disabled={Boolean(deletingIds[mediaItem.id])}
+                      className="cyber-outline text-xs px-3 py-2 rounded-full text-red-300 border-red-400/40 hover:bg-red-500/10 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      <Download className="w-3 h-3" />
-                      Download
-                    </button>
-                    <button
-                      onClick={(event) => event.stopPropagation()}
-                      className="cyber-outline text-xs px-3 py-2 rounded-full text-red-300 border-red-400/40 hover:bg-red-500/10"
-                    >
-                      <Trash2 className="w-3 h-3" />
+                      {deletingIds[mediaItem.id] ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3 h-3" />
+                      )}
                     </button>
                   </div>
                 )}
 
-                {item.type === 'image' && item.status === 'completed' ? (
-                  <GeneratedImagePreview imageId={item.id} token={token} />
+                {mediaItem.type === 'image' && mediaItem.status === 'completed' ? (
+                  <GeneratedImagePreview imageId={mediaItem.id} token={token} />
+                ) : mediaItem.type === 'social' && mediaItem.status === 'completed' ? (
+                  <GeneratedSocialPreview socialId={mediaItem.id} token={token} />
+                ) : null}
+
+                {mediaItem.label && mediaItem.type !== 'social' ? (
+                  <p className="text-xs text-cyan-100/80 mt-2">{mediaItem.label}</p>
+                ) : null}
+                {mediaItem.dimensions && mediaItem.type !== 'social' ? (
+                  <p className="text-[11px] text-gray-400 mt-1">{mediaItem.dimensions}</p>
                 ) : null}
 
                 <p className="text-xs text-gray-500 mt-2">
-                  {new Date(item.createdAt).toLocaleString()}
+                  {new Date(mediaItem.createdAt).toLocaleString()}
                 </p>
               </div>
             )
@@ -473,6 +595,41 @@ function GeneratedImagePreview({ imageId, token }: { imageId: string; token: str
     <div className="mt-3 rounded-lg overflow-hidden border border-white/10 bg-black/40">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={src} alt="Generated media preview" className="w-full h-36 object-cover" />
+    </div>
+  )
+}
+
+function GeneratedSocialPreview({ socialId, token }: { socialId: string; token: string }) {
+  const [src, setSrc] = useState<string | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+    let objectUrl: string | null = null
+
+    const load = async () => {
+      try {
+        const blob = await slidesApi.getSocialBlob(socialId, token)
+        if (!mounted) return
+        objectUrl = URL.createObjectURL(blob)
+        setSrc(objectUrl)
+      } catch (error) {
+        console.error('Failed to load social preview:', error)
+      }
+    }
+
+    load()
+    return () => {
+      mounted = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [socialId, token])
+
+  if (!src) return null
+
+  return (
+    <div className="mt-3 rounded-lg overflow-hidden border border-white/10 bg-black/40">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt="Social media preview" className="w-full h-36 object-cover" />
     </div>
   )
 }

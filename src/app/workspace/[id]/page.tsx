@@ -38,6 +38,7 @@ import PassageSummary from '@/components/PassageSummary'
 import StudySynthesis from '@/components/StudySynthesis'
 import SermonIntegrityDashboard from '@/components/SermonIntegrityDashboard'
 import MediaProductionStudio from '@/components/MediaProductionStudio'
+import ChurchSettingsPanel from '@/components/ChurchSettingsPanel'
 import BiblicalNarrativeMap from '@/components/BiblicalNarrativeMap'
 import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut'
 import { getLoadingMessage } from '@/utils/loadingMessages'
@@ -118,6 +119,7 @@ export default function WorkspaceDetailPage() {
   const [visualizationMode, setVisualizationMode] = useState<'passage' | 'refine'>('passage')
   const [activeSection, setActiveSection] = useState<
     | 'workspace'
+    | 'church-settings'
     | 'outlines'
     | 'manuscript'
     | 'citations'
@@ -1273,12 +1275,23 @@ export default function WorkspaceDetailPage() {
             }
           }
           const type = String(item?.type || item?.label || item?.name || '').trim()
+          const lowerType = type.toLowerCase()
+          if (
+            lowerType.includes('presentación') ||
+            lowerType.includes('presentation') ||
+            lowerType.includes('slide') ||
+            lowerType.includes('deck')
+          ) {
+            return null
+          }
           const intent = String(item?.intent || item?.category || item?.purpose || '').trim()
+          const useCase = String(item?.useCase || item?.usage || item?.howToUse || '').trim()
           const prompt = String(item?.prompt || item?.text || item?.content || '').trim()
           if (!prompt) return null
           return {
             type: type || (workspace?.language === 'es' ? 'Medio' : 'Media'),
             intent: intent || (workspace?.language === 'es' ? 'Sugerencia de estudio' : 'Study suggestion'),
+            ...(useCase ? { useCase } : {}),
             prompt,
           }
         })
@@ -2898,6 +2911,8 @@ export default function WorkspaceDetailPage() {
         </button>
         <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Deliver</p>
         {sectionNavButton('media', 'Media')}
+        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Settings</p>
+        {sectionNavButton('church-settings', 'Church Settings')}
       </div>
     </div>
   )
@@ -5130,15 +5145,15 @@ export default function WorkspaceDetailPage() {
                           <p className="text-sm font-semibold text-violet-100">{item.type}</p>
                           <span className="text-[10px] uppercase tracking-widest text-violet-200/70">{item.intent}</span>
                         </div>
+                        {item?.useCase ? (
+                          <p className="text-[11px] text-cyan-100/90 mt-2">{item.useCase}</p>
+                        ) : null}
                         <p className="text-xs text-violet-50/90 mt-2 leading-relaxed">{item.prompt}</p>
                       </>
                     ),
                   }),
-                  'Open Media',
-                  () => {
-                    setActivePhase('DELIVER')
-                    setActiveSection('media')
-                  },
+                  undefined,
+                  undefined,
                   isStudyAssetLoading('media'),
                   actionLoading.includes('study-report') ? 'Generating from Study Report' : 'Generating Media Suggestions',
                 )}
@@ -5767,6 +5782,9 @@ export default function WorkspaceDetailPage() {
               workspace={workspace} 
               token={localStorage.getItem('token') || ''} 
             />
+          )}
+          {activeSection === 'church-settings' && (
+            <ChurchSettingsPanel token={localStorage.getItem('token') || ''} />
           )}
           </div>
           {actionLoading.includes('outlines') && activeSection === 'outlines' && (

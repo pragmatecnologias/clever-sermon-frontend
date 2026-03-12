@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Video, Loader2 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
 
@@ -9,6 +9,7 @@ interface VideoGenerationPanelProps {
   sermonId?: string
   token: string
   videoPrompt?: string
+  promptOptions?: Array<{ id: string; label: string; description?: string; prompt: string }>
   onGenerated?: () => void
 }
 
@@ -17,6 +18,7 @@ export default function VideoGenerationPanel({
   sermonId,
   token,
   videoPrompt,
+  promptOptions = [],
   onGenerated 
 }: VideoGenerationPanelProps) {
   const [deckId, setDeckId] = useState('')
@@ -24,6 +26,17 @@ export default function VideoGenerationPanel({
   const [resolution, setResolution] = useState('1920x1080')
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedPromptOption, setSelectedPromptOption] = useState<string>('')
+
+  const activePrompt =
+    promptOptions.find((item) => item.id === selectedPromptOption)?.prompt ||
+    videoPrompt ||
+    ''
+
+  useEffect(() => {
+    if (!promptOptions.length || selectedPromptOption) return
+    setSelectedPromptOption(promptOptions[0].id)
+  }, [promptOptions, selectedPromptOption])
 
   const resolutions = [
     { value: '1920x1080', label: '1080p (Full HD)' },
@@ -76,7 +89,24 @@ export default function VideoGenerationPanel({
         </p>
       </div>
 
-      {videoPrompt?.trim() ? (
+      {promptOptions.length ? (
+        <div className="border border-pink-400/30 bg-pink-500/10 text-pink-100 text-sm rounded-xl px-4 py-3 space-y-2">
+          <label className="text-[11px] uppercase tracking-wider text-pink-200/90 block">Study Video Prompt</label>
+          <select
+            value={selectedPromptOption}
+            onChange={(e) => setSelectedPromptOption(e.target.value)}
+            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+            disabled={generating}
+          >
+            {promptOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}{option.description ? ` — ${option.description}` : ''}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-pink-100/90 leading-relaxed">{activePrompt}</p>
+        </div>
+      ) : videoPrompt?.trim() ? (
         <div className="border border-pink-400/30 bg-pink-500/10 text-pink-100 text-sm rounded-xl px-4 py-3">
           <p className="text-[11px] uppercase tracking-wider text-pink-200/90 mb-1">Study Video Prompt</p>
           <p className="text-xs text-pink-100/90 leading-relaxed">{videoPrompt}</p>

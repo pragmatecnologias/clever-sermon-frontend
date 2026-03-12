@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { Sparkles, FileText, Image, Mic, Music, Video, Share2, Loader2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Sparkles, FileText, Image, Mic, Music, Video, Share2, Loader2, Calendar, Clock3 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
 import { buildStructuredMediaPrompts, type ImagePromptFields } from '@/lib/media-prompts'
 import SlideGenerationPanel from './SlideGenerationPanel'
@@ -17,14 +17,149 @@ interface MediaProductionStudioProps {
   token: string
 }
 
-type MediaFilter = 'all' | 'image' | 'slide' | 'audio' | 'music' | 'video'
+type MediaFilter = 'all' | 'image' | 'slide' | 'audio' | 'music' | 'video' | 'social'
+type SocialPackMode = 'auto_multi_network' | 'core4'
+type SocialBackgroundProvider = 'local' | 'openai'
+type SocialBackgroundPreset = 'cyberpunk' | 'modern' | 'aurora' | 'minimal'
+type SocialTarget = {
+  id: string
+  label: string
+  short: string
+  platform: string
+  variant: string
+  width: number
+  height: number
+}
+
+const SOCIAL_TARGETS: SocialTarget[] = [
+  {
+    id: 'instagram_post',
+    label: 'Instagram Post',
+    short: '4:5 feed',
+    platform: 'instagram',
+    variant: 'post',
+    width: 1080,
+    height: 1350,
+  },
+  {
+    id: 'instagram_story',
+    label: 'Instagram Story',
+    short: '9:16 story',
+    platform: 'instagram',
+    variant: 'story',
+    width: 1080,
+    height: 1920,
+  },
+  {
+    id: 'facebook_post',
+    label: 'Facebook Post',
+    short: 'link-friendly feed',
+    platform: 'facebook',
+    variant: 'post',
+    width: 1200,
+    height: 630,
+  },
+  {
+    id: 'whatsapp_status',
+    label: 'WhatsApp Status',
+    short: '9:16 status',
+    platform: 'whatsapp',
+    variant: 'status',
+    width: 1080,
+    height: 1920,
+  },
+  {
+    id: 'youtube_thumbnail',
+    label: 'YouTube Thumbnail',
+    short: '16:9 thumbnail',
+    platform: 'youtube',
+    variant: 'thumbnail',
+    width: 1280,
+    height: 720,
+  },
+  {
+    id: 'x_post',
+    label: 'X Post',
+    short: '16:9 post',
+    platform: 'x',
+    variant: 'post',
+    width: 1600,
+    height: 900,
+  },
+]
+
+const US_TIMEZONES = [
+  { value: 'America/New_York', label: 'Eastern (America/New_York)' },
+  { value: 'America/Chicago', label: 'Central (America/Chicago)' },
+  { value: 'America/Denver', label: 'Mountain (America/Denver)' },
+  { value: 'America/Phoenix', label: 'Arizona (America/Phoenix)' },
+  { value: 'America/Los_Angeles', label: 'Pacific (America/Los_Angeles)' },
+  { value: 'America/Anchorage', label: 'Alaska (America/Anchorage)' },
+  { value: 'Pacific/Honolulu', label: 'Hawaii (Pacific/Honolulu)' },
+]
 
 export default function MediaProductionStudio({ workspace, token }: MediaProductionStudioProps) {
+  const sermonBaseUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1').replace(/\/api\/v1\/?$/, '')
   const [generatingAll, setGeneratingAll] = useState(false)
   const [currentStep, setCurrentStep] = useState<string>('')
   const [completedSteps, setCompletedSteps] = useState<string[]>([])
   const [refreshKey, setRefreshKey] = useState(0)
   const [mediaFilter, setMediaFilter] = useState<MediaFilter>('all')
+  const [socialPromptId, setSocialPromptId] = useState('')
+  const [socialQuote, setSocialQuote] = useState('')
+  const [socialCaption, setSocialCaption] = useState('')
+  const [socialMode, setSocialMode] = useState<SocialPackMode>('auto_multi_network')
+  const [socialTargetId, setSocialTargetId] = useState<string>(SOCIAL_TARGETS[0].id)
+  const [socialGenerating, setSocialGenerating] = useState(false)
+  const [socialBackgroundProvider, setSocialBackgroundProvider] = useState<SocialBackgroundProvider>('local')
+  const [socialBackgroundPreset, setSocialBackgroundPreset] = useState<SocialBackgroundPreset>('modern')
+  const [churchSettingsLoading, setChurchSettingsLoading] = useState(false)
+  const [churchDefaults, setChurchDefaults] = useState({
+    churchName: '',
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    state: '',
+    postalCode: '',
+    country: '',
+    phone: '',
+    website: '',
+    logoUrl: '',
+    defaultTimezone: '',
+  })
+  const [eventOverrides, setEventOverrides] = useState({
+    eventTitle: '',
+    eventSubtitle: '',
+    serviceDate: '',
+    serviceTime: '',
+    timezone: '',
+    showLogo: true,
+    showAddress: true,
+    showWebsite: true,
+    showPhone: false,
+    showServiceTime: true,
+    preset: 'minimal' as 'minimal' | 'bold' | 'announcement',
+  })
+
+  const normalizeChurchDefaults = (data: any) => ({
+    churchName: data?.churchName ?? '',
+    addressLine1: data?.addressLine1 ?? '',
+    addressLine2: data?.addressLine2 ?? '',
+    city: data?.city ?? '',
+    state: data?.state ?? '',
+    postalCode: data?.postalCode ?? '',
+    country: data?.country ?? '',
+    phone: data?.phone ?? '',
+    website: data?.website ?? '',
+    logoUrl: data?.logoUrl ?? '',
+    defaultTimezone: data?.defaultTimezone ?? '',
+  })
+
+  const toAbsoluteLogoUrl = (logoUrl: string) => {
+    if (!logoUrl) return ''
+    if (logoUrl.startsWith('http://') || logoUrl.startsWith('https://')) return logoUrl
+    return `${sermonBaseUrl}${logoUrl.startsWith('/') ? '' : '/'}${logoUrl}`
+  }
 
   // Auto-generate sermon summary for prompts
   const sermonSummary = {
@@ -67,33 +202,70 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     const flattenMovement = (key: string) =>
       movementAssets.flatMap((item: any) => (Array.isArray(item?.[key]) ? item[key] : []))
 
-    const prompts = Array.from(
+    const rawCards = Array.isArray(categoryAssets?.mediaSuggestionCards)
+      ? categoryAssets.mediaSuggestionCards
+      : []
+    const cards = rawCards
+      .map((item: any, index: number) => {
+        if (typeof item === 'string') {
+          return {
+            id: `legacy-${index}`,
+            type: 'Media',
+            intent: 'Study suggestion',
+            useCase: '',
+            prompt: String(item || '').trim(),
+          }
+        }
+        return {
+          id: String(item?.id || `card-${index}`),
+          type: String(item?.type || item?.label || 'Media'),
+          intent: String(item?.intent || item?.category || 'Study suggestion'),
+          useCase: String(item?.useCase || item?.usage || ''),
+          prompt: String(item?.prompt || item?.text || item?.content || '').trim(),
+        }
+      })
+      .filter((item: any) => item.prompt)
+
+    const legacyPrompts = Array.from(
       new Set(
         [categoryAssets?.mediaSuggestions, flattenMovement('mediaSuggestions')]
           .flatMap((list) => (Array.isArray(list) ? list : []))
-          .map((item) => String(item || '').trim())
+          .map((item: any) => String(item || '').trim())
           .filter(Boolean),
       ),
-    )
+    ).map((prompt, index) => ({
+      id: `legacy-text-${index}`,
+      type: 'Media',
+      intent: 'Study suggestion',
+      useCase: '',
+      prompt,
+    }))
+    const promptCards = cards.length ? cards : legacyPrompts
 
-    const byKeyword = (keywords: string[]) =>
-      prompts.find((prompt) => {
-        const lower = prompt.toLowerCase()
-        return keywords.some((keyword) => lower.includes(keyword))
-      })
+    const toOption = (item: any, index: number) => ({
+      id: item.id || `opt-${index}`,
+      label: String(item.type || 'Media'),
+      description: [item.intent, item.useCase].filter(Boolean).join(' · ').slice(0, 120),
+      prompt: item.prompt,
+    })
+    const byType = (matcher: RegExp) =>
+      promptCards
+        .filter((item: any) => matcher.test(String(item.type || '').toLowerCase()))
+        .map((item: any, index: number) => toOption(item, index))
+
+    const imageOptions = byType(/visual|imagen|image/)
+    const audioOptions = byType(/voz|voice|audio|narr/)
+    const musicOptions = byType(/canto|song|music|música/)
+    const videoOptions = byType(/video|vídeo/)
+    const socialOptions = byType(/social|promo|promoci/)
 
     return {
-      image:
-        byKeyword(['visual', 'imagen', 'key visual', 'visual principal', 'hero image']) || '',
-      audio:
-        byKeyword(['audio', 'voz', 'voice', 'narración', 'narration', 'podcast', 'pódcast']) || '',
-      music:
-        byKeyword(['canto', 'song', 'music', 'música', 'theme song', 'canción']) || '',
-      video:
-        byKeyword(['video', 'vídeo']) || '',
-      social:
-        byKeyword(['social', 'promo', 'promoción', 'promocional']) || '',
-      all: prompts,
+      imageOptions,
+      audioOptions,
+      musicOptions,
+      videoOptions,
+      socialOptions,
+      all: promptCards.map((item: any) => item.prompt),
     }
   }, [workspace])
 
@@ -107,12 +279,12 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
       theme: sermonSummary.theme || (isSpanish ? 'mensaje central del sermón' : 'main sermon message'),
       quoteSeed: String(quote).slice(0, 220),
       source: {
-        slides: studyMediaPrompts.all.find((entry) => /slide|deck|presentaci[oó]n|diapositiva/i.test(entry)),
-        image: studyMediaPrompts.image || undefined,
-        audio: studyMediaPrompts.audio || undefined,
-        music: studyMediaPrompts.music || undefined,
-        video: studyMediaPrompts.video || undefined,
-        social: studyMediaPrompts.social || undefined,
+        slides: undefined,
+        image: studyMediaPrompts.imageOptions[0]?.prompt || undefined,
+        audio: studyMediaPrompts.audioOptions[0]?.prompt || undefined,
+        music: studyMediaPrompts.musicOptions[0]?.prompt || undefined,
+        video: studyMediaPrompts.videoOptions[0]?.prompt || undefined,
+        social: studyMediaPrompts.socialOptions[0]?.prompt || undefined,
       },
     })
     const pick = (key: string) => entries.find((entry) => entry.key === key)
@@ -138,6 +310,164 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
         structuredPrompts.social?.prompt ||
         `${sermonSummary.title} | ${sermonSummary.passage}\n\n${sermonSummary.theme}`,
     },
+  }
+
+  const resolvedSocialOptions = useMemo(() => {
+    if (studyMediaPrompts.socialOptions.length) return studyMediaPrompts.socialOptions
+    return [
+      {
+        id: 'social-default',
+        label: 'Social / Promoción',
+        description: 'Auto-generated from sermon context',
+        prompt: autoPrompts.social.caption,
+      },
+    ]
+  }, [studyMediaPrompts.socialOptions, autoPrompts.social.caption])
+
+  const selectedSocialTarget = useMemo(
+    () => SOCIAL_TARGETS.find((target) => target.id === socialTargetId) || SOCIAL_TARGETS[0],
+    [socialTargetId],
+  )
+
+  useEffect(() => {
+    if (!resolvedSocialOptions.length) return
+    const selected = resolvedSocialOptions.find((item: any) => item.id === socialPromptId)
+    if (!selected) {
+      setSocialPromptId(resolvedSocialOptions[0].id)
+      setSocialCaption(resolvedSocialOptions[0].prompt)
+    }
+    if (!socialQuote) {
+      setSocialQuote(autoPrompts.social.quote)
+    }
+    if (!socialCaption) {
+      setSocialCaption(selected?.prompt || resolvedSocialOptions[0].prompt)
+    }
+  }, [resolvedSocialOptions, socialPromptId, socialQuote, socialCaption, autoPrompts.social.quote])
+
+  useEffect(() => {
+    let mounted = true
+    const loadChurchSettings = async () => {
+      setChurchSettingsLoading(true)
+      try {
+        const response = await slidesApi.getChurchSettings(token)
+        if (!mounted || !response) return
+        const normalized = normalizeChurchDefaults(response)
+        setChurchDefaults(normalized)
+        setEventOverrides((prev) => ({
+          ...prev,
+          eventTitle: sermonSummary.title || '',
+          eventSubtitle: sermonSummary.passage || '',
+          timezone: normalized.defaultTimezone || '',
+        }))
+      } catch (error) {
+        console.error('Failed to load church settings:', error)
+      } finally {
+        if (mounted) setChurchSettingsLoading(false)
+      }
+    }
+    loadChurchSettings()
+    return () => {
+      mounted = false
+    }
+  }, [token, sermonSummary.title, sermonSummary.passage])
+
+  const composeSocialCaptionWithTarget = (basePrompt: string, target: SocialTarget) => {
+    const platformLine = `Primary network: ${target.label} (${target.width}x${target.height}, ${target.short}).`
+    return `${platformLine}\n${basePrompt || ''}`.trim()
+  }
+
+  const generatedSocialMeta = useMemo(() => {
+    const sourcePrompt =
+      socialCaption ||
+      resolvedSocialOptions.find((item: any) => item.id === socialPromptId)?.prompt ||
+      autoPrompts.social.caption ||
+      ''
+
+    const hashtagMatches: string[] = sourcePrompt.match(/#[A-Za-z0-9_]+/g) || []
+    const normalizedHashtags = Array.from(new Set(hashtagMatches.map((tag: string) => tag.trim()))).slice(0, 6)
+
+    const language = (workspace?.language || workspace?.metadata?.language || 'en').toLowerCase()
+    const clean = (text: string) =>
+      String(text || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter((part) => part.length > 2)
+
+    if (!normalizedHashtags.length) {
+      const titleWords = clean(sermonSummary.title).slice(0, 2)
+      const themeWords = clean(sermonSummary.theme).slice(0, 2)
+      const base = language === 'es' ? ['#sermon', '#iglesia', '#fe'] : ['#sermon', '#church', '#faith']
+      const dynamic = [...titleWords, ...themeWords].map((word) => `#${word}`)
+      normalizedHashtags.push(...Array.from(new Set([...dynamic, ...base])).slice(0, 6))
+    }
+
+    const ctaText =
+      language === 'es'
+        ? `Acompáñanos en "${sermonSummary.title}" (${sermonSummary.passage}).`
+        : `Join us for "${sermonSummary.title}" (${sermonSummary.passage}).`
+
+    return {
+      ctaText,
+      hashtags: normalizedHashtags.join(' '),
+    }
+  }, [
+    socialCaption,
+    resolvedSocialOptions,
+    socialPromptId,
+    autoPrompts.social.caption,
+    workspace?.language,
+    workspace?.metadata?.language,
+    sermonSummary.title,
+    sermonSummary.passage,
+    sermonSummary.theme,
+  ])
+
+  const handleGenerateSocialPack = async () => {
+    setSocialGenerating(true)
+    try {
+      await slidesApi.generateSocialKit(
+        {
+          workspaceId: workspace.id,
+          sermonId: workspace.sermonId,
+          title: sermonSummary.title,
+          passage: sermonSummary.passage,
+          quote: socialQuote || autoPrompts.social.quote,
+          caption: composeSocialCaptionWithTarget(socialCaption || autoPrompts.social.caption, selectedSocialTarget),
+          prompt: composeSocialCaptionWithTarget(socialCaption || autoPrompts.social.caption, selectedSocialTarget),
+          mode: socialMode,
+          useCase: `${selectedSocialTarget.platform}:${selectedSocialTarget.variant}`,
+          overlay: {
+            ...eventOverrides,
+            eventTitle: eventOverrides.eventTitle || sermonSummary.title,
+            eventSubtitle: eventOverrides.eventSubtitle || sermonSummary.passage,
+            serviceDate: eventOverrides.serviceDate || '',
+            serviceTime: eventOverrides.serviceTime || '',
+            timezone: eventOverrides.timezone || churchDefaults.defaultTimezone,
+            ctaText: generatedSocialMeta.ctaText,
+            hashtags: generatedSocialMeta.hashtags,
+            locationOverride: [churchDefaults.addressLine1, churchDefaults.city, churchDefaults.state]
+              .filter(Boolean)
+              .join(', '),
+            churchName: churchDefaults.churchName || '',
+            logoUrl: toAbsoluteLogoUrl(churchDefaults.logoUrl || ''),
+            website: churchDefaults.website || '',
+            phone: churchDefaults.phone || '',
+            imageProvider: socialBackgroundProvider,
+            imagePreset: socialBackgroundProvider === 'local' ? socialBackgroundPreset : undefined,
+          },
+        },
+        token,
+      )
+      setCompletedSteps((prev) => (prev.includes('social') ? prev : [...prev, 'social']))
+      setRefreshKey((prev) => prev + 1)
+    } catch (err: any) {
+      console.error('Failed to generate social kit:', err)
+    } finally {
+      setSocialGenerating(false)
+    }
   }
 
   const handleGenerateAll = async () => {
@@ -261,6 +591,25 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
         caption: autoPrompts.social.caption,
         title: sermonSummary.title,
         passage: sermonSummary.passage,
+        overlay: {
+          ...eventOverrides,
+          eventTitle: eventOverrides.eventTitle || sermonSummary.title,
+          eventSubtitle: eventOverrides.eventSubtitle || sermonSummary.passage,
+          serviceDate: eventOverrides.serviceDate || '',
+          serviceTime: eventOverrides.serviceTime || '',
+          timezone: eventOverrides.timezone || churchDefaults.defaultTimezone,
+          ctaText: generatedSocialMeta.ctaText,
+          hashtags: generatedSocialMeta.hashtags,
+          locationOverride: [churchDefaults.addressLine1, churchDefaults.city, churchDefaults.state]
+            .filter(Boolean)
+            .join(', '),
+          churchName: churchDefaults.churchName || '',
+          logoUrl: toAbsoluteLogoUrl(churchDefaults.logoUrl || ''),
+          website: churchDefaults.website || '',
+          phone: churchDefaults.phone || '',
+          imageProvider: socialBackgroundProvider,
+          imagePreset: socialBackgroundProvider === 'local' ? socialBackgroundPreset : undefined,
+        },
       }, token)
       setCompletedSteps(prev => [...prev, 'social'])
       
@@ -365,6 +714,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
               token={token}
               autoPrompt={autoPrompts.image}
               autoPromptFields={autoPrompts.imageFields}
+              promptOptions={studyMediaPrompts.imageOptions}
               onGenerated={() => setRefreshKey((prev) => prev + 1)}
             />
           </div>
@@ -379,6 +729,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
               token={token}
               autoText={sermonSummary.manuscript}
               narrationPrompt={autoPrompts.audio}
+              narrationPromptOptions={studyMediaPrompts.audioOptions}
             />
           </div>
         )}
@@ -391,6 +742,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
               sermonId={workspace.sermonId}
               token={token}
               suggestedPrompt={autoPrompts.music}
+              suggestedPromptOptions={studyMediaPrompts.musicOptions}
             />
           </div>
         )}
@@ -398,13 +750,18 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
         {/* Video */}
         {(mediaFilter === 'all' || mediaFilter === 'video') && (
           <div className="lg:col-span-2">
-            <VideoGenerationPanel workspaceId={workspace.id} token={token} videoPrompt={autoPrompts.video} />
+            <VideoGenerationPanel
+              workspaceId={workspace.id}
+              token={token}
+              videoPrompt={autoPrompts.video}
+              promptOptions={studyMediaPrompts.videoOptions}
+            />
           </div>
         )}
 
         {/* Social Media Kit - New Feature */}
         {mediaFilter === 'all' && (
-          <div className="border border-white/10 rounded-xl p-6 bg-black/20 space-y-4">
+          <div className="lg:col-span-2 border border-white/10 rounded-xl p-6 bg-black/20 space-y-4">
             <div className="flex items-center gap-3 mb-4">
               <Share2 className="w-6 h-6 text-cyan-300" />
               <h3 className="text-lg font-semibold">Social Media Kit</h3>
@@ -413,18 +770,209 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
             <div className="border border-cyan-400/40 bg-cyan-500/10 text-cyan-100 text-sm rounded-xl px-4 py-3">
               <p className="font-medium mb-1">Sermon Promotion Assets</p>
               <p className="text-xs text-cyan-200/80">
-                Generate quote graphics, thumbnails, and short clips for social media
+                Generate quote graphics and thumbnails for social media
               </p>
             </div>
 
             <div className="space-y-3">
+              <div className="border border-cyan-400/25 bg-cyan-500/10 rounded-xl p-3">
+                <p className="text-xs uppercase tracking-widest text-cyan-200/80">Church Branding Defaults</p>
+                <p className="text-xs text-cyan-100/90 mt-1">
+                  {churchSettingsLoading ? 'Loading defaults...' : 'Managed from Settings → Church Settings'}
+                </p>
+              </div>
+
+              <div className="border border-white/10 rounded-xl p-4 bg-black/20 space-y-3">
+                <label className="text-xs uppercase tracking-widest text-gray-400">
+                  Per-Run Event Overrides
+                </label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <input
+                    className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm"
+                    placeholder="Event title"
+                    value={eventOverrides.eventTitle}
+                    onChange={(e) => setEventOverrides((prev) => ({ ...prev, eventTitle: e.target.value }))}
+                  />
+                  <input
+                    className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm"
+                    placeholder="Event subtitle"
+                    value={eventOverrides.eventSubtitle}
+                    onChange={(e) => setEventOverrides((prev) => ({ ...prev, eventSubtitle: e.target.value }))}
+                  />
+                  <div className="relative">
+                    <input
+                      id="social-service-date"
+                      type="date"
+                      className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 pr-10 text-sm"
+                      value={eventOverrides.serviceDate}
+                      onChange={(e) => setEventOverrides((prev) => ({ ...prev, serviceDate: e.target.value }))}
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-cyan-200"
+                      onClick={() => {
+                        const input = document.getElementById('social-service-date') as HTMLInputElement | null
+                        if (!input) return
+                        if (typeof input.showPicker === 'function') input.showPicker()
+                        else input.focus()
+                      }}
+                      aria-label="Open date picker"
+                    >
+                      <Calendar className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      id="social-service-time"
+                      type="time"
+                      className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 pr-10 text-sm"
+                      value={eventOverrides.serviceTime}
+                      onChange={(e) => setEventOverrides((prev) => ({ ...prev, serviceTime: e.target.value }))}
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-cyan-200"
+                      onClick={() => {
+                        const input = document.getElementById('social-service-time') as HTMLInputElement | null
+                        if (!input) return
+                        if (typeof input.showPicker === 'function') input.showPicker()
+                        else input.focus()
+                      }}
+                      aria-label="Open time picker"
+                    >
+                      <Clock3 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <select
+                    className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm"
+                    value={eventOverrides.timezone || 'America/New_York'}
+                    onChange={(e) => setEventOverrides((prev) => ({ ...prev, timezone: e.target.value }))}
+                  >
+                    {US_TIMEZONES.map((zone) => (
+                      <option key={zone.value} value={zone.value}>
+                        {zone.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <div className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-gray-300">
+                    <span className="block uppercase tracking-widest text-[10px] text-gray-500 mb-1">Generated CTA</span>
+                    {generatedSocialMeta.ctaText}
+                  </div>
+                  <div className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-gray-300">
+                    <span className="block uppercase tracking-widest text-[10px] text-gray-500 mb-1">Generated Hashtags</span>
+                    {generatedSocialMeta.hashtags}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-300">
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={eventOverrides.showLogo} onChange={(e) => setEventOverrides((prev) => ({ ...prev, showLogo: e.target.checked }))} />Show logo</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={eventOverrides.showAddress} onChange={(e) => setEventOverrides((prev) => ({ ...prev, showAddress: e.target.checked }))} />Show address</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={eventOverrides.showWebsite} onChange={(e) => setEventOverrides((prev) => ({ ...prev, showWebsite: e.target.checked }))} />Show website</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={eventOverrides.showPhone} onChange={(e) => setEventOverrides((prev) => ({ ...prev, showPhone: e.target.checked }))} />Show phone</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={eventOverrides.showServiceTime} onChange={(e) => setEventOverrides((prev) => ({ ...prev, showServiceTime: e.target.checked }))} />Show service time</label>
+                  <select
+                    value={eventOverrides.preset}
+                    onChange={(e) => setEventOverrides((prev) => ({ ...prev, preset: e.target.value as 'minimal' | 'bold' | 'announcement' }))}
+                    className="bg-black/40 border border-white/10 rounded-lg px-2 py-1"
+                  >
+                    <option value="minimal">Minimal</option>
+                    <option value="bold">Bold</option>
+                    <option value="announcement">Announcement</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+                  Output Pack
+                </label>
+                <select
+                  value={socialMode}
+                  onChange={(e) => setSocialMode(e.target.value as SocialPackMode)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+                >
+                  <option value="auto_multi_network">All networks — Instagram, Facebook, WhatsApp, YouTube, X</option>
+                  <option value="core4">Core 4 — Instagram, Facebook, WhatsApp</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+                  Background Image Source
+                </label>
+                <select
+                  value={socialBackgroundProvider}
+                  onChange={(e) => setSocialBackgroundProvider(e.target.value as SocialBackgroundProvider)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm mb-2"
+                >
+                  <option value="local">Local Generated</option>
+                  <option value="openai">OpenAI Generated</option>
+                </select>
+                {socialBackgroundProvider === 'local' ? (
+                  <select
+                    value={socialBackgroundPreset}
+                    onChange={(e) => setSocialBackgroundPreset(e.target.value as SocialBackgroundPreset)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+                  >
+                    <option value="cyberpunk">Cyberpunk Neon</option>
+                    <option value="modern">Modern Geometric</option>
+                    <option value="aurora">Aurora Glow</option>
+                    <option value="minimal">Minimal Studio</option>
+                  </select>
+                ) : (
+                  <p className="text-xs text-gray-400">
+                    OpenAI generation may incur usage cost.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+                  Primary Network
+                </label>
+                <select
+                  value={socialTargetId}
+                  onChange={(e) => setSocialTargetId(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+                >
+                  {SOCIAL_TARGETS.map((target) => (
+                    <option key={target.id} value={target.id}>
+                      {target.label} — {target.short} ({target.width}x{target.height})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+                  Social Prompt
+                </label>
+                <select
+                  value={socialPromptId}
+                  onChange={(e) => {
+                    setSocialPromptId(e.target.value)
+                    const match = resolvedSocialOptions.find((item: any) => item.id === e.target.value)
+                    if (match?.prompt) setSocialCaption(match.prompt)
+                  }}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+                >
+                  {resolvedSocialOptions.map((option: any) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}{option.description ? ` — ${option.description}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
                   Featured Quote
                 </label>
                 <textarea
                   className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm min-h-[80px]"
-                  defaultValue={autoPrompts.social.quote}
+                  value={socialQuote}
+                  onChange={(e) => setSocialQuote(e.target.value)}
                 />
               </div>
 
@@ -434,16 +982,18 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
                 </label>
                 <textarea
                   className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm min-h-[60px]"
-                  defaultValue={autoPrompts.social.caption}
+                  value={socialCaption}
+                  onChange={(e) => setSocialCaption(e.target.value)}
                 />
               </div>
 
               <button
+                onClick={handleGenerateSocialPack}
                 className="w-full cyber-button text-sm px-4 py-3 rounded-xl flex items-center justify-center gap-2"
-                disabled
+                disabled={socialGenerating}
               >
-                <Share2 className="w-4 h-4" />
-                Generate Social Kit (Coming Soon)
+                {socialGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+                {socialGenerating ? 'Generating Social Pack...' : 'Generate Social Pack'}
               </button>
             </div>
           </div>

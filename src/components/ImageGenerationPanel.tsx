@@ -16,6 +16,7 @@ interface ImageGenerationPanelProps {
   token: string
   autoPrompt?: string
   autoPromptFields?: ImagePromptFields
+  promptOptions?: Array<{ id: string; label: string; description?: string; prompt: string }>
   onGenerated?: () => void
 }
 
@@ -26,6 +27,7 @@ export default function ImageGenerationPanel({
   token,
   autoPrompt,
   autoPromptFields,
+  promptOptions = [],
   onGenerated 
 }: ImageGenerationPanelProps) {
   const [prompt, setPrompt] = useState('')
@@ -47,12 +49,21 @@ export default function ImageGenerationPanel({
       negativePrompt: '',
     },
   )
+  const [selectedPromptOption, setSelectedPromptOption] = useState<string>('')
 
   useEffect(() => {
+    if (promptOptions.length && !selectedPromptOption) {
+      const first = promptOptions[0]
+      setSelectedPromptOption(first.id)
+      if (!prompt.trim()) {
+        setPrompt(first.prompt)
+      }
+      return
+    }
     if (autoPrompt && !prompt.trim()) {
       setPrompt(autoPrompt)
     }
-  }, [autoPrompt, prompt])
+  }, [autoPrompt, prompt, promptOptions, selectedPromptOption])
 
   useEffect(() => {
     if (autoPromptFields) {
@@ -181,6 +192,30 @@ export default function ImageGenerationPanel({
 
       {/* Prompt */}
       <div>
+        {promptOptions.length ? (
+          <div className="mb-3">
+            <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+              Suggested Prompt
+            </label>
+            <select
+              value={selectedPromptOption}
+              onChange={(e) => {
+                const next = e.target.value
+                setSelectedPromptOption(next)
+                const match = promptOptions.find((item) => item.id === next)
+                if (match?.prompt) setPrompt(match.prompt)
+              }}
+              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+              disabled={generating}
+            >
+              {promptOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}{option.description ? ` — ${option.description}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <div className="flex items-center justify-between mb-2">
           <label className="text-xs uppercase tracking-widest text-gray-400">
             Image Prompt

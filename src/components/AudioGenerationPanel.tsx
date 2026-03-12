@@ -11,6 +11,7 @@ interface AudioGenerationPanelProps {
   token: string
   autoText?: string
   narrationPrompt?: string
+  narrationPromptOptions?: Array<{ id: string; label: string; description?: string; prompt: string }>
   onGenerated?: () => void
 }
 
@@ -20,6 +21,7 @@ export default function AudioGenerationPanel({
   workspace,
   token,
   narrationPrompt,
+  narrationPromptOptions = [],
   onGenerated 
 }: AudioGenerationPanelProps) {
   const [source, setSource] = useState<'manuscript' | 'scripture' | 'custom'>('manuscript')
@@ -28,6 +30,7 @@ export default function AudioGenerationPanel({
   const [voices, setVoices] = useState<any[]>([])
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedPromptOption, setSelectedPromptOption] = useState<string>('')
 
   useEffect(() => {
     loadVoices()
@@ -48,6 +51,12 @@ export default function AudioGenerationPanel({
       setText(scriptureText)
     }
   }, [source, workspace])
+
+  useEffect(() => {
+    if (!narrationPromptOptions.length) return
+    if (selectedPromptOption) return
+    setSelectedPromptOption(narrationPromptOptions[0].id)
+  }, [narrationPromptOptions, selectedPromptOption])
 
   const loadVoices = async () => {
     try {
@@ -147,10 +156,36 @@ export default function AudioGenerationPanel({
 
       {/* Text Input */}
       <div>
+        {narrationPromptOptions.length ? (
+          <div className="mb-3">
+            <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+              Suggested Voice Prompt
+            </label>
+            <select
+              value={selectedPromptOption}
+              onChange={(e) => setSelectedPromptOption(e.target.value)}
+              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+              disabled={generating}
+            >
+              {narrationPromptOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}{option.description ? ` — ${option.description}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         {narrationPrompt?.trim() ? (
           <div className="mb-3 border border-amber-400/30 bg-amber-500/10 rounded-lg px-3 py-2">
             <p className="text-[11px] uppercase tracking-wider text-amber-200/90 mb-1">Study Narration Prompt</p>
             <p className="text-xs text-amber-100/90 leading-relaxed">{narrationPrompt}</p>
+          </div>
+        ) : narrationPromptOptions.length ? (
+          <div className="mb-3 border border-amber-400/30 bg-amber-500/10 rounded-lg px-3 py-2">
+            <p className="text-[11px] uppercase tracking-wider text-amber-200/90 mb-1">Study Narration Prompt</p>
+            <p className="text-xs text-amber-100/90 leading-relaxed">
+              {narrationPromptOptions.find((item) => item.id === selectedPromptOption)?.prompt || ''}
+            </p>
           </div>
         ) : null}
         <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
