@@ -166,6 +166,16 @@ export const slidesApi = {
     return response.data;
   },
 
+  getSermon: async (sermonId: string, token: string) => {
+    const response = await axios.get(
+      `${SLIDES_API_URL}/sermons/${sermonId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
   getThemes: async (token: string) => {
     const response = await axios.get(
       `${SLIDES_API_URL}/themes`,
@@ -457,8 +467,11 @@ export const slidesApi = {
       showPhone?: boolean;
       showServiceTime?: boolean;
       preset?: 'minimal' | 'bold' | 'announcement';
+      layoutVariant?: string;
+      densityMode?: 'auto' | 'full' | 'minimal';
       imageProvider?: 'local' | 'openai';
       imagePreset?: string;
+      language?: 'es' | 'en';
     };
   }, token: string) => {
     const response = await axios.post(
@@ -557,6 +570,7 @@ export const slidesApi = {
     style?: string;
     useCase?: string;
     studyPrompt?: string;
+    language?: string;
   }, token: string) => {
     const response = await axios.post(
       `${SLIDES_API_URL}/music/sermon-song/preview`,
@@ -576,6 +590,7 @@ export const slidesApi = {
     useCase?: string;
     duration?: number;
     studyPrompt?: string;
+    language?: string;
   }, token: string) => {
     const response = await axios.post(
       `${SLIDES_API_URL}/music/sermon-song/generate`,
@@ -593,6 +608,7 @@ export const slidesApi = {
     mode?: 'with_lyrics' | 'chorus_only';
     useCase?: string;
     studyPrompt?: string;
+    language?: string;
   }, token: string) => {
     const response = await axios.post(
       `${SLIDES_API_URL}/music/sermon-song/lyrics`,

@@ -25,6 +25,13 @@ export default function SermonMusicGenerator({
   suggestedPromptOptions = [],
   onGenerated,
 }: SermonMusicGeneratorProps) {
+  const normalizedLanguage = String(workspace?.language || workspace?.metadata?.language || 'en')
+    .trim()
+    .toLowerCase()
+    .startsWith('es')
+    ? 'es'
+    : 'en'
+
   const [mode, setMode] = useState<SongMode>('with_lyrics')
   const [style, setStyle] = useState<MusicStyle>('worship')
   const [useCase, setUseCase] = useState<UseCase>('theme-song')
@@ -49,6 +56,48 @@ export default function SermonMusicGenerator({
       setResolvedSermonId(sermonId)
     }
   }, [sermonId])
+
+  const hydratePreviewFromSongDraft = (songDraft: any) => {
+    if (!songDraft?.lyrics || typeof songDraft.lyrics !== 'object') return
+    setPreview({
+      type: 'lyrics',
+      elements: songDraft.elements || null,
+      lyrics: {
+        title: songDraft.lyrics.title || '',
+        themeStatement: songDraft.lyrics.themeStatement || '',
+        verse1: Array.isArray(songDraft.lyrics.verse1) ? songDraft.lyrics.verse1 : [],
+        chorus: Array.isArray(songDraft.lyrics.chorus) ? songDraft.lyrics.chorus : [],
+        verse2: Array.isArray(songDraft.lyrics.verse2) ? songDraft.lyrics.verse2 : [],
+        bridge: Array.isArray(songDraft.lyrics.bridge) ? songDraft.lyrics.bridge : [],
+        outro: Array.isArray(songDraft.lyrics.outro) ? songDraft.lyrics.outro : [],
+        keyPhrases: Array.isArray(songDraft.lyrics.keyPhrases) ? songDraft.lyrics.keyPhrases : [],
+        scriptureAnchors: Array.isArray(songDraft.lyrics.scriptureAnchors) ? songDraft.lyrics.scriptureAnchors : [],
+        sunoPrompt: songDraft.lyrics.sunoPrompt || '',
+      },
+    })
+  }
+
+  const loadLyricsDraftFromSermon = async (id: string) => {
+    try {
+      const sermon = await slidesApi.getSermon(id, token)
+      const draft = sermon?.manuscript?.songLyricsDraft
+      if (draft) {
+        hydratePreviewFromSongDraft(draft)
+      }
+    } catch {
+      // Ignore restore failures; manual generation still works.
+    }
+  }
+
+  useEffect(() => {
+    if (!resolvedSermonId) return
+    loadLyricsDraftFromSermon(resolvedSermonId)
+  }, [resolvedSermonId])
+
+  useEffect(() => {
+    if (resolvedSermonId || resolvingSermon || !workspace?.id) return
+    resolveSermonId()
+  }, [resolvedSermonId, resolvingSermon, workspace?.id])
 
   const musicStyles: { value: MusicStyle; label: string }[] = [
     { value: 'worship', label: 'Worship' },
@@ -90,6 +139,9 @@ export default function SermonMusicGenerator({
         )
       if (workspaceSermons[0]?.id) {
         setResolvedSermonId(workspaceSermons[0].id)
+        if (workspaceSermons[0]?.manuscript?.songLyricsDraft) {
+          hydratePreviewFromSongDraft(workspaceSermons[0].manuscript.songLyricsDraft)
+        }
         return workspaceSermons[0].id
       }
 
@@ -127,6 +179,9 @@ export default function SermonMusicGenerator({
       const sermon = await slidesApi.syncWorkspace(syncData as any, token)
       if (sermon?.id) {
         setResolvedSermonId(sermon.id)
+        if (sermon?.manuscript?.songLyricsDraft) {
+          hydratePreviewFromSongDraft(sermon.manuscript.songLyricsDraft)
+        }
         return sermon.id
       }
       return null
@@ -152,6 +207,7 @@ export default function SermonMusicGenerator({
         style,
         useCase,
         studyPrompt: selectedPromptText || undefined,
+        language: normalizedLanguage,
       }, token)
 
       setPreview(previewData)
@@ -169,7 +225,7 @@ export default function SermonMusicGenerator({
     setError(null)
 
     try {
-      await slidesApi.generateSermonSong({
+      const generated = await slidesApi.generateSermonSong({
         sermonId: sermonTargetId,
         workspaceId: workspace.id,
         mode,
@@ -177,10 +233,30 @@ export default function SermonMusicGenerator({
         useCase,
         duration,
         studyPrompt: selectedPromptText || undefined,
+        language: normalizedLanguage,
       }, token)
 
+      if (generated?.metadata?.type === 'lyrics' && generated?.metadata?.lyrics && typeof window !== 'undefined') {
+        const persisted = {
+          type: 'lyrics',
+          elements: generated?.sermonElements,
+          lyrics: {
+            title: generated?.metadata?.title || '',
+            themeStatement: generated?.metadata?.themeStatement || '',
+            verse1: generated?.metadata?.lyrics?.verse1 || [],
+            chorus: generated?.metadata?.lyrics?.chorus || [],
+            verse2: generated?.metadata?.lyrics?.verse2 || [],
+            bridge: generated?.metadata?.lyrics?.bridge || [],
+            outro: generated?.metadata?.lyrics?.outro || [],
+            keyPhrases: generated?.metadata?.keyPhrases || [],
+            scriptureAnchors: generated?.metadata?.scriptureAnchors || [],
+            sunoPrompt: generated?.prompt || '',
+          },
+        }
+        setPreview(persisted)
+      }
+
       onGenerated?.()
-      setPreview(null)
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to generate music')
     } finally {
@@ -196,7 +272,7 @@ export default function SermonMusicGenerator({
     setError(null)
 
     try {
-      await slidesApi.generateSermonSong({
+      const generated = await slidesApi.generateSermonSong({
         sermonId: sermonTargetId,
         workspaceId: workspace.id,
         mode: quickMode,
@@ -204,7 +280,28 @@ export default function SermonMusicGenerator({
         useCase: quickMode === 'ambient_only' ? 'sermon-intro' : 'theme-song',
         duration: quickMode === 'ambient_only' ? 120 : 180,
         studyPrompt: selectedPromptText || undefined,
+        language: normalizedLanguage,
       }, token)
+
+      if (generated?.metadata?.type === 'lyrics' && generated?.metadata?.lyrics && typeof window !== 'undefined') {
+        const persisted = {
+          type: 'lyrics',
+          elements: generated?.sermonElements,
+          lyrics: {
+            title: generated?.metadata?.title || '',
+            themeStatement: generated?.metadata?.themeStatement || '',
+            verse1: generated?.metadata?.lyrics?.verse1 || [],
+            chorus: generated?.metadata?.lyrics?.chorus || [],
+            verse2: generated?.metadata?.lyrics?.verse2 || [],
+            bridge: generated?.metadata?.lyrics?.bridge || [],
+            outro: generated?.metadata?.lyrics?.outro || [],
+            keyPhrases: generated?.metadata?.keyPhrases || [],
+            scriptureAnchors: generated?.metadata?.scriptureAnchors || [],
+            sunoPrompt: generated?.prompt || '',
+          },
+        }
+        setPreview(persisted)
+      }
 
       onGenerated?.()
     } catch (err: any) {
@@ -229,6 +326,7 @@ export default function SermonMusicGenerator({
           mode: lyricMode,
           useCase,
           studyPrompt: selectedPromptText || undefined,
+          language: normalizedLanguage,
         },
         token,
       )
@@ -285,6 +383,7 @@ export default function SermonMusicGenerator({
         <button
           onClick={() => handleQuickGenerate('ambient_only')}
           disabled={generating || resolvingSermon}
+          title="Genera música instrumental rápida para intro/reflexión (sin letra)."
           className="cyber-outline px-4 py-3 rounded-xl text-sm flex items-center justify-center gap-2"
         >
           <Sparkles className="w-4 h-4" />
@@ -293,11 +392,16 @@ export default function SermonMusicGenerator({
         <button
           onClick={() => handleQuickGenerate('with_lyrics')}
           disabled={generating || resolvingSermon}
+          title="Genera canción tema completa con letra en un clic."
           className="cyber-button px-4 py-3 rounded-xl text-sm flex items-center justify-center gap-2"
         >
           <Sparkles className="w-4 h-4" />
           Quick Theme Song
         </button>
+      </div>
+      <div className="text-xs text-gray-400 space-y-1 -mt-2">
+        <p><span className="text-gray-200 font-medium">Quick Ambient:</span> one-click instrumental background (no lyrics), sermon intro focus.</p>
+        <p><span className="text-gray-200 font-medium">Quick Theme Song:</span> one-click full worship song with lyrics, theme-song focus.</p>
       </div>
 
       {/* Mode Selector */}
@@ -313,6 +417,15 @@ export default function SermonMusicGenerator({
             <button
               key={m.value}
               onClick={() => setMode(m.value as SongMode)}
+              title={
+                m.value === 'ambient_only'
+                  ? 'Solo instrumental, sin letra.'
+                  : m.value === 'with_lyrics'
+                  ? 'Canción completa con letra.'
+                  : m.value === 'chorus_only'
+                  ? 'Genera enfoque en coro/refrán.'
+                  : 'Base instrumental para fondo mientras se habla.'
+              }
               className={`px-3 py-2 rounded-lg text-sm ${
                 mode === m.value
                   ? 'bg-purple-500/20 border border-purple-400/40 text-purple-200'
@@ -380,6 +493,7 @@ export default function SermonMusicGenerator({
         <button
           onClick={handlePreview}
           disabled={previewing || resolvingSermon}
+          title="Vista previa de propuesta (no genera ni guarda audio)."
           className="flex-1 cyber-outline px-4 py-3 rounded-xl text-sm flex items-center justify-center gap-2"
         >
           {previewing ? (
@@ -397,6 +511,7 @@ export default function SermonMusicGenerator({
         <button
           onClick={handleGenerate}
           disabled={generating || resolvingSermon}
+          title="Genera audio real y lo guarda en la biblioteca de medios."
           className="flex-1 cyber-button px-4 py-3 rounded-xl text-sm flex items-center justify-center gap-2"
         >
           {generating ? (
@@ -414,6 +529,7 @@ export default function SermonMusicGenerator({
         <button
           onClick={handleGenerateLyrics}
           disabled={generatingLyrics || resolvingSermon}
+          title="Genera solo la letra (sin audio) y la deja lista para revisar."
           className="cyber-outline px-4 py-3 rounded-xl text-sm flex items-center justify-center gap-2 border-purple-400/40 text-purple-200"
         >
           {generatingLyrics ? (
@@ -428,6 +544,11 @@ export default function SermonMusicGenerator({
             </>
           )}
         </button>
+      </div>
+      <div className="text-xs text-gray-400 space-y-1 -mt-2">
+        <p><span className="text-gray-200 font-medium">Preview:</span> generates a draft only (lyrics/prompt), does not create media asset.</p>
+        <p><span className="text-gray-200 font-medium">Generate Music:</span> submits real audio generation job and saves result to Media Library.</p>
+        <p><span className="text-gray-200 font-medium">Generate Lyrics:</span> creates/refines lyrics only; no audio generation.</p>
       </div>
 
       {/* Error Display */}

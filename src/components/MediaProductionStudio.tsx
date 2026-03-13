@@ -21,72 +21,14 @@ type MediaFilter = 'all' | 'image' | 'slide' | 'audio' | 'music' | 'video' | 'so
 type SocialPackMode = 'auto_multi_network' | 'core4'
 type SocialBackgroundProvider = 'local' | 'openai'
 type SocialBackgroundPreset = 'cyberpunk' | 'modern' | 'aurora' | 'minimal'
-type SocialTarget = {
+type SocialPromptType = 'visual_prompt' | 'caption_copy' | 'quote_candidate'
+type SocialPromptOption = {
   id: string
   label: string
-  short: string
-  platform: string
-  variant: string
-  width: number
-  height: number
+  description: string
+  prompt: string
+  promptType: SocialPromptType
 }
-
-const SOCIAL_TARGETS: SocialTarget[] = [
-  {
-    id: 'instagram_post',
-    label: 'Instagram Post',
-    short: '4:5 feed',
-    platform: 'instagram',
-    variant: 'post',
-    width: 1080,
-    height: 1350,
-  },
-  {
-    id: 'instagram_story',
-    label: 'Instagram Story',
-    short: '9:16 story',
-    platform: 'instagram',
-    variant: 'story',
-    width: 1080,
-    height: 1920,
-  },
-  {
-    id: 'facebook_post',
-    label: 'Facebook Post',
-    short: 'link-friendly feed',
-    platform: 'facebook',
-    variant: 'post',
-    width: 1200,
-    height: 630,
-  },
-  {
-    id: 'whatsapp_status',
-    label: 'WhatsApp Status',
-    short: '9:16 status',
-    platform: 'whatsapp',
-    variant: 'status',
-    width: 1080,
-    height: 1920,
-  },
-  {
-    id: 'youtube_thumbnail',
-    label: 'YouTube Thumbnail',
-    short: '16:9 thumbnail',
-    platform: 'youtube',
-    variant: 'thumbnail',
-    width: 1280,
-    height: 720,
-  },
-  {
-    id: 'x_post',
-    label: 'X Post',
-    short: '16:9 post',
-    platform: 'x',
-    variant: 'post',
-    width: 1600,
-    height: 900,
-  },
-]
 
 const US_TIMEZONES = [
   { value: 'America/New_York', label: 'Eastern (America/New_York)' },
@@ -106,10 +48,10 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
   const [refreshKey, setRefreshKey] = useState(0)
   const [mediaFilter, setMediaFilter] = useState<MediaFilter>('all')
   const [socialPromptId, setSocialPromptId] = useState('')
+  const [socialVisualPrompt, setSocialVisualPrompt] = useState('')
   const [socialQuote, setSocialQuote] = useState('')
   const [socialCaption, setSocialCaption] = useState('')
   const [socialMode, setSocialMode] = useState<SocialPackMode>('auto_multi_network')
-  const [socialTargetId, setSocialTargetId] = useState<string>(SOCIAL_TARGETS[0].id)
   const [socialGenerating, setSocialGenerating] = useState(false)
   const [socialBackgroundProvider, setSocialBackgroundProvider] = useState<SocialBackgroundProvider>('local')
   const [socialBackgroundPreset, setSocialBackgroundPreset] = useState<SocialBackgroundPreset>('modern')
@@ -242,11 +184,23 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     }))
     const promptCards = cards.length ? cards : legacyPrompts
 
-    const toOption = (item: any, index: number) => ({
+    const isVideoOrClipPrompt = (item: any) => {
+      const source = `${item?.type || ''} ${item?.intent || ''} ${item?.useCase || ''} ${item?.prompt || ''}`.toLowerCase()
+      return /(video|clip|reel|short|15-second|15 second|countdown sticker|thumbnail|youtube)/.test(source)
+    }
+
+    const classifyPromptType = (item: any): SocialPromptType => {
+      const source = `${item?.type || ''} ${item?.intent || ''} ${item?.useCase || ''}`.toLowerCase()
+      if (/(quote|cita|frase|texto clave|featured)/.test(source)) return 'quote_candidate'
+      if (/(caption|copy|social|promo|promoci|post copy|call to action|cta)/.test(source)) return 'caption_copy'
+      return 'visual_prompt'
+    }
+    const toOption = (item: any, index: number): SocialPromptOption => ({
       id: item.id || `opt-${index}`,
       label: String(item.type || 'Media'),
       description: [item.intent, item.useCase].filter(Boolean).join(' · ').slice(0, 120),
       prompt: item.prompt,
+      promptType: classifyPromptType(item),
     })
     const byType = (matcher: RegExp) =>
       promptCards
@@ -257,7 +211,14 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     const audioOptions = byType(/voz|voice|audio|narr/)
     const musicOptions = byType(/canto|song|music|música/)
     const videoOptions = byType(/video|vídeo/)
-    const socialOptions = byType(/social|promo|promoci/)
+    const socialOptions = promptCards
+      .filter((item: any) =>
+        /(social|promo|promoci|caption|copy|quote|cita|frase|visual|imagen|image)/.test(
+          `${item?.type || ''} ${item?.intent || ''} ${item?.useCase || ''}`.toLowerCase(),
+        ),
+      )
+      .filter((item: any) => !isVideoOrClipPrompt(item))
+      .map((item: any, index: number) => toOption(item, index))
 
     return {
       imageOptions,
@@ -313,36 +274,57 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
   }
 
   const resolvedSocialOptions = useMemo(() => {
-    if (studyMediaPrompts.socialOptions.length) return studyMediaPrompts.socialOptions
+    const baseOptions = studyMediaPrompts.socialOptions.length
+      ? studyMediaPrompts.socialOptions
+      : [
+          {
+            id: 'social-default',
+            label: 'Creative Direction',
+            description: 'Auto-generated from sermon context',
+            prompt: autoPrompts.social.caption,
+            promptType: 'visual_prompt' as const,
+          },
+        ]
+
+    const filtered = baseOptions.filter((option: SocialPromptOption) => {
+      const text = `${option.label} ${option.description} ${option.prompt}`.toLowerCase()
+      return !/(video|clip|reel|short|15-second|15 second|countdown sticker|thumbnail|youtube)/.test(text)
+    })
+    if (filtered.length) return filtered
     return [
       {
-        id: 'social-default',
-        label: 'Social / Promoción',
-        description: 'Auto-generated from sermon context',
-        prompt: autoPrompts.social.caption,
+        id: 'social-default-fallback',
+        label: 'Creative Direction',
+        description: 'Default visual direction',
+        prompt: autoPrompts.image || autoPrompts.social.caption,
+        promptType: 'visual_prompt' as const,
       },
     ]
-  }, [studyMediaPrompts.socialOptions, autoPrompts.social.caption])
-
-  const selectedSocialTarget = useMemo(
-    () => SOCIAL_TARGETS.find((target) => target.id === socialTargetId) || SOCIAL_TARGETS[0],
-    [socialTargetId],
-  )
+  }, [studyMediaPrompts.socialOptions, autoPrompts.social.caption, autoPrompts.image])
 
   useEffect(() => {
     if (!resolvedSocialOptions.length) return
     const selected = resolvedSocialOptions.find((item: any) => item.id === socialPromptId)
     if (!selected) {
       setSocialPromptId(resolvedSocialOptions[0].id)
-      setSocialCaption(resolvedSocialOptions[0].prompt)
+      const fallback = resolvedSocialOptions[0]
+      if (fallback.promptType === 'visual_prompt') setSocialVisualPrompt(fallback.prompt)
+      if (fallback.promptType === 'caption_copy') setSocialCaption(sanitizeSocialCaptionCopy(fallback.prompt))
+      if (fallback.promptType === 'quote_candidate') setSocialQuote(fallback.prompt)
     }
     if (!socialQuote) {
       setSocialQuote(autoPrompts.social.quote)
     }
-    if (!socialCaption) {
-      setSocialCaption(selected?.prompt || resolvedSocialOptions[0].prompt)
+    if (!socialVisualPrompt) {
+      const visual = resolvedSocialOptions.find((item: SocialPromptOption) => item.promptType === 'visual_prompt')
+      if (visual?.prompt) setSocialVisualPrompt(visual.prompt)
+      else setSocialVisualPrompt(studyMediaPrompts.imageOptions[0]?.prompt || autoPrompts.image)
     }
-  }, [resolvedSocialOptions, socialPromptId, socialQuote, socialCaption, autoPrompts.social.quote])
+    if (!socialCaption) {
+      const copy = resolvedSocialOptions.find((item: SocialPromptOption) => item.promptType === 'caption_copy')
+      setSocialCaption(sanitizeSocialCaptionCopy(copy?.prompt || autoPrompts.social.caption))
+    }
+  }, [resolvedSocialOptions, socialPromptId, socialQuote, socialCaption, socialVisualPrompt, autoPrompts.social.quote, autoPrompts.social.caption, autoPrompts.image, studyMediaPrompts.imageOptions])
 
   useEffect(() => {
     let mounted = true
@@ -370,11 +352,6 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
       mounted = false
     }
   }, [token, sermonSummary.title, sermonSummary.passage])
-
-  const composeSocialCaptionWithTarget = (basePrompt: string, target: SocialTarget) => {
-    const platformLine = `Primary network: ${target.label} (${target.width}x${target.height}, ${target.short}).`
-    return `${platformLine}\n${basePrompt || ''}`.trim()
-  }
 
   const generatedSocialMeta = useMemo(() => {
     const sourcePrompt =
@@ -425,9 +402,59 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     sermonSummary.theme,
   ])
 
+  const extractOverlayCopyFromVisualPrompt = (input: string) => {
+    const raw = String(input || '').trim()
+    if (!raw) return { visualPrompt: '', overlayCopy: '' }
+
+    const patterns = [
+      /text in (spanish|english)\s*:\s*["“”']?(.+)$/i,
+      /texto en (espanol|español|ingles|inglés)\s*:\s*["“”']?(.+)$/i,
+      /text overlay\s*:\s*["“”']?(.+)$/i,
+      /incluye texto\s*:\s*["“”']?(.+)$/i,
+    ]
+
+    for (const pattern of patterns) {
+      const match = raw.match(pattern)
+      if (match?.[2]) {
+        const overlayCopy = String(match[2]).replace(/["”']+$/g, '').trim()
+        const visualPrompt = raw.slice(0, Math.max(0, match.index || 0)).replace(/[,\-–:\s]+$/g, '').trim()
+        return { visualPrompt, overlayCopy }
+      }
+    }
+
+    return { visualPrompt: raw, overlayCopy: '' }
+  }
+
+  const sanitizeSocialCaptionCopy = (input: string) => {
+    let value = String(input || '').trim()
+    if (!value) return ''
+    const patterns = [
+      /^image\s*:\s*/i,
+      /^imagen\s*:\s*/i,
+      /^video\s*:\s*/i,
+      /^caption in (spanish|english)\s*:\s*/i,
+      /^texto en (espanol|español|ingles|inglés)\s*:\s*/i,
+      /^text in (spanish|english)\s*:\s*/i,
+      /^include (church )?logo( and date)?\.?\s*/i,
+      /^incluir (el )?logo( y fecha)?\.?\s*/i,
+      /^include link\.?\s*/i,
+      /^incluir enlace\.?\s*/i,
+    ]
+    for (const pattern of patterns) {
+      value = value.replace(pattern, '').trim()
+    }
+    return value
+  }
+
   const handleGenerateSocialPack = async () => {
     setSocialGenerating(true)
     try {
+      const extracted = extractOverlayCopyFromVisualPrompt(
+        socialVisualPrompt || studyMediaPrompts.imageOptions[0]?.prompt || autoPrompts.image,
+      )
+      const resolvedCaption = sanitizeSocialCaptionCopy(
+        socialCaption || extracted.overlayCopy || autoPrompts.social.caption,
+      )
       await slidesApi.generateSocialKit(
         {
           workspaceId: workspace.id,
@@ -435,12 +462,13 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
           title: sermonSummary.title,
           passage: sermonSummary.passage,
           quote: socialQuote || autoPrompts.social.quote,
-          caption: composeSocialCaptionWithTarget(socialCaption || autoPrompts.social.caption, selectedSocialTarget),
-          prompt: composeSocialCaptionWithTarget(socialCaption || autoPrompts.social.caption, selectedSocialTarget),
+          caption: resolvedCaption,
+          prompt: extracted.visualPrompt || autoPrompts.image,
           mode: socialMode,
-          useCase: `${selectedSocialTarget.platform}:${selectedSocialTarget.variant}`,
+          useCase: 'social-pack',
           overlay: {
             ...eventOverrides,
+            language: workspace.language || workspace.metadata?.language || 'en',
             eventTitle: eventOverrides.eventTitle || sermonSummary.title,
             eventSubtitle: eventOverrides.eventSubtitle || sermonSummary.passage,
             serviceDate: eventOverrides.serviceDate || '',
@@ -584,15 +612,18 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
       
       // Step 6: Generate Social Media
       setCurrentStep('Creating social media assets...')
+      const extractedPackPrompt = extractOverlayCopyFromVisualPrompt(autoPrompts.image)
       await slidesApi.generateSocialKit({
         sermonId: sermonId || undefined,
         workspaceId: workspace.id,
         quote: autoPrompts.social.quote,
-        caption: autoPrompts.social.caption,
+        caption: sanitizeSocialCaptionCopy(extractedPackPrompt.overlayCopy || autoPrompts.social.caption),
+        prompt: extractedPackPrompt.visualPrompt || autoPrompts.image,
         title: sermonSummary.title,
         passage: sermonSummary.passage,
         overlay: {
           ...eventOverrides,
+          language: workspace.language || workspace.metadata?.language || 'en',
           eventTitle: eventOverrides.eventTitle || sermonSummary.title,
           eventSubtitle: eventOverrides.eventSubtitle || sermonSummary.passage,
           serviceDate: eventOverrides.serviceDate || '',
@@ -929,16 +960,23 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
 
               <div>
                 <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
-                  Primary Network
+                  Creative Direction
                 </label>
                 <select
-                  value={socialTargetId}
-                  onChange={(e) => setSocialTargetId(e.target.value)}
+                  value={socialPromptId}
+                  onChange={(e) => {
+                    setSocialPromptId(e.target.value)
+                    const match = resolvedSocialOptions.find((item: SocialPromptOption) => item.id === e.target.value)
+                    if (!match?.prompt) return
+                    if (match.promptType === 'visual_prompt') setSocialVisualPrompt(match.prompt)
+                    if (match.promptType === 'caption_copy') setSocialCaption(sanitizeSocialCaptionCopy(match.prompt))
+                    if (match.promptType === 'quote_candidate') setSocialQuote(match.prompt)
+                  }}
                   className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
                 >
-                  {SOCIAL_TARGETS.map((target) => (
-                    <option key={target.id} value={target.id}>
-                      {target.label} — {target.short} ({target.width}x{target.height})
+                  {resolvedSocialOptions.map((option: SocialPromptOption) => (
+                    <option key={option.id} value={option.id}>
+                      {option.promptType === 'visual_prompt' ? 'Visual Prompt' : option.promptType === 'caption_copy' ? 'Caption Copy' : 'Quote Candidate'} · {option.label}{option.description ? ` — ${option.description}` : ''}
                     </option>
                   ))}
                 </select>
@@ -946,23 +984,13 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
 
               <div>
                 <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
-                  Social Prompt
+                  Visual Prompt
                 </label>
-                <select
-                  value={socialPromptId}
-                  onChange={(e) => {
-                    setSocialPromptId(e.target.value)
-                    const match = resolvedSocialOptions.find((item: any) => item.id === e.target.value)
-                    if (match?.prompt) setSocialCaption(match.prompt)
-                  }}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-                >
-                  {resolvedSocialOptions.map((option: any) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}{option.description ? ` — ${option.description}` : ''}
-                    </option>
-                  ))}
-                </select>
+                <textarea
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm min-h-[72px]"
+                  value={socialVisualPrompt}
+                  onChange={(e) => setSocialVisualPrompt(e.target.value)}
+                />
               </div>
 
               <div>
@@ -983,8 +1011,11 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
                 <textarea
                   className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm min-h-[60px]"
                   value={socialCaption}
-                  onChange={(e) => setSocialCaption(e.target.value)}
+                  onChange={(e) => setSocialCaption(sanitizeSocialCaptionCopy(e.target.value))}
                 />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Used as post copy/meta context. It does not select a target platform.
+                </p>
               </div>
 
               <button

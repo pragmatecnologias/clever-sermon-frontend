@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Image, FileText, Music, Mic, Video, Download, Trash2, Loader2, Share2 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
 
@@ -97,11 +97,7 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
     }
   }
 
-  useEffect(() => {
-    loadMediaLibrary()
-  }, [workspaceId, token])
-
-  const loadMediaLibrary = async () => {
+  const loadMediaLibrary = useCallback(async () => {
     try {
       setLoading(true)
       const [decksResult, imagesResult, audioResult, musicResult, videoResult, socialResult] = await Promise.allSettled([
@@ -179,7 +175,7 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
             filePath: item.filePath,
             createdAt: item.createdAt,
             errorMessage: item.errorMessage,
-            label: [item.platform, item.variant].filter(Boolean).join(' • ') || item.type,
+            label: [item.platform, item.variant, item.overlayData?.layoutVariant].filter(Boolean).join(' • ') || item.type,
             dimensions:
               item.width && item.height
                 ? `${item.width}x${item.height} ${String(item.format || 'png').toUpperCase()}`
@@ -195,7 +191,31 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
     } finally {
       setLoading(false)
     }
-  }
+  }, [workspaceId, token])
+
+  useEffect(() => {
+    void loadMediaLibrary()
+  }, [loadMediaLibrary])
+
+  const hasInFlightItems = useMemo(() => {
+    const hasPendingDeck = decks.some((deck) =>
+      ['pending', 'processing', 'generating'].includes(String(deck?.status || '').toLowerCase()),
+    )
+    const hasPendingMedia = media.some((item) =>
+      ['pending', 'processing', 'generating'].includes(String(item?.status || '').toLowerCase()),
+    )
+    return hasPendingDeck || hasPendingMedia
+  }, [decks, media])
+
+  useEffect(() => {
+    if (!hasInFlightItems) return
+
+    const interval = setInterval(() => {
+      void loadMediaLibrary()
+    }, 2500)
+
+    return () => clearInterval(interval)
+  }, [hasInFlightItems, loadMediaLibrary])
 
   const triggerDownload = async (item: MediaItem) => {
     try {
@@ -605,21 +625,31 @@ function GeneratedSocialPreview({ socialId, token }: { socialId: string; token: 
   useEffect(() => {
     let mounted = true
     let objectUrl: string | null = null
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
 
-    const load = async () => {
+    const load = async (attempt = 0) => {
       try {
         const blob = await slidesApi.getSocialBlob(socialId, token)
         if (!mounted) return
         objectUrl = URL.createObjectURL(blob)
         setSrc(objectUrl)
-      } catch (error) {
+      } catch (error: any) {
+        const statusCode = Number(error?.response?.status || 0)
+        const shouldRetry = [404, 425, 500].includes(statusCode) || statusCode === 0
+        if (shouldRetry && attempt < 6 && mounted) {
+          retryTimer = setTimeout(() => {
+            void load(attempt + 1)
+          }, 700)
+          return
+        }
         console.error('Failed to load social preview:', error)
       }
     }
 
-    load()
+    void load()
     return () => {
       mounted = false
+      if (retryTimer) clearTimeout(retryTimer)
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   }, [socialId, token])

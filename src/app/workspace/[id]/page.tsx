@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, ReactNode } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
 import { AlertCircle, Book, BookOpen, Clock, Film, Layers, Lightbulb, MessageSquare, Network, Rows } from 'lucide-react'
@@ -40,6 +40,7 @@ import SermonIntegrityDashboard from '@/components/SermonIntegrityDashboard'
 import MediaProductionStudio from '@/components/MediaProductionStudio'
 import ChurchSettingsPanel from '@/components/ChurchSettingsPanel'
 import BiblicalNarrativeMap from '@/components/BiblicalNarrativeMap'
+import ManuscriptRichEditor from '@/components/ManuscriptRichEditor'
 import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut'
 import { getLoadingMessage } from '@/utils/loadingMessages'
 
@@ -80,8 +81,61 @@ type SermonIntegrityReport = {
   citationAnalysis?: Array<{ verseReference: string; supportLevel: 'supported' | 'weak' | 'not_supported' }>
 }
 
+type ManuscriptCues = {
+  slide: string[]
+  keyLine: string[]
+  transition: string[]
+  pause: string[]
+  read: string[]
+  quote: string[]
+  cta: string[]
+}
+
+const emptyManuscriptCues = (): ManuscriptCues => ({
+  slide: [],
+  keyLine: [],
+  transition: [],
+  pause: [],
+  read: [],
+  quote: [],
+  cta: [],
+})
+
+type WorkspaceSection =
+  | 'workspace'
+  | 'church-settings'
+  | 'outlines'
+  | 'manuscript'
+  | 'citations'
+  | 'scripture'
+  | 'word-study'
+  | 'cross-references'
+  | 'study-report'
+  | 'coach'
+  | 'dna'
+  | 'visualizations'
+  | 'media'
+
+const VALID_PHASES: Phase[] = ['THEME', 'PASSAGE', 'STUDY', 'OUTLINE', 'WRITE', 'REFINE', 'DELIVER']
+const VALID_SECTIONS: WorkspaceSection[] = [
+  'workspace',
+  'church-settings',
+  'outlines',
+  'manuscript',
+  'citations',
+  'scripture',
+  'word-study',
+  'cross-references',
+  'study-report',
+  'coach',
+  'dna',
+  'visualizations',
+  'media',
+]
+
 export default function WorkspaceDetailPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const params = useParams()
   const workspaceId = params?.id as string
   const [workspace, setWorkspace] = useState<any>(null)
@@ -94,6 +148,8 @@ export default function WorkspaceDetailPage() {
   const [outlineDraft, setOutlineDraft] = useState<any>(null)
   const [editingManuscriptId, setEditingManuscriptId] = useState<string | null>(null)
   const [manuscriptDraft, setManuscriptDraft] = useState<string>('')
+  const [manuscriptCueDraft, setManuscriptCueDraft] = useState<ManuscriptCues>(emptyManuscriptCues())
+  const [legacyConvertCandidateId, setLegacyConvertCandidateId] = useState<string | null>(null)
   const [manuscriptTone, setManuscriptTone] = useState('teaching')
   const [manuscriptTargetMinutes, setManuscriptTargetMinutes] = useState(22)
   const [manuscriptFormat, setManuscriptFormat] = useState<'full' | 'notes'>('full')
@@ -117,21 +173,7 @@ export default function WorkspaceDetailPage() {
   const [promptText, setPromptText] = useState('')
   const [studyAssetEditor, setStudyAssetEditor] = useState<'applications' | 'questions' | 'illustrations' | null>(null)
   const [visualizationMode, setVisualizationMode] = useState<'passage' | 'refine'>('passage')
-  const [activeSection, setActiveSection] = useState<
-    | 'workspace'
-    | 'church-settings'
-    | 'outlines'
-    | 'manuscript'
-    | 'citations'
-    | 'scripture'
-    | 'word-study'
-    | 'cross-references'
-    | 'study-report'
-    | 'coach'
-    | 'dna'
-    | 'visualizations'
-    | 'media'
-  >('workspace')
+  const [activeSection, setActiveSection] = useState<WorkspaceSection>('workspace')
   const [activePhase, setActivePhase] = useState<Phase>('THEME')
   const [citationValidations, setCitationValidations] = useState<Record<string, any>>({})
   const [dnaIntegrityReport, setDnaIntegrityReport] = useState<SermonIntegrityReport | null>(null)
@@ -231,6 +273,9 @@ export default function WorkspaceDetailPage() {
   const autosaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const autosaveHashes = useRef<Record<string, string>>({})
   const scriptureLookupRequestId = useRef(0)
+  const navStateRestored = useRef(false)
+  const navStatePersistTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const navStatePersistHash = useRef<string>('')
 
   const storyArcLabels: Record<string, string> = {
     problem_truth_response: 'Problem → Truth → Response',
@@ -555,17 +600,17 @@ export default function WorkspaceDetailPage() {
   }
 
   // Map sections to phases
-  const phaseContentMap: Record<Phase, (typeof activeSection)[]> = {
+  const phaseContentMap: Record<Phase, WorkspaceSection[]> = {
     THEME: ['workspace'],
     PASSAGE: ['scripture', 'word-study', 'cross-references', 'visualizations'],
     STUDY: ['study-report'],
     OUTLINE: ['outlines'],
     WRITE: ['manuscript', 'citations'],
     REFINE: ['coach', 'dna', 'visualizations'],
-    DELIVER: ['media']
+    DELIVER: ['media', 'church-settings']
   }
 
-  const sectionPhaseMap: Partial<Record<typeof activeSection, Phase>> = {
+  const sectionPhaseMap: Partial<Record<WorkspaceSection, Phase>> = {
     scripture: 'PASSAGE',
     'word-study': 'PASSAGE',
     'cross-references': 'PASSAGE',
@@ -578,6 +623,29 @@ export default function WorkspaceDetailPage() {
     coach: 'REFINE',
     dna: 'REFINE',
     media: 'DELIVER',
+    'church-settings': 'DELIVER',
+  }
+
+  const resolvePhaseForSection = (section: WorkspaceSection, preferredPhase?: Phase): Phase => {
+    if (section === 'visualizations') {
+      return preferredPhase === 'REFINE' ? 'REFINE' : 'PASSAGE'
+    }
+    return (
+      ({
+        workspace: 'THEME',
+        scripture: 'PASSAGE',
+        'word-study': 'PASSAGE',
+        'cross-references': 'PASSAGE',
+        'study-report': 'STUDY',
+        outlines: 'OUTLINE',
+        manuscript: 'WRITE',
+        citations: 'WRITE',
+        coach: 'REFINE',
+        dna: 'REFINE',
+        media: 'DELIVER',
+        'church-settings': 'DELIVER',
+      } as Record<WorkspaceSection, Phase>)[section] || 'THEME'
+    )
   }
 
   // Calculate progress
@@ -623,9 +691,18 @@ export default function WorkspaceDetailPage() {
       return
     }
 
-    if (item?.type === 'outline') setActiveSection('outlines')
-    if (item?.type === 'manuscript') setActiveSection('manuscript')
-    if (item?.type === 'note') setActiveSection('workspace')
+    if (item?.type === 'outline') {
+      setActiveSection('outlines')
+      setActivePhase('OUTLINE')
+    }
+    if (item?.type === 'manuscript') {
+      setActiveSection('manuscript')
+      setActivePhase('WRITE')
+    }
+    if (item?.type === 'note') {
+      setActiveSection('workspace')
+      setActivePhase('THEME')
+    }
   }
 
   // Handle next step suggestions
@@ -871,13 +948,13 @@ export default function WorkspaceDetailPage() {
   }, [editingOutlineId, outlineDraft])
 
   useEffect(() => {
-    if (!editingManuscriptId || !manuscriptDraft) return
+    if (!editingManuscriptId) return
     scheduleAutosave(
       `manuscript-${editingManuscriptId}`,
-      { content: { text: manuscriptDraft } },
+      { content: { formatVersion: 'v2', text: manuscriptDraft, cues: manuscriptCueDraft } },
       `${process.env.NEXT_PUBLIC_API_URL}/workspaces/manuscripts/${editingManuscriptId}`,
     )
-  }, [editingManuscriptId, manuscriptDraft])
+  }, [editingManuscriptId, manuscriptDraft, manuscriptCueDraft])
 
   useEffect(() => {
     if (!editingApplicationId || !applicationDraft) return
@@ -965,6 +1042,128 @@ export default function WorkspaceDetailPage() {
     </div>
   )
 
+  const sanitizeManuscriptHtml = (html: string) =>
+    String(html || '')
+      .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+      .replace(/\son\w+="[^"]*"/gi, '')
+      .replace(/\son\w+='[^']*'/gi, '')
+      .trim()
+
+  const normalizeManuscriptCues = (raw: any): ManuscriptCues => {
+    const cues = emptyManuscriptCues()
+    if (!raw || typeof raw !== 'object') return cues
+    const mapping: Record<string, keyof ManuscriptCues> = {
+      slide: 'slide',
+      keyline: 'keyLine',
+      key_line: 'keyLine',
+      transition: 'transition',
+      pause: 'pause',
+      read: 'read',
+      quote: 'quote',
+      cta: 'cta',
+      calltoaction: 'cta',
+      call_to_action: 'cta',
+    }
+    Object.entries(raw).forEach(([key, value]) => {
+      const normalizedKey = String(key).toLowerCase().replace(/\s+/g, '')
+      const bucket = mapping[normalizedKey] || mapping[String(key).toLowerCase()]
+      if (!bucket || !Array.isArray(value)) return
+      cues[bucket] = value.map((item) => String(item || '').trim()).filter(Boolean)
+    })
+    return cues
+  }
+
+  const isManuscriptV2 = (manuscript: any) =>
+    String(manuscript?.content?.formatVersion || '').toLowerCase() === 'v2'
+
+  const hasCueContent = (cues: ManuscriptCues) =>
+    Object.values(cues).some((list) => Array.isArray(list) && list.length > 0)
+
+  const cueLabelMap: Record<keyof ManuscriptCues, string> = {
+    slide: 'Slide Cues',
+    keyLine: 'Key Lines',
+    transition: 'Transitions',
+    pause: 'Pauses',
+    read: 'Scripture Readings',
+    quote: 'Key Quotes',
+    cta: 'Appeals / CTA',
+  }
+
+  const extractLegacyCues = (text: string) => {
+    const cues = emptyManuscriptCues()
+    const cueMapping: Record<string, keyof ManuscriptCues> = {
+      slide: 'slide',
+      keyline: 'keyLine',
+      transition: 'transition',
+      pause: 'pause',
+      read: 'read',
+      quote: 'quote',
+      cta: 'cta',
+      calltoaction: 'cta',
+    }
+
+    const stripped = String(text || '').replace(
+      /\[(Slide|Key\s*Line|Transition|Pause|Read|Quote|CTA|Call\s*to\s*Action)\]\s*([^\n]*)/gi,
+      (_match, rawType, rawCue) => {
+        const normalized = String(rawType || '').toLowerCase().replace(/\s+/g, '')
+        const bucket = cueMapping[normalized]
+        const cueText = String(rawCue || '').trim()
+        if (bucket && cueText) cues[bucket].push(cueText)
+        return cueText
+      },
+    )
+
+    return { cues, strippedText: stripped }
+  }
+
+  const markdownLikeToHtml = (rawText: string) => {
+    const normalized = String(rawText || '').replace(/\r\n/g, '\n').trim()
+    if (!normalized) return '<p></p>'
+    const blocks = normalized.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean)
+    const htmlBlocks: string[] = []
+    for (const block of blocks) {
+      const heading = block.match(/^(#{1,3})\s+(.+)$/)
+      if (heading) {
+        const level = Math.min(3, Math.max(1, heading[1].length))
+        const tag = level === 1 ? 'h2' : level === 2 ? 'h3' : 'h4'
+        htmlBlocks.push(`<${tag}>${heading[2]}</${tag}>`)
+        continue
+      }
+      const lines = block.split('\n').map((line) => line.trim()).filter(Boolean)
+      const unordered = lines.length > 1 && lines.every((line) => /^[-*]\s+/.test(line))
+      const ordered = lines.length > 1 && lines.every((line) => /^\d+[\.\)]\s+/.test(line))
+      if (unordered || ordered) {
+        const tag = ordered ? 'ol' : 'ul'
+        const items = lines
+          .map((line) => line.replace(/^[-*]\s+/, '').replace(/^\d+[\.\)]\s+/, ''))
+          .map((line) => `<li>${line}</li>`)
+          .join('')
+        htmlBlocks.push(`<${tag}>${items}</${tag}>`)
+      } else {
+        htmlBlocks.push(`<p>${block.replace(/\n/g, '<br />')}</p>`)
+      }
+    }
+    return htmlBlocks
+      .join('\n')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/(^|[\s>])\*(.*?)\*/g, '$1<em>$2</em>')
+  }
+
+  const toV2ManuscriptDraft = (manuscript: any) => {
+    if (isManuscriptV2(manuscript)) {
+      return {
+        html: sanitizeManuscriptHtml(String(manuscript?.content?.text || '')),
+        cues: normalizeManuscriptCues(manuscript?.content?.cues),
+      }
+    }
+    const legacyText = String(manuscript?.content?.text || '')
+    const extracted = extractLegacyCues(legacyText)
+    return {
+      html: markdownLikeToHtml(extracted.strippedText),
+      cues: extracted.cues,
+    }
+  }
+
   const sanitizeManuscriptForDisplay = (text: string) => {
     const cueLabelMap: Record<string, string> = {
       slide: 'Key Cue',
@@ -998,6 +1197,50 @@ export default function WorkspaceDetailPage() {
       .replace(/^\s*\[[^\]]+\]\s*/gm, '')
       .replace(/\n{3,}/g, '\n\n')
       .trim()
+  }
+
+  const renderManuscriptCuesPanel = (
+    cues: ManuscriptCues,
+    editable: boolean,
+    onCueChange?: (key: keyof ManuscriptCues, value: string) => void,
+  ) => {
+    if (!hasCueContent(cues) && !editable) return null
+    return (
+      <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3 space-y-3">
+        <p className="text-xs uppercase tracking-widest text-cyan-200/90">Preaching Cues</p>
+        <div className="space-y-3">
+          {(Object.keys(cueLabelMap) as Array<keyof ManuscriptCues>).map((key) => {
+            const values = cues[key]
+            if (!editable && values.length === 0) return null
+            return (
+              <div key={key} className="space-y-1">
+                <p className="text-[11px] uppercase tracking-[0.18em] text-cyan-200/70">{cueLabelMap[key]}</p>
+                {editable ? (
+                  <textarea
+                    value={values.join('\n')}
+                    onChange={(event) => onCueChange?.(key, event.target.value)}
+                    rows={Math.max(2, Math.min(6, values.length + 1))}
+                    className="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-xs text-gray-100"
+                    placeholder={`One ${cueLabelMap[key]} item per line`}
+                  />
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {values.map((item, index) => (
+                      <span
+                        key={`${key}-${index}`}
+                        className="px-2 py-1 rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-100 text-xs"
+                      >
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
   }
 
   const handleVerseClick = (verseRef: string) => {
@@ -1978,6 +2221,15 @@ export default function WorkspaceDetailPage() {
   }
 
   useEffect(() => {
+    navStateRestored.current = false
+    navStatePersistHash.current = ''
+    if (navStatePersistTimer.current) {
+      clearTimeout(navStatePersistTimer.current)
+      navStatePersistTimer.current = null
+    }
+  }, [workspaceId])
+
+  useEffect(() => {
     const token = localStorage.getItem('token')
     if (!token) {
       router.push('/login')
@@ -2028,6 +2280,86 @@ export default function WorkspaceDetailPage() {
       fetchWorkspace()
     }
   }, [router, workspaceId])
+
+  useEffect(() => {
+    if (!workspace || navStateRestored.current) return
+
+    const queryPhaseRaw = searchParams.get('phase')
+    const querySectionRaw = searchParams.get('section')
+
+    const queryPhase = VALID_PHASES.includes((queryPhaseRaw || '').toUpperCase() as Phase)
+      ? ((queryPhaseRaw || '').toUpperCase() as Phase)
+      : null
+    const querySection = VALID_SECTIONS.includes((querySectionRaw || '') as WorkspaceSection)
+      ? ((querySectionRaw || '') as WorkspaceSection)
+      : null
+
+    const metadataUiState = workspace?.metadata?.uiState || {}
+    const metadataPhase = VALID_PHASES.includes(String(metadataUiState.phase || '').toUpperCase() as Phase)
+      ? (String(metadataUiState.phase).toUpperCase() as Phase)
+      : null
+    const metadataSection = VALID_SECTIONS.includes(String(metadataUiState.section || '') as WorkspaceSection)
+      ? (String(metadataUiState.section) as WorkspaceSection)
+      : null
+
+    const restoredSection = querySection || metadataSection || 'workspace'
+    const restoredPhase = resolvePhaseForSection(restoredSection, queryPhase || metadataPhase || undefined)
+
+    setActiveSection(restoredSection)
+    setActivePhase(restoredPhase)
+    setVisualizationMode(restoredPhase === 'REFINE' ? 'refine' : 'passage')
+    navStateRestored.current = true
+  }, [workspace, searchParams])
+
+  useEffect(() => {
+    if (!workspaceId || !workspace || loading || !navStateRestored.current) return
+
+    const params = new URLSearchParams(searchParams.toString())
+    const currentPhase = params.get('phase')
+    const currentSection = params.get('section')
+    if (currentPhase !== activePhase || currentSection !== activeSection) {
+      params.set('phase', activePhase)
+      params.set('section', activeSection)
+      router.replace(`/workspace/${workspaceId}?${params.toString()}`, { scroll: false })
+    }
+
+    const navHash = `${activePhase}:${activeSection}`
+    if (navStatePersistHash.current === navHash) return
+    navStatePersistHash.current = navHash
+    if (navStatePersistTimer.current) {
+      clearTimeout(navStatePersistTimer.current)
+    }
+    navStatePersistTimer.current = setTimeout(async () => {
+      const token = localStorage.getItem('token')
+      if (!token) return
+      try {
+        const nextMetadata = {
+          ...(workspace?.metadata || {}),
+          uiState: {
+            phase: activePhase,
+            section: activeSection,
+            updatedAt: new Date().toISOString(),
+          },
+        }
+        await axios.patch(
+          `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`,
+          { metadata: nextMetadata },
+          { headers: { Authorization: `Bearer ${token}` } },
+        )
+        setWorkspace((prev: any) => (prev ? { ...prev, metadata: nextMetadata } : prev))
+      } catch (err) {
+        console.error('Failed to persist workspace navigation state', err)
+      }
+    }, 500)
+  }, [activePhase, activeSection, workspace, workspaceId, loading, searchParams, router])
+
+  useEffect(() => {
+    return () => {
+      if (navStatePersistTimer.current) {
+        clearTimeout(navStatePersistTimer.current)
+      }
+    }
+  }, [])
 
   const withToken = () => {
     const token = localStorage.getItem('token')
@@ -2256,6 +2588,15 @@ export default function WorkspaceDetailPage() {
     return parts.join('\n')
   }
 
+  const coachBlockToHtml = (title: string, block: string) => {
+    const lines = String(block || '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+    const paragraphs = lines.map((line) => `<p>${line}</p>`).join('')
+    return `<h3>${title}</h3>${paragraphs}`
+  }
+
   const handleApplyCoachToManuscript = async (question: any, feedback: any) => {
     const config = withToken()
     if (!config) return
@@ -2271,10 +2612,20 @@ export default function WorkspaceDetailPage() {
       const currentText = String(selectedManuscript?.content?.text || '')
       const answerText = String(coachAnswers?.[questionId] || '').trim()
       const block = buildCoachApplyText(question, feedback, answerText)
-      const updatedText = `${currentText}\n\n## Coach Refinement (${questionId})\n${block}\n`
+      const isV2 = String(selectedManuscript?.content?.formatVersion || '').toLowerCase() === 'v2'
+      const updatedText = isV2
+        ? `${currentText}${coachBlockToHtml(`Coach Refinement (${questionId})`, block)}`
+        : `${currentText}\n\n## Coach Refinement (${questionId})\n${block}\n`
+      const payloadContent = isV2
+        ? {
+            formatVersion: 'v2',
+            text: updatedText,
+            cues: normalizeManuscriptCues(selectedManuscript?.content?.cues),
+          }
+        : { text: updatedText }
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_URL}/workspaces/manuscripts/${selectedManuscript.id}`,
-        { content: { text: updatedText } },
+        { content: payloadContent },
         config,
       )
       const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
@@ -3258,13 +3609,15 @@ export default function WorkspaceDetailPage() {
     try {
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_URL}/workspaces/manuscripts/${id}`,
-        { content: { text: manuscriptDraft } },
+        { content: { formatVersion: 'v2', text: manuscriptDraft, cues: manuscriptCueDraft } },
         config,
       )
       const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
       setWorkspace(refreshed.data)
       setEditingManuscriptId(null)
+      setLegacyConvertCandidateId(null)
       setManuscriptDraft('')
+      setManuscriptCueDraft(emptyManuscriptCues())
     } catch (err) {
       console.error('Failed to update manuscript', err)
       setError('Unable to save manuscript changes.')
@@ -4102,7 +4455,7 @@ export default function WorkspaceDetailPage() {
                       checked={manuscriptIncludeSlideCues}
                       onChange={(e) => setManuscriptIncludeSlideCues(e.target.checked)}
                     />
-                    Include slide cues (`[Slide]`)
+                    Generate slide cues (sidebar)
                   </label>
                   <label className="flex items-center gap-2 text-xs cyber-muted">
                     <input
@@ -4110,7 +4463,7 @@ export default function WorkspaceDetailPage() {
                       checked={manuscriptIncludeKeyLines}
                       onChange={(e) => setManuscriptIncludeKeyLines(e.target.checked)}
                     />
-                    Highlight key lines (`[Key Line]`)
+                    Generate key lines (sidebar)
                   </label>
                 </div>
               </div>
@@ -4125,23 +4478,60 @@ export default function WorkspaceDetailPage() {
                         </div>
                         <button
                           onClick={() => {
-                            setEditingManuscriptId(manuscript.id)
-                            setManuscriptDraft(manuscript.content?.text || '')
+                            if (isManuscriptV2(manuscript)) {
+                              setEditingManuscriptId(manuscript.id)
+                              setLegacyConvertCandidateId(null)
+                              setManuscriptDraft(sanitizeManuscriptHtml(String(manuscript.content?.text || '')))
+                              setManuscriptCueDraft(normalizeManuscriptCues(manuscript.content?.cues))
+                              return
+                            }
+                            setLegacyConvertCandidateId(manuscript.id)
+                            setEditingManuscriptId(null)
                           }}
                           className="cyber-outline px-3 py-1 text-xs rounded-full"
                         >
                           Edit
                         </button>
                       </div>
+                      {!isManuscriptV2(manuscript) && legacyConvertCandidateId === manuscript.id && (
+                        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100 space-y-2">
+                          <p className="text-xs uppercase tracking-widest text-amber-300">Legacy manuscript format</p>
+                          <p>This manuscript still uses markdown/tag format. Convert it when you want to edit in the new rich editor.</p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                const converted = toV2ManuscriptDraft(manuscript)
+                                setEditingManuscriptId(manuscript.id)
+                                setLegacyConvertCandidateId(null)
+                                setManuscriptDraft(converted.html)
+                                setManuscriptCueDraft(converted.cues)
+                              }}
+                              className="cyber-button text-xs px-3 py-2 rounded-full"
+                            >
+                              Convert & Edit
+                            </button>
+                            <button
+                              onClick={() => setLegacyConvertCandidateId(null)}
+                              className="cyber-outline text-xs px-3 py-2 rounded-full"
+                            >
+                              Dismiss
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       {editingManuscriptId === manuscript.id ? (
                         <div className="space-y-3">
                           <label className="text-xs uppercase tracking-widest cyber-muted">Manuscript Text</label>
-                          <textarea
-                            value={manuscriptDraft}
-                            onChange={(e) => setManuscriptDraft(e.target.value)}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                            rows={8}
-                          />
+                          <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-3 items-start">
+                            <ManuscriptRichEditor value={manuscriptDraft} onChange={setManuscriptDraft} />
+                            {renderManuscriptCuesPanel(manuscriptCueDraft, true, (key, value) => {
+                              const nextValues = value
+                                .split('\n')
+                                .map((item) => item.trim())
+                                .filter(Boolean)
+                              setManuscriptCueDraft((prev) => ({ ...prev, [key]: nextValues }))
+                            })}
+                          </div>
                           <div className="flex gap-2">
                             <button
                               onClick={() => handleManuscriptSave(manuscript.id)}
@@ -4153,7 +4543,9 @@ export default function WorkspaceDetailPage() {
                             <button
                               onClick={() => {
                                 setEditingManuscriptId(null)
+                                setLegacyConvertCandidateId(null)
                                 setManuscriptDraft('')
+                                setManuscriptCueDraft(emptyManuscriptCues())
                               }}
                               className="cyber-outline text-xs px-4 py-2 rounded-full"
                             >
@@ -4161,8 +4553,19 @@ export default function WorkspaceDetailPage() {
                             </button>
                           </div>
                         </div>
+                      ) : isManuscriptV2(manuscript) ? (
+                        <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-3 items-start">
+                          <div
+                            className="rounded-xl border border-white/10 bg-black/30 p-4 prose prose-invert prose-headings:text-white prose-p:text-gray-100 max-w-none"
+                            dangerouslySetInnerHTML={{ __html: sanitizeManuscriptHtml(String(manuscript.content?.text || '')) }}
+                          />
+                          {renderManuscriptCuesPanel(normalizeManuscriptCues(manuscript.content?.cues), false)}
+                        </div>
                       ) : (
-                        renderMarkdown(sanitizeManuscriptForDisplay(manuscript.content?.text || ''))
+                        <div className="space-y-3">
+                          <p className="text-xs uppercase tracking-widest text-amber-300">Legacy manuscript format</p>
+                          {renderMarkdown(sanitizeManuscriptForDisplay(manuscript.content?.text || ''))}
+                        </div>
                       )}
                     </div>
                   ))}
