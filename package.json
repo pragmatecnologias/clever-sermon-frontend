@@ -3,10 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 4000",
     "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "start": "next start -p 4000",
+    "lint": "next lint",
+    "test:manuscript-formatting": "node --test src/utils/manuscriptFormatting.test.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",
@@ -29,6 +33,7 @@
     "three": "^0.183.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.40.0",
     "@types/node": "^20.10.5",
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.18",

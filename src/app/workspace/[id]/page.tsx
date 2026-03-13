@@ -43,6 +43,11 @@ import BiblicalNarrativeMap from '@/components/BiblicalNarrativeMap'
 import ManuscriptRichEditor from '@/components/ManuscriptRichEditor'
 import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut'
 import { getLoadingMessage } from '@/utils/loadingMessages'
+import {
+  ensureManuscriptRichHtml,
+  sanitizeManuscriptHtml,
+  stripModelArtifacts,
+} from '@/utils/manuscriptFormatting'
 
 type ScriptureLookupSnapshot = {
   scriptureResult: any
@@ -1074,42 +1079,6 @@ export default function WorkspaceDetailPage() {
     </div>
   )
 
-  const stripModelArtifacts = (value: string) => {
-    const raw = String(value || '')
-      .replace(/<\|[^|>]+?\|>/g, ' ')
-      .replace(/^\s*(assistant|final|response)\s*[:\-]\s*/i, '')
-      .trim()
-
-    const start = raw.indexOf('{')
-    const end = raw.lastIndexOf('}')
-    if (start >= 0 && end > start) {
-      try {
-        const parsed = JSON.parse(raw.slice(start, end + 1))
-        if (parsed && typeof parsed.text === 'string') {
-          return String(parsed.text).replace(/\\n/g, '\n').trim()
-        }
-      } catch {
-        // Ignore parse errors and continue with raw text fallback.
-      }
-    }
-
-    return raw.replace(/\\n/g, '\n').trim()
-  }
-
-  const sanitizeManuscriptHtml = (html: string) =>
-    stripModelArtifacts(html)
-      .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
-      .replace(/\son\w+="[^"]*"/gi, '')
-      .replace(/\son\w+='[^']*'/gi, '')
-      .trim()
-
-  const ensureManuscriptRichHtml = (value: string) => {
-    const sanitized = sanitizeManuscriptHtml(value)
-    if (!sanitized) return '<p></p>'
-    if (/<\/?[a-z][\s\S]*>/i.test(sanitized)) return sanitized
-    return markdownLikeToHtml(sanitized)
-  }
-
   const escapeManuscriptHtml = (value: string) =>
     String(value || '')
       .replace(/&/g, '&amp;')
@@ -1360,7 +1329,7 @@ export default function WorkspaceDetailPage() {
   const toV2ManuscriptDraft = (manuscript: any) => {
     if (isManuscriptV2(manuscript)) {
       return {
-        html: ensureManuscriptRichHtml(String(manuscript?.content?.text || '')),
+        html: ensureManuscriptRichHtml(String(manuscript?.content?.text || ''), markdownLikeToHtml),
         cues: normalizeManuscriptCues(manuscript?.content?.cues),
       }
     }
@@ -4962,7 +4931,9 @@ export default function WorkspaceDetailPage() {
                         <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6 items-start">
                           <div
                             className="manuscript-display rounded-3xl border border-white/10 bg-gradient-to-b from-black/45 to-black/20 px-8 py-8 md:px-14 md:py-12 prose prose-invert prose-lg md:prose-xl prose-headings:text-white prose-headings:font-semibold prose-h2:text-[2.35rem] prose-h2:leading-[1.12] prose-h2:tracking-[-0.02em] prose-h2:mt-14 prose-h2:mb-6 prose-h2:pb-3 prose-h2:border-b prose-h2:border-white/10 prose-h3:text-[1.65rem] prose-h3:leading-[1.22] prose-h3:tracking-[-0.01em] prose-h3:mt-10 prose-h3:mb-4 prose-h3:text-cyan-100 prose-p:text-gray-100 prose-p:leading-[1.95] prose-p:my-6 prose-p:text-[1.08rem] prose-ul:my-6 prose-ol:my-6 prose-li:my-2 prose-li:text-gray-200 prose-strong:text-white prose-em:text-cyan-100/90 prose-blockquote:my-8 prose-blockquote:not-italic prose-blockquote:text-gray-100 [&_.manuscript-section-title]:text-white [&_.manuscript-subsection-title]:text-cyan-100 [&_.manuscript-scripture-ref]:my-5 [&_.manuscript-scripture-ref]:text-cyan-100 [&_.manuscript-scripture-ref]:text-[1.3rem] [&_.manuscript-scripture-ref]:font-medium [&_.manuscript-scripture-ref]:italic [&_.manuscript-scripture-block]:my-8 [&_.manuscript-scripture-block]:rounded-2xl [&_.manuscript-scripture-block]:border [&_.manuscript-scripture-block]:border-cyan-400/20 [&_.manuscript-scripture-block]:bg-cyan-500/6 [&_.manuscript-scripture-block]:px-6 [&_.manuscript-scripture-block]:py-5 [&_.manuscript-scripture-block>p]:my-3 [&_.manuscript-scripture-block>p]:text-[1.08rem] [&_.manuscript-scripture-block>p]:leading-[1.85] [&_.manuscript-scripture-block>p]:text-gray-100 [&_.manuscript-callout]:my-6 [&_.manuscript-callout]:rounded-xl [&_.manuscript-callout]:border [&_.manuscript-callout]:border-white/10 [&_.manuscript-callout]:bg-white/5 [&_.manuscript-callout]:px-5 [&_.manuscript-callout]:py-4 max-w-5xl selection:bg-cyan-500/30"
-                            dangerouslySetInnerHTML={{ __html: ensureManuscriptRichHtml(String(manuscript.content?.text || '')) }}
+                            dangerouslySetInnerHTML={{
+                              __html: ensureManuscriptRichHtml(String(manuscript.content?.text || ''), markdownLikeToHtml),
+                            }}
                           />
                           {renderManuscriptCuesPanel(normalizeManuscriptCues(manuscript.content?.cues), false)}
                         </div>
