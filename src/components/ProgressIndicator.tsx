@@ -4,21 +4,25 @@ import { CheckCircle, Circle } from 'lucide-react'
 
 interface ProgressIndicatorProps {
   progress: {
-    passageStudied: boolean
-    themesIdentified: boolean
-    strategySelected: boolean
+    themeConfigured: boolean
+    passageExplored: boolean
+    studyGenerated: boolean
     outlineCreated: boolean
     manuscriptWritten: boolean
+    refineCompleted: boolean
+    deliverPrepared: boolean
   }
 }
 
 export default function ProgressIndicator({ progress }: ProgressIndicatorProps) {
   const steps = [
-    { label: 'Passage studied', complete: progress.passageStudied },
-    { label: 'Themes identified', complete: progress.themesIdentified },
-    { label: 'Strategy selected', complete: progress.strategySelected },
+    { label: 'Theme configured', complete: progress.themeConfigured },
+    { label: 'Passage explored', complete: progress.passageExplored },
+    { label: 'Study report generated', complete: progress.studyGenerated },
     { label: 'Outline created', complete: progress.outlineCreated },
     { label: 'Manuscript written', complete: progress.manuscriptWritten },
+    { label: 'Refinement run', complete: progress.refineCompleted },
+    { label: 'Deliver assets created', complete: progress.deliverPrepared },
   ]
 
   const completedCount = steps.filter(s => s.complete).length

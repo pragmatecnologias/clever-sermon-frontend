@@ -4,67 +4,87 @@ import { ArrowRight } from 'lucide-react'
 
 interface NextStepSuggestionProps {
   progress: {
-    passageStudied: boolean
-    themesIdentified: boolean
-    strategySelected: boolean
+    themeConfigured: boolean
+    passageExplored: boolean
+    studyGenerated: boolean
     outlineCreated: boolean
     manuscriptWritten: boolean
+    refineCompleted: boolean
+    deliverPrepared: boolean
   }
   onAction: (action: string) => void
 }
 
 export default function NextStepSuggestion({ progress, onAction }: NextStepSuggestionProps) {
   const getNextStep = () => {
-    if (!progress.passageStudied) {
+    if (!progress.themeConfigured) {
       return {
-        label: 'Look up your passage',
-        description: 'Start by studying the biblical text',
-        action: 'lookup-passage',
+        label: 'Review workspace setup',
+        description: 'Confirm title, passage, language, and audience before building the sermon',
+        action: 'open-theme',
+        icon: '🧭'
+      }
+    }
+
+    if (!progress.passageExplored) {
+      return {
+        label: 'Explore the passage',
+        description: 'Use Scripture, word study, cross references, and passage tools first',
+        action: 'open-passage',
         icon: '📖'
       }
     }
-    
-    if (!progress.themesIdentified) {
+
+    if (!progress.studyGenerated) {
       return {
         label: 'Generate study report',
-        description: 'AI will identify key themes and insights',
+        description: 'Compile passage intelligence into sermon-ready study material',
         action: 'generate-study-report',
         icon: '🔍'
       }
     }
-    
-    if (!progress.strategySelected) {
-      return {
-        label: 'Choose preaching strategy',
-        description: 'Determine the best approach for this sermon',
-        action: 'select-strategy',
-        icon: '🎯'
-      }
-    }
-    
+
     if (!progress.outlineCreated) {
       return {
         label: 'Create sermon outline',
-        description: 'Generate structured outline options',
-        action: 'create-outline',
+        description: 'Turn study material into point-by-point sermon structure',
+        action: 'open-outline',
         icon: '📝'
       }
     }
-    
+
     if (!progress.manuscriptWritten) {
       return {
-        label: 'Write full manuscript',
-        description: 'Generate complete sermon text',
-        action: 'write-manuscript',
+        label: 'Write the manuscript',
+        description: 'Draft the sermon body and speaking notes for delivery',
+        action: 'open-write',
         icon: '✍️'
       }
     }
-    
+
+    if (!progress.refineCompleted) {
+      return {
+        label: 'Run refinement tools',
+        description: 'Use DNA, integrity, and coaching tools to polish the sermon',
+        action: 'open-refine',
+        icon: '✨'
+      }
+    }
+
+    if (!progress.deliverPrepared) {
+      return {
+        label: 'Prepare deliver assets',
+        description: 'Generate slides, media, music, and social assets for presentation',
+        action: 'open-deliver',
+        icon: '🎬'
+      }
+    }
+
     return {
-      label: 'Analyze your sermon',
-      description: 'Get AI feedback and refinement suggestions',
-      action: 'analyze-sermon',
-      icon: '✨'
+      label: 'Review deliver assets',
+      description: 'Everything is in place. Finalize the materials for service.',
+      action: 'open-deliver',
+      icon: '✅'
     }
   }
 

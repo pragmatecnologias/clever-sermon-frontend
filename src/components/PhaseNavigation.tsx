@@ -8,11 +8,13 @@ interface PhaseNavigationProps {
   activePhase: Phase
   onPhaseChange: (phase: Phase) => void
   progress: {
-    passageStudied: boolean
-    themesIdentified: boolean
-    strategySelected: boolean
+    themeConfigured: boolean
+    passageExplored: boolean
+    studyGenerated: boolean
     outlineCreated: boolean
     manuscriptWritten: boolean
+    refineCompleted: boolean
+    deliverPrepared: boolean
   }
 }
 
@@ -23,21 +25,21 @@ export default function PhaseNavigation({ activePhase, onPhaseChange, progress }
       label: 'Theme', 
       icon: Compass,
       description: 'Direction and setup',
-      complete: progress.strategySelected
+      complete: progress.themeConfigured
     },
     { 
       id: 'PASSAGE' as Phase, 
       label: 'Passage', 
       icon: BookOpen,
       description: 'Scripture intelligence',
-      complete: progress.passageStudied
+      complete: progress.passageExplored
     },
     { 
       id: 'STUDY' as Phase, 
       label: 'Study', 
       icon: Brain,
       description: 'Sermon material',
-      complete: progress.themesIdentified
+      complete: progress.studyGenerated
     },
     { 
       id: 'OUTLINE' as Phase, 
@@ -58,14 +60,14 @@ export default function PhaseNavigation({ activePhase, onPhaseChange, progress }
       label: 'Refine', 
       icon: Sparkles,
       description: 'Polish and improve',
-      complete: progress.manuscriptWritten
+      complete: progress.refineCompleted
     },
     {
       id: 'DELIVER' as Phase,
       label: 'Deliver',
       icon: Layers,
       description: 'Slides and media',
-      complete: false
+      complete: progress.deliverPrepared
     },
   ]
 

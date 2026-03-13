@@ -101,6 +101,13 @@ const emptyManuscriptCues = (): ManuscriptCues => ({
   cta: [],
 })
 
+type StudyAssetType = 'applications' | 'questions' | 'illustrations' | 'media'
+
+type StudyAssetChainState = {
+  target: StudyAssetType | null
+  phase: 'idle' | 'study-report' | 'asset'
+}
+
 type WorkspaceSection =
   | 'workspace'
   | 'church-settings'
@@ -156,6 +163,7 @@ export default function WorkspaceDetailPage() {
   const [manuscriptAudienceMode, setManuscriptAudienceMode] = useState('default')
   const [manuscriptIncludeSlideCues, setManuscriptIncludeSlideCues] = useState(true)
   const [manuscriptIncludeKeyLines, setManuscriptIncludeKeyLines] = useState(true)
+  const [studyAssetChain, setStudyAssetChain] = useState<StudyAssetChainState>({ target: null, phase: 'idle' })
   const [editingApplicationId, setEditingApplicationId] = useState<string | null>(null)
   const [applicationDraft, setApplicationDraft] = useState<string>('')
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null)
@@ -276,6 +284,7 @@ export default function WorkspaceDetailPage() {
   const navStateRestored = useRef(false)
   const navStatePersistTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const navStatePersistHash = useRef<string>('')
+  const navStateStorageKey = workspaceId ? `workspace-ui-nav:${workspaceId}` : null
 
   const storyArcLabels: Record<string, string> = {
     problem_truth_response: 'Problem → Truth → Response',
@@ -649,12 +658,31 @@ export default function WorkspaceDetailPage() {
   }
 
   // Calculate progress
+  const latestStudyReport = workspace?.studyReports?.[0]
+  const latestManuscript = workspace?.manuscripts?.[0]
+  const themeConfigured =
+    Boolean(String(workspace?.title || '').trim()) &&
+    Boolean(String(workspace?.mainPassage || '').trim()) &&
+    Boolean(String(workspace?.language || workspace?.metadata?.language || '').trim())
+  const refineCompleted =
+    Boolean(dnaIntegrityReport) ||
+    Boolean(socraticCoachSession) ||
+    Boolean(workspace?.metadata?.sermonDnaLastAnalysis) ||
+    Boolean(workspace?.metadata?.socraticCoachLastSession)
+  const deliverPrepared =
+    Boolean(workspace?.metadata?.deliverables?.hasSlides) ||
+    Boolean(workspace?.metadata?.deliverables?.hasMedia) ||
+    Boolean(workspace?.metadata?.deliverables?.hasSocial) ||
+    Boolean(workspace?.metadata?.deliverables?.hasMusic)
+
   const progress = {
-    passageStudied: !!scriptureResult,
-    themesIdentified: !!workspace?.studyReports?.length,
-    strategySelected: !!workspace?.preachingStrategies?.length || !!workspace?.style,
+    themeConfigured,
+    passageExplored: !!scriptureResult,
+    studyGenerated: !!latestStudyReport,
     outlineCreated: !!workspace?.outlines?.length,
-    manuscriptWritten: !!workspace?.manuscripts?.length
+    manuscriptWritten: !!latestManuscript,
+    refineCompleted,
+    deliverPrepared,
   }
 
   // Handle phase change
@@ -708,7 +736,11 @@ export default function WorkspaceDetailPage() {
   // Handle next step suggestions
   const handleNextStepAction = (action: string) => {
     switch (action) {
-      case 'lookup-passage':
+      case 'open-theme':
+        setActivePhase('THEME')
+        setActiveSection('workspace')
+        break
+      case 'open-passage':
         setActivePhase('PASSAGE')
         setActiveSection('scripture')
         break
@@ -717,21 +749,21 @@ export default function WorkspaceDetailPage() {
         setActiveSection('study-report')
         handleGenerate('study-report', '')
         break
-      case 'select-strategy':
-        setActivePhase('THEME')
-        setActiveSection('workspace')
-        break
-      case 'create-outline':
+      case 'open-outline':
         setActivePhase('OUTLINE')
         setActiveSection('outlines')
         break
-      case 'write-manuscript':
+      case 'open-write':
         setActivePhase('WRITE')
         setActiveSection('manuscript')
         break
-      case 'analyze-sermon':
+      case 'open-refine':
         setActivePhase('REFINE')
         setActiveSection('dna')
+        break
+      case 'open-deliver':
+        setActivePhase('DELIVER')
+        setActiveSection('media')
         break
     }
   }
@@ -1042,12 +1074,54 @@ export default function WorkspaceDetailPage() {
     </div>
   )
 
+  const stripModelArtifacts = (value: string) => {
+    const raw = String(value || '')
+      .replace(/<\|[^|>]+?\|>/g, ' ')
+      .replace(/^\s*(assistant|final|response)\s*[:\-]\s*/i, '')
+      .trim()
+
+    const start = raw.indexOf('{')
+    const end = raw.lastIndexOf('}')
+    if (start >= 0 && end > start) {
+      try {
+        const parsed = JSON.parse(raw.slice(start, end + 1))
+        if (parsed && typeof parsed.text === 'string') {
+          return String(parsed.text).replace(/\\n/g, '\n').trim()
+        }
+      } catch {
+        // Ignore parse errors and continue with raw text fallback.
+      }
+    }
+
+    return raw.replace(/\\n/g, '\n').trim()
+  }
+
   const sanitizeManuscriptHtml = (html: string) =>
-    String(html || '')
+    stripModelArtifacts(html)
       .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
       .replace(/\son\w+="[^"]*"/gi, '')
       .replace(/\son\w+='[^']*'/gi, '')
       .trim()
+
+  const ensureManuscriptRichHtml = (value: string) => {
+    const sanitized = sanitizeManuscriptHtml(value)
+    if (!sanitized) return '<p></p>'
+    if (/<\/?[a-z][\s\S]*>/i.test(sanitized)) return sanitized
+    return markdownLikeToHtml(sanitized)
+  }
+
+  const escapeManuscriptHtml = (value: string) =>
+    String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+
+  const formatManuscriptInline = (value: string) =>
+    escapeManuscriptHtml(value)
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/(^|[\s>])\*(.*?)\*/g, '$1<em>$2</em>')
 
   const normalizeManuscriptCues = (raw: any): ManuscriptCues => {
     const cues = emptyManuscriptCues()
@@ -1119,40 +1193,174 @@ export default function WorkspaceDetailPage() {
   const markdownLikeToHtml = (rawText: string) => {
     const normalized = String(rawText || '').replace(/\r\n/g, '\n').trim()
     if (!normalized) return '<p></p>'
-    const blocks = normalized.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean)
+
+    const lines = normalized.split('\n')
     const htmlBlocks: string[] = []
-    for (const block of blocks) {
-      const heading = block.match(/^(#{1,3})\s+(.+)$/)
-      if (heading) {
-        const level = Math.min(3, Math.max(1, heading[1].length))
-        const tag = level === 1 ? 'h2' : level === 2 ? 'h3' : 'h4'
-        htmlBlocks.push(`<${tag}>${heading[2]}</${tag}>`)
+    let paragraphLines: string[] = []
+
+    const flushParagraph = () => {
+      if (!paragraphLines.length) return
+      htmlBlocks.push(`<p>${formatManuscriptInline(paragraphLines.join(' '))}</p>`)
+      paragraphLines = []
+    }
+
+    const flushList = (items: string[], ordered: boolean) => {
+      if (!items.length) return
+      const tag = ordered ? 'ol' : 'ul'
+      htmlBlocks.push(
+        `<${tag}>${items.map((item) => `<li>${formatManuscriptInline(item)}</li>`).join('')}</${tag}>`,
+      )
+    }
+
+    const isSectionTitle = (line: string) =>
+      /^(Introducción|Introduction|Lectura(?: del pasaje principal)?|Reading|Contexto(?: literario y histórico)?|Context|Aplicación(?: práctica)?|Application|Ilustración|Illustration|Conclusión|Conclusion|Llamado|Appeal|Transición|Transition|Oración final|Closing prayer)\b/i.test(
+        line,
+      )
+
+    const isMajorSectionTitle = (line: string) =>
+      /^(Introducción|Introduction|Lectura(?: del pasaje principal)?|Reading|Contexto(?: literario y histórico)?|Context|Aplicación(?: práctica)?|Application|Ilustración|Illustration|Conclusión|Conclusion|Llamado|Appeal|Oración final|Closing prayer)\b/i.test(
+        line,
+      )
+
+    const isMinorSectionTitle = (line: string) =>
+      /^(Transición|Transition|Explicación|Explanation|Ilustración|Illustration|Pregunta|Question|Respuesta|Response|Invitación|Invitation)\b/i.test(
+        line,
+      )
+
+    const isShortTitleCaseLine = (line: string) =>
+      line.length <= 90 &&
+      !/[.!?]$/.test(line) &&
+      !/^[-*•]/.test(line) &&
+      !/^\d+\s/.test(line) &&
+      /^[A-ZÁÉÍÓÚÑÜ].*/.test(line)
+
+    const isScriptureReference = (line: string) =>
+      /^(<em>)?[A-Za-zÁÉÍÓÚÑÜáéíóúñü0-9 .:-]+\(([^)]+)\)(<\/em>)?$/.test(line) ||
+      /^[A-Za-zÁÉÍÓÚÑÜáéíóúñü. ]+\d+:\d+(?:-\d+)?(?:\s*\([^)]+\))?$/.test(line)
+
+    const isVerseBlockLine = (line: string) =>
+      /^\d+\s/.test(line) || /^[“"'\(]?\d+[:.]/.test(line)
+
+    const isLabeledCallout = (line: string) =>
+      /^(Explicación|Aplicación|Ilustración|Transición|Pregunta|Oración|Llamado|Contexto|Idea clave|Verdad central)\s*:/i.test(
+        line,
+      )
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const rawLine = lines[index]
+      const line = rawLine.trim()
+
+      if (!line) {
+        flushParagraph()
         continue
       }
-      const lines = block.split('\n').map((line) => line.trim()).filter(Boolean)
-      const unordered = lines.length > 1 && lines.every((line) => /^[-*]\s+/.test(line))
-      const ordered = lines.length > 1 && lines.every((line) => /^\d+[\.\)]\s+/.test(line))
-      if (unordered || ordered) {
-        const tag = ordered ? 'ol' : 'ul'
-        const items = lines
-          .map((line) => line.replace(/^[-*]\s+/, '').replace(/^\d+[\.\)]\s+/, ''))
-          .map((line) => `<li>${line}</li>`)
-          .join('')
-        htmlBlocks.push(`<${tag}>${items}</${tag}>`)
-      } else {
-        htmlBlocks.push(`<p>${block.replace(/\n/g, '<br />')}</p>`)
+
+      const markdownHeading = line.match(/^(#{1,3})\s+(.+)$/)
+      if (markdownHeading) {
+        flushParagraph()
+        const level = Math.min(3, Math.max(1, markdownHeading[1].length))
+        const tag = level === 1 ? 'h2' : level === 2 ? 'h3' : 'h4'
+        htmlBlocks.push(`<${tag}>${formatManuscriptInline(markdownHeading[2].trim())}</${tag}>`)
+        continue
       }
+
+      const boldHeading = line.match(/^\*\*([^*]+)\*\*$/)
+      if (boldHeading) {
+        flushParagraph()
+        htmlBlocks.push(`<h3>${formatManuscriptInline(boldHeading[1].trim())}</h3>`)
+        continue
+      }
+
+      const numberedPoint = line.match(/^(\d+)[\.\)]\s+(.+)/)
+      if (numberedPoint && numberedPoint[2].length <= 120) {
+        flushParagraph()
+        htmlBlocks.push(`<h3>${formatManuscriptInline(`${numberedPoint[1]}. ${numberedPoint[2].trim()}`)}</h3>`)
+        continue
+      }
+
+      if (isSectionTitle(line) || (isShortTitleCaseLine(line) && lines[index + 1]?.trim().length > 90)) {
+        flushParagraph()
+        const cleanedTitle = formatManuscriptInline(line.replace(/[:.]$/, ''))
+        if (isMajorSectionTitle(line)) {
+          htmlBlocks.push(`<h2 class="manuscript-section-title">${cleanedTitle}</h2>`)
+        } else if (isMinorSectionTitle(line)) {
+          htmlBlocks.push(`<h3 class="manuscript-subsection-title">${cleanedTitle}</h3>`)
+        } else {
+          htmlBlocks.push(`<h3 class="manuscript-subsection-title">${cleanedTitle}</h3>`)
+        }
+        continue
+      }
+
+      if (isScriptureReference(line)) {
+        flushParagraph()
+        htmlBlocks.push(`<p class="manuscript-scripture-ref"><em>${formatManuscriptInline(line)}</em></p>`)
+        continue
+      }
+
+      if (isLabeledCallout(line)) {
+        flushParagraph()
+        const [label, ...rest] = line.split(':')
+        htmlBlocks.push(
+          `<p class="manuscript-callout"><strong>${formatManuscriptInline(label)}:</strong>${rest.length ? ` ${formatManuscriptInline(rest.join(':').trim())}` : ''}</p>`,
+        )
+        continue
+      }
+
+      if (/^[-*•]\s+/.test(line)) {
+        flushParagraph()
+        const items: string[] = [line.replace(/^[-*•]\s+/, '').trim()]
+        while (index + 1 < lines.length && /^[-*•]\s+/.test(lines[index + 1].trim())) {
+          index += 1
+          items.push(lines[index].trim().replace(/^[-*•]\s+/, '').trim())
+        }
+        flushList(items, false)
+        continue
+      }
+
+      if (/^\d+[\.\)]\s+/.test(line)) {
+        flushParagraph()
+        const items: string[] = [line.replace(/^\d+[\.\)]\s+/, '').trim()]
+        while (index + 1 < lines.length && /^\d+[\.\)]\s+/.test(lines[index + 1].trim())) {
+          index += 1
+          items.push(lines[index].trim().replace(/^\d+[\.\)]\s+/, '').trim())
+        }
+        flushList(items, true)
+        continue
+      }
+
+      if (isVerseBlockLine(line)) {
+        flushParagraph()
+        const verseLines = [line]
+        while (index + 1 < lines.length) {
+          const next = lines[index + 1].trim()
+          if (!next || isSectionTitle(next) || isScriptureReference(next) || /^#{1,3}\s+/.test(next)) break
+          if (isVerseBlockLine(next) || paragraphLines.length === 0) {
+            index += 1
+            verseLines.push(next)
+            continue
+          }
+          break
+        }
+        htmlBlocks.push(
+          `<blockquote class="manuscript-scripture-block">${verseLines
+            .map((verseLine) => `<p>${formatManuscriptInline(verseLine)}</p>`)
+            .join('')}</blockquote>`,
+        )
+        continue
+      }
+
+      paragraphLines.push(line)
     }
-    return htmlBlocks
-      .join('\n')
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/(^|[\s>])\*(.*?)\*/g, '$1<em>$2</em>')
+
+    flushParagraph()
+
+    return htmlBlocks.join('\n')
   }
 
   const toV2ManuscriptDraft = (manuscript: any) => {
     if (isManuscriptV2(manuscript)) {
       return {
-        html: sanitizeManuscriptHtml(String(manuscript?.content?.text || '')),
+        html: ensureManuscriptRichHtml(String(manuscript?.content?.text || '')),
         cues: normalizeManuscriptCues(manuscript?.content?.cues),
       }
     }
@@ -1199,46 +1407,87 @@ export default function WorkspaceDetailPage() {
       .trim()
   }
 
+  const cueIconMap: Record<keyof ManuscriptCues, string> = {
+    slide: '🖼️',
+    keyLine: '💬',
+    transition: '➡️',
+    pause: '⏸️',
+    read: '📖',
+    quote: '✨',
+    cta: '🎯',
+  }
+
+  const cueColorMap: Record<keyof ManuscriptCues, { border: string; bg: string; text: string }> = {
+    slide: { border: 'border-purple-400/40', bg: 'bg-purple-500/10', text: 'text-purple-200' },
+    keyLine: { border: 'border-cyan-400/40', bg: 'bg-cyan-500/10', text: 'text-cyan-200' },
+    transition: { border: 'border-blue-400/40', bg: 'bg-blue-500/10', text: 'text-blue-200' },
+    pause: { border: 'border-amber-400/40', bg: 'bg-amber-500/10', text: 'text-amber-200' },
+    read: { border: 'border-emerald-400/40', bg: 'bg-emerald-500/10', text: 'text-emerald-200' },
+    quote: { border: 'border-pink-400/40', bg: 'bg-pink-500/10', text: 'text-pink-200' },
+    cta: { border: 'border-orange-400/40', bg: 'bg-orange-500/10', text: 'text-orange-200' },
+  }
+
   const renderManuscriptCuesPanel = (
     cues: ManuscriptCues,
     editable: boolean,
-    onCueChange?: (key: keyof ManuscriptCues, value: string) => void,
   ) => {
     if (!hasCueContent(cues) && !editable) return null
-    return (
-      <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3 space-y-3">
-        <p className="text-xs uppercase tracking-widest text-cyan-200/90">Preaching Cues</p>
+    
+    const priorityCues: Array<keyof ManuscriptCues> = ['keyLine', 'cta', 'read', 'quote']
+    const secondaryCues: Array<keyof ManuscriptCues> = ['transition', 'pause', 'slide']
+    
+    const renderCueSection = (keys: Array<keyof ManuscriptCues>, title: string) => {
+      const hasContent = keys.some(key => cues[key]?.length > 0)
+      if (!hasContent && !editable) return null
+      
+      return (
         <div className="space-y-3">
-          {(Object.keys(cueLabelMap) as Array<keyof ManuscriptCues>).map((key) => {
+          <p className="text-[10px] uppercase tracking-[0.2em] text-gray-400 font-medium">{title}</p>
+          {keys.map((key) => {
             const values = cues[key]
             if (!editable && values.length === 0) return null
+            const colors = cueColorMap[key]
             return (
-              <div key={key} className="space-y-1">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-cyan-200/70">{cueLabelMap[key]}</p>
-                {editable ? (
-                  <textarea
-                    value={values.join('\n')}
-                    onChange={(event) => onCueChange?.(key, event.target.value)}
-                    rows={Math.max(2, Math.min(6, values.length + 1))}
-                    className="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-xs text-gray-100"
-                    placeholder={`One ${cueLabelMap[key]} item per line`}
-                  />
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {values.map((item, index) => (
-                      <span
-                        key={`${key}-${index}`}
-                        className="px-2 py-1 rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-100 text-xs"
-                      >
-                        {item}
-                      </span>
-                    ))}
-                  </div>
-                )}
+              <div key={key} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">{cueIconMap[key]}</span>
+                  <p className={`text-xs font-medium ${colors.text}`}>{cueLabelMap[key]}</p>
+                  {values.length > 0 && (
+                    <span className="text-[10px] text-gray-500">({values.length})</span>
+                  )}
+                </div>
+                <div className="space-y-1.5 pl-6">
+                  {values.length ? values.map((item, index) => (
+                    <div
+                      key={`${key}-${index}`}
+                      className={`px-3 py-2 rounded-lg border ${colors.border} ${colors.bg} text-sm leading-relaxed`}
+                    >
+                      {item}
+                    </div>
+                  )) : editable ? (
+                    <span className="text-[11px] text-gray-500 italic">None generated</span>
+                  ) : null}
+                </div>
               </div>
             )
           })}
         </div>
+      )
+    }
+    
+    return (
+      <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-black/30 to-black/10 p-4 space-y-5 sticky top-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-white">Preaching Cues</p>
+          <span className="text-[10px] uppercase tracking-widest text-gray-500">Sidebar</span>
+        </div>
+        {editable && (
+          <p className="text-[11px] text-gray-400 leading-relaxed">
+            Cues are generated with the manuscript based on your settings. Regenerate to update.
+          </p>
+        )}
+        {renderCueSection(priorityCues, 'Key Moments')}
+        {renderCueSection(secondaryCues, 'Delivery Notes')}
       </div>
     )
   }
@@ -1667,6 +1916,7 @@ export default function WorkspaceDetailPage() {
     onSecondaryAction?: () => void,
     isLoading = false,
     loadingLabel = 'Generating...',
+    disableActions = false,
   ) => (
     <div key={key} className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
       <div className="flex items-center justify-between gap-3">
@@ -1676,11 +1926,19 @@ export default function WorkspaceDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           {secondaryActionLabel && onSecondaryAction ? (
-            <button onClick={onSecondaryAction} className="cyber-outline text-xs px-3 py-2 rounded-full">
+            <button
+              onClick={onSecondaryAction}
+              disabled={disableActions}
+              className="cyber-outline text-xs px-3 py-2 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               {secondaryActionLabel}
             </button>
           ) : null}
-          <button onClick={onPrimaryAction} className="cyber-outline text-xs px-3 py-2 rounded-full">
+          <button
+            onClick={onPrimaryAction}
+            disabled={disableActions}
+            className="cyber-outline text-xs px-3 py-2 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             {primaryActionLabel}
           </button>
         </div>
@@ -1751,12 +2009,26 @@ export default function WorkspaceDetailPage() {
   }
 
   const isStudyAssetLoading = (asset: 'report' | 'applications' | 'questions' | 'illustrations' | 'media' | 'egw' | 'references') => {
-    if (actionLoading.includes('study-report')) return true
+    if (asset === 'report') return actionLoading.includes('study-report')
+    if (studyAssetChain.phase === 'study-report' && studyAssetChain.target === asset) return true
     if (asset === 'applications') return actionLoading.includes('applications')
     if (asset === 'questions') return actionLoading.includes('questions')
     if (asset === 'illustrations') return actionLoading.includes('illustrations')
     if (asset === 'media') return actionLoading.includes('media')
     return false
+  }
+
+  const getStudyAssetLoadingLabel = (asset: StudyAssetType) => {
+    if (studyAssetChain.phase === 'study-report' && studyAssetChain.target === asset) {
+      return 'Generating Study Report...'
+    }
+    const labels: Record<StudyAssetType, string> = {
+      applications: 'Generating Applications...',
+      questions: 'Generating Discussion Questions...',
+      illustrations: 'Generating Illustration Ideas...',
+      media: 'Generating Media Suggestions...',
+    }
+    return labels[asset]
   }
 
   const getPassageFocusText = () => {
@@ -2295,21 +2567,35 @@ export default function WorkspaceDetailPage() {
       : null
 
     const metadataUiState = workspace?.metadata?.uiState || {}
+    let localUiState: Record<string, any> = {}
+    if (typeof window !== 'undefined' && navStateStorageKey) {
+      try {
+        localUiState = JSON.parse(localStorage.getItem(navStateStorageKey) || '{}') || {}
+      } catch {
+        localUiState = {}
+      }
+    }
     const metadataPhase = VALID_PHASES.includes(String(metadataUiState.phase || '').toUpperCase() as Phase)
       ? (String(metadataUiState.phase).toUpperCase() as Phase)
       : null
     const metadataSection = VALID_SECTIONS.includes(String(metadataUiState.section || '') as WorkspaceSection)
       ? (String(metadataUiState.section) as WorkspaceSection)
       : null
+    const localPhase = VALID_PHASES.includes(String(localUiState.phase || '').toUpperCase() as Phase)
+      ? (String(localUiState.phase).toUpperCase() as Phase)
+      : null
+    const localSection = VALID_SECTIONS.includes(String(localUiState.section || '') as WorkspaceSection)
+      ? (String(localUiState.section) as WorkspaceSection)
+      : null
 
-    const restoredSection = querySection || metadataSection || 'workspace'
-    const restoredPhase = resolvePhaseForSection(restoredSection, queryPhase || metadataPhase || undefined)
+    const restoredSection = querySection || metadataSection || localSection || 'workspace'
+    const restoredPhase = resolvePhaseForSection(restoredSection, queryPhase || metadataPhase || localPhase || undefined)
 
     setActiveSection(restoredSection)
     setActivePhase(restoredPhase)
     setVisualizationMode(restoredPhase === 'REFINE' ? 'refine' : 'passage')
     navStateRestored.current = true
-  }, [workspace, searchParams])
+  }, [workspace, searchParams, navStateStorageKey])
 
   useEffect(() => {
     if (!workspaceId || !workspace || loading || !navStateRestored.current) return
@@ -2326,6 +2612,20 @@ export default function WorkspaceDetailPage() {
     const navHash = `${activePhase}:${activeSection}`
     if (navStatePersistHash.current === navHash) return
     navStatePersistHash.current = navHash
+    if (typeof window !== 'undefined' && navStateStorageKey) {
+      try {
+        localStorage.setItem(
+          navStateStorageKey,
+          JSON.stringify({
+            phase: activePhase,
+            section: activeSection,
+            updatedAt: new Date().toISOString(),
+          }),
+        )
+      } catch {
+        // Ignore storage quota/private browsing failures.
+      }
+    }
     if (navStatePersistTimer.current) {
       clearTimeout(navStatePersistTimer.current)
     }
@@ -2351,7 +2651,7 @@ export default function WorkspaceDetailPage() {
         console.error('Failed to persist workspace navigation state', err)
       }
     }, 500)
-  }, [activePhase, activeSection, workspace, workspaceId, loading, searchParams, router])
+  }, [activePhase, activeSection, workspace, workspaceId, loading, searchParams, router, navStateStorageKey])
 
   useEffect(() => {
     return () => {
@@ -2383,10 +2683,126 @@ export default function WorkspaceDetailPage() {
     const config = withToken()
     if (!config) return
 
+    const studyAssetLabels: Record<StudyAssetType, string> = {
+      applications: 'Applications',
+      questions: 'Discussion Questions',
+      illustrations: 'Illustrations',
+      media: 'Media Suggestions',
+    }
+    const isStudyAssetType = (value: string): value is StudyAssetType =>
+      value === 'applications' || value === 'questions' || value === 'illustrations' || value === 'media'
+
+    if (actionLoading.includes(type)) {
+      return
+    }
+
+    if (isStudyAssetType(type) && studyAssetChain.phase !== 'idle') {
+      if (studyAssetChain.target === type) {
+        setError(`${studyAssetLabels[type]} generation is already in progress.`)
+      } else {
+        setError(`Please wait for ${studyAssetLabels[studyAssetChain.target as StudyAssetType]} to finish generating.`)
+      }
+      return
+    }
+
+    if (isStudyAssetType(type) && studyAssetChain.target && studyAssetChain.target !== type) {
+      setError(`Please wait for ${studyAssetLabels[studyAssetChain.target]} to finish generating.`)
+      return
+    }
+
     setActionLoading((prev) => (prev.includes(type) ? prev : [...prev, type]))
     try {
       let generatedResponse: any = null
-      if (type === 'outlines') {
+      if (isStudyAssetType(type)) {
+        const hasStudyReport = Array.isArray(workspace?.studyReports) && workspace.studyReports.length > 0
+        if (!hasStudyReport) {
+          setStudyAssetChain({ target: type, phase: 'study-report' })
+          setActionLoading((prev) => (prev.includes('study-report') ? prev : [...prev, 'study-report']))
+          try {
+            const studyReportResponse = await axios.post(
+              `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/study-report`,
+              {
+                includeEGW: workspace?.egwEnabled || false,
+              },
+              config,
+            )
+            if (studyReportResponse?.data) {
+              setWorkspace((prev: any) =>
+                prev
+                  ? {
+                      ...prev,
+                      studyReports: [
+                        studyReportResponse.data,
+                        ...(prev.studyReports || []).filter((item: any) => item.id !== studyReportResponse.data.id),
+                      ],
+                    }
+                  : prev,
+              )
+            }
+          } catch (studyError) {
+            console.error('Study report generation failed before study asset generation', studyError)
+            setError('Study Report generation failed. Please retry.')
+            setStudyAssetChain({ target: null, phase: 'idle' })
+            return
+          } finally {
+            setActionLoading((prev) => prev.filter((item) => item !== 'study-report'))
+          }
+        }
+
+        setStudyAssetChain({ target: type, phase: 'asset' })
+        try {
+          if (type === 'applications') {
+            generatedResponse = await axios.post(
+              `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/applications`,
+              {
+                promptOverride: override,
+                includeEGW: workspace?.egwEnabled || false,
+              },
+              config,
+            )
+          }
+          if (type === 'questions') {
+            generatedResponse = await axios.post(
+              `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/discussion-questions`,
+              { promptOverride: override },
+              config,
+            )
+          }
+          if (type === 'illustrations') {
+            generatedResponse = await axios.post(
+              `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/illustrations`,
+              { promptOverride: override },
+              config,
+            )
+          }
+          if (type === 'media') {
+            generatedResponse = await axios.post(
+              `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/media-suggestions`,
+              { promptOverride: override },
+              config,
+            )
+            if (generatedResponse?.data) {
+              setWorkspace((prev: any) =>
+                prev
+                  ? {
+                      ...prev,
+                      studyReports: [
+                        generatedResponse.data,
+                        ...(prev.studyReports || []).filter((item: any) => item.id !== generatedResponse.data.id),
+                      ],
+                    }
+                  : prev,
+              )
+            }
+          }
+        } catch (assetError) {
+          console.error(`${type} generation failed`, assetError)
+          setError(`${studyAssetLabels[type]} generation failed. Please retry.`)
+          return
+        } finally {
+          setStudyAssetChain({ target: null, phase: 'idle' })
+        }
+      } else if (type === 'outlines') {
         generatedResponse = await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/outlines`,
           { 
@@ -2395,8 +2811,7 @@ export default function WorkspaceDetailPage() {
           },
           config,
         )
-      }
-      if (type === 'manuscript') {
+      } else if (type === 'manuscript') {
         const selectedOutline = workspace?.outlines?.find((o: any) => o.isSelected) || workspace?.outlines?.[0]
         if (!selectedOutline) {
           setError('Create or generate an outline first.')
@@ -2421,39 +2836,13 @@ export default function WorkspaceDetailPage() {
           },
           config,
         )
-      }
-      if (type === 'applications') {
-        generatedResponse = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/applications`,
-          { 
-            promptOverride: override,
-            includeEGW: workspace?.egwEnabled || false
-          },
-          config,
-        )
-      }
-      if (type === 'questions') {
-        generatedResponse = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/discussion-questions`,
-          { promptOverride: override },
-          config,
-        )
-      }
-      if (type === 'illustrations') {
-        generatedResponse = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/illustrations`,
-          { promptOverride: override },
-          config,
-        )
-      }
-      if (type === 'citations') {
+      } else if (type === 'citations') {
         generatedResponse = await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/citations`,
           { promptOverride: override },
           config,
         )
-      }
-      if (type === 'study-report') {
+      } else if (type === 'study-report') {
         generatedResponse = await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/study-report`,
           { 
@@ -2468,21 +2857,7 @@ export default function WorkspaceDetailPage() {
             studyReports: [generatedResponse.data, ...(prev.studyReports || []).filter((item: any) => item.id !== generatedResponse.data.id)],
           } : prev)
         }
-      }
-      if (type === 'media') {
-        generatedResponse = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/media-suggestions`,
-          { promptOverride: override },
-          config,
-        )
-        if (generatedResponse?.data) {
-          setWorkspace((prev: any) => prev ? {
-            ...prev,
-            studyReports: [generatedResponse.data, ...(prev.studyReports || []).filter((item: any) => item.id !== generatedResponse.data.id)],
-          } : prev)
-        }
-      }
-      if (type === 'dna') {
+      } else if (type === 'dna') {
         generatedResponse = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/sermon-dna/analyze`, { workspaceId }, config)
       }
 
@@ -2499,7 +2874,8 @@ export default function WorkspaceDetailPage() {
       console.error('Generation failed', err)
       setError('Action failed. Check backend logs.')
     } finally {
-      setActionLoading((prev) => prev.filter((item) => item !== type))
+      setStudyAssetChain((prev) => (prev.phase === 'idle' ? prev : { target: null, phase: 'idle' }))
+      setActionLoading((prev) => prev.filter((item) => item !== type && item !== 'study-report'))
     }
   }
 
@@ -4391,90 +4767,127 @@ export default function WorkspaceDetailPage() {
                   </button>
                 </div>
               </div>
-              <div className="border border-white/10 rounded-xl p-4 bg-black/30 space-y-3">
-                <p className="text-xs uppercase tracking-widest cyber-muted">Generation Controls</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <label className="text-xs cyber-muted space-y-1">
-                    <span>Tone</span>
+              <div className="border border-white/10 rounded-2xl p-5 bg-gradient-to-br from-black/40 to-black/20 space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs uppercase tracking-widest text-gray-400 font-medium">Generation Controls</p>
+                  <p className="text-[10px] text-gray-500">Changes apply on next generation</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-gray-300 font-medium flex items-center gap-2">
+                      <span className="text-base">🎭</span> Tone
+                    </label>
                     <select
                       value={manuscriptTone}
                       onChange={(e) => setManuscriptTone(e.target.value)}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-gray-100"
+                      className="w-full bg-black/50 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-gray-100 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 transition-colors"
                     >
-                      <option value="teaching">Teaching</option>
-                      <option value="pastoral">Pastoral</option>
-                      <option value="evangelistic">Evangelistic</option>
-                      <option value="storytelling">Storytelling</option>
-                      <option value="motivational">Motivational</option>
+                      <option value="teaching">Teaching — Instructional, clear</option>
+                      <option value="pastoral">Pastoral — Warm, caring</option>
+                      <option value="evangelistic">Evangelistic — Urgent, inviting</option>
+                      <option value="storytelling">Storytelling — Narrative, engaging</option>
+                      <option value="motivational">Motivational — Inspiring, energetic</option>
                     </select>
-                  </label>
-                  <label className="text-xs cyber-muted space-y-1">
-                    <span>Length</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-gray-300 font-medium flex items-center gap-2">
+                      <span className="text-base">⏱️</span> Length
+                    </label>
                     <select
                       value={manuscriptTargetMinutes}
                       onChange={(e) => setManuscriptTargetMinutes(Number(e.target.value) || 22)}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-gray-100"
+                      className="w-full bg-black/50 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-gray-100 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 transition-colors"
                     >
-                      <option value={10}>10 minutes</option>
-                      <option value={20}>20 minutes</option>
-                      <option value={30}>30 minutes</option>
-                      <option value={40}>40 minutes</option>
+                      <option value={10}>10 minutes (~1,450 words)</option>
+                      <option value={20}>20 minutes (~2,900 words)</option>
+                      <option value={30}>30 minutes (~4,350 words)</option>
+                      <option value={40}>40 minutes (~5,800 words)</option>
                     </select>
-                  </label>
-                  <label className="text-xs cyber-muted space-y-1">
-                    <span>Format</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-gray-300 font-medium flex items-center gap-2">
+                      <span className="text-base">📄</span> Format
+                    </label>
                     <select
                       value={manuscriptFormat}
                       onChange={(e) => setManuscriptFormat((e.target.value as 'full' | 'notes') || 'full')}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-gray-100"
+                      className="w-full bg-black/50 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-gray-100 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 transition-colors"
                     >
-                      <option value="full">Full Manuscript</option>
-                      <option value="notes">Preaching Notes</option>
+                      <option value="full">Full Manuscript — Word-for-word</option>
+                      <option value="notes">Preaching Notes — Bullet points</option>
                     </select>
-                  </label>
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <label className="text-xs cyber-muted space-y-1">
-                    <span>Audience Focus</span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-white/5">
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-gray-300 font-medium flex items-center gap-2">
+                      <span className="text-base">👥</span> Audience Focus
+                    </label>
                     <select
                       value={manuscriptAudienceMode}
                       onChange={(e) => setManuscriptAudienceMode(e.target.value)}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-gray-100"
+                      className="w-full bg-black/50 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-gray-100 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 transition-colors"
                     >
                       <option value="default">Use Workspace Audience</option>
-                      <option value="youth">Youth</option>
-                      <option value="families">Families</option>
-                      <option value="evangelistic meeting">Evangelistic Meeting</option>
-                      <option value="bible study group">Bible Study Group</option>
-                      <option value="conference congregation">Conference Sermon</option>
+                      <option value="youth">Youth — Modern, relatable</option>
+                      <option value="families">Families — Inclusive, practical</option>
+                      <option value="evangelistic meeting">Evangelistic — Seeker-friendly</option>
+                      <option value="bible study group">Bible Study — Deep, interactive</option>
+                      <option value="conference congregation">Conference — Formal, inspiring</option>
                     </select>
-                  </label>
-                  <label className="flex items-center gap-2 text-xs cyber-muted">
+                  </div>
+                  <label className="flex items-center gap-3 p-3 rounded-xl border border-white/10 bg-black/30 cursor-pointer hover:bg-black/40 transition-colors">
                     <input
                       type="checkbox"
                       checked={manuscriptIncludeSlideCues}
                       onChange={(e) => setManuscriptIncludeSlideCues(e.target.checked)}
+                      className="w-4 h-4 rounded border-white/20 bg-black/50 text-cyan-500 focus:ring-cyan-500/30"
                     />
-                    Generate slide cues (sidebar)
+                    <div>
+                      <p className="text-xs text-gray-200 font-medium">Generate Slide Cues</p>
+                      <p className="text-[10px] text-gray-500">Visual prompts for slides</p>
+                    </div>
                   </label>
-                  <label className="flex items-center gap-2 text-xs cyber-muted">
+                  <label className="flex items-center gap-3 p-3 rounded-xl border border-white/10 bg-black/30 cursor-pointer hover:bg-black/40 transition-colors">
                     <input
                       type="checkbox"
                       checked={manuscriptIncludeKeyLines}
                       onChange={(e) => setManuscriptIncludeKeyLines(e.target.checked)}
+                      className="w-4 h-4 rounded border-white/20 bg-black/50 text-cyan-500 focus:ring-cyan-500/30"
                     />
-                    Generate key lines (sidebar)
+                    <div>
+                      <p className="text-xs text-gray-200 font-medium">Generate Key Lines</p>
+                      <p className="text-[10px] text-gray-500">Memorable statements to emphasize</p>
+                    </div>
                   </label>
                 </div>
               </div>
               {workspace.manuscripts?.length ? (
                 <div className="space-y-4">
                   {workspace.manuscripts.map((manuscript: any) => (
-                    <div key={manuscript.id} className="border border-white/10 rounded-xl p-4 bg-black/30 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-1">
-                          <p className="text-xs uppercase tracking-widest cyber-muted">Word Count: {manuscript.wordCount || '—'}</p>
-                          <p className="text-xs uppercase tracking-widest cyber-muted">Estimated Time: {manuscript.estimatedMinutes || '—'} min</p>
+                    <div key={manuscript.id} className="border border-white/10 rounded-2xl overflow-hidden bg-black/30">
+                      <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-black/40 to-transparent border-b border-white/5">
+                        <div className="flex items-center gap-6">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg">📝</span>
+                            <div>
+                              <p className="text-sm font-medium text-white">{manuscript.wordCount?.toLocaleString() || '—'} words</p>
+                              <p className="text-[10px] text-gray-500">~{manuscript.estimatedMinutes || '—'} min read</p>
+                            </div>
+                          </div>
+                          {manuscript.content?.metadata?.options && (
+                            <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                              <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 capitalize">
+                                {manuscript.content.metadata.options.tone || 'teaching'}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10">
+                                {manuscript.content.metadata.options.format === 'notes' ? 'notes' : 'full'}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10">
+                                {manuscript.content.metadata.options.targetMinutes || 22} min
+                              </span>
+                            </div>
+                          )}
                         </div>
                         <button
                           onClick={() => {
@@ -4488,11 +4901,12 @@ export default function WorkspaceDetailPage() {
                             setLegacyConvertCandidateId(manuscript.id)
                             setEditingManuscriptId(null)
                           }}
-                          className="cyber-outline px-3 py-1 text-xs rounded-full"
+                          className="cyber-outline px-4 py-1.5 text-xs rounded-full"
                         >
                           Edit
                         </button>
                       </div>
+                      <div className="p-5 space-y-4">
                       {!isManuscriptV2(manuscript) && legacyConvertCandidateId === manuscript.id && (
                         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100 space-y-2">
                           <p className="text-xs uppercase tracking-widest text-amber-300">Legacy manuscript format</p>
@@ -4522,16 +4936,7 @@ export default function WorkspaceDetailPage() {
                       {editingManuscriptId === manuscript.id ? (
                         <div className="space-y-3">
                           <label className="text-xs uppercase tracking-widest cyber-muted">Manuscript Text</label>
-                          <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-3 items-start">
-                            <ManuscriptRichEditor value={manuscriptDraft} onChange={setManuscriptDraft} />
-                            {renderManuscriptCuesPanel(manuscriptCueDraft, true, (key, value) => {
-                              const nextValues = value
-                                .split('\n')
-                                .map((item) => item.trim())
-                                .filter(Boolean)
-                              setManuscriptCueDraft((prev) => ({ ...prev, [key]: nextValues }))
-                            })}
-                          </div>
+                          <ManuscriptRichEditor value={manuscriptDraft} onChange={setManuscriptDraft} />
                           <div className="flex gap-2">
                             <button
                               onClick={() => handleManuscriptSave(manuscript.id)}
@@ -4554,10 +4959,10 @@ export default function WorkspaceDetailPage() {
                           </div>
                         </div>
                       ) : isManuscriptV2(manuscript) ? (
-                        <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-3 items-start">
+                        <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6 items-start">
                           <div
-                            className="rounded-xl border border-white/10 bg-black/30 p-4 prose prose-invert prose-headings:text-white prose-p:text-gray-100 max-w-none"
-                            dangerouslySetInnerHTML={{ __html: sanitizeManuscriptHtml(String(manuscript.content?.text || '')) }}
+                            className="manuscript-display rounded-3xl border border-white/10 bg-gradient-to-b from-black/45 to-black/20 px-8 py-8 md:px-14 md:py-12 prose prose-invert prose-lg md:prose-xl prose-headings:text-white prose-headings:font-semibold prose-h2:text-[2.35rem] prose-h2:leading-[1.12] prose-h2:tracking-[-0.02em] prose-h2:mt-14 prose-h2:mb-6 prose-h2:pb-3 prose-h2:border-b prose-h2:border-white/10 prose-h3:text-[1.65rem] prose-h3:leading-[1.22] prose-h3:tracking-[-0.01em] prose-h3:mt-10 prose-h3:mb-4 prose-h3:text-cyan-100 prose-p:text-gray-100 prose-p:leading-[1.95] prose-p:my-6 prose-p:text-[1.08rem] prose-ul:my-6 prose-ol:my-6 prose-li:my-2 prose-li:text-gray-200 prose-strong:text-white prose-em:text-cyan-100/90 prose-blockquote:my-8 prose-blockquote:not-italic prose-blockquote:text-gray-100 [&_.manuscript-section-title]:text-white [&_.manuscript-subsection-title]:text-cyan-100 [&_.manuscript-scripture-ref]:my-5 [&_.manuscript-scripture-ref]:text-cyan-100 [&_.manuscript-scripture-ref]:text-[1.3rem] [&_.manuscript-scripture-ref]:font-medium [&_.manuscript-scripture-ref]:italic [&_.manuscript-scripture-block]:my-8 [&_.manuscript-scripture-block]:rounded-2xl [&_.manuscript-scripture-block]:border [&_.manuscript-scripture-block]:border-cyan-400/20 [&_.manuscript-scripture-block]:bg-cyan-500/6 [&_.manuscript-scripture-block]:px-6 [&_.manuscript-scripture-block]:py-5 [&_.manuscript-scripture-block>p]:my-3 [&_.manuscript-scripture-block>p]:text-[1.08rem] [&_.manuscript-scripture-block>p]:leading-[1.85] [&_.manuscript-scripture-block>p]:text-gray-100 [&_.manuscript-callout]:my-6 [&_.manuscript-callout]:rounded-xl [&_.manuscript-callout]:border [&_.manuscript-callout]:border-white/10 [&_.manuscript-callout]:bg-white/5 [&_.manuscript-callout]:px-5 [&_.manuscript-callout]:py-4 max-w-5xl selection:bg-cyan-500/30"
+                            dangerouslySetInnerHTML={{ __html: ensureManuscriptRichHtml(String(manuscript.content?.text || '')) }}
                           />
                           {renderManuscriptCuesPanel(normalizeManuscriptCues(manuscript.content?.cues), false)}
                         </div>
@@ -4567,6 +4972,7 @@ export default function WorkspaceDetailPage() {
                           {renderMarkdown(sanitizeManuscriptForDisplay(manuscript.content?.text || ''))}
                         </div>
                       )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -5457,7 +5863,8 @@ export default function WorkspaceDetailPage() {
                 </div>
                 <button
                   onClick={() => handleGenerate('study-report')}
-                  className="cyber-outline text-xs px-3 py-2 rounded-full"
+                  disabled={studyAssetChain.phase !== 'idle' || actionLoading.includes('study-report')}
+                  className="cyber-outline text-xs px-3 py-2 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Generate
                 </button>
@@ -5489,6 +5896,9 @@ export default function WorkspaceDetailPage() {
                 </div>
               )}
               <div className="space-y-4">
+                <p className="text-xs text-cyan-100/80">
+                  If no study report exists, we&apos;ll generate it first.
+                </p>
         {renderStudyAssetCard(
           'study-applications',
           'Applications',
@@ -5502,7 +5912,8 @@ export default function WorkspaceDetailPage() {
           'Edit',
           () => setStudyAssetEditor('applications'),
           isStudyAssetLoading('applications'),
-          actionLoading.includes('study-report') ? 'Generating from Study Report' : 'Generating Applications',
+          getStudyAssetLoadingLabel('applications'),
+          studyAssetChain.phase !== 'idle' || isStudyAssetLoading('applications'),
         )}
                 {renderStudyAssetCard(
                   'study-questions',
@@ -5517,7 +5928,8 @@ export default function WorkspaceDetailPage() {
           'Edit',
           () => setStudyAssetEditor('questions'),
           isStudyAssetLoading('questions'),
-          actionLoading.includes('study-report') ? 'Generating from Study Report' : 'Generating Questions',
+          getStudyAssetLoadingLabel('questions'),
+          studyAssetChain.phase !== 'idle' || isStudyAssetLoading('questions'),
         )}
                 {renderStudyAssetCard(
                   'study-illustrations',
@@ -5532,7 +5944,8 @@ export default function WorkspaceDetailPage() {
           'Edit',
           () => setStudyAssetEditor('illustrations'),
           isStudyAssetLoading('illustrations'),
-          actionLoading.includes('study-report') ? 'Generating from Study Report' : 'Generating Illustrations',
+          getStudyAssetLoadingLabel('illustrations'),
+          studyAssetChain.phase !== 'idle' || isStudyAssetLoading('illustrations'),
         )}
                 {renderStudyAssetCard(
                   'study-media',
@@ -5558,7 +5971,8 @@ export default function WorkspaceDetailPage() {
                   undefined,
                   undefined,
                   isStudyAssetLoading('media'),
-                  actionLoading.includes('study-report') ? 'Generating from Study Report' : 'Generating Media Suggestions',
+                  getStudyAssetLoadingLabel('media'),
+                  studyAssetChain.phase !== 'idle' || isStudyAssetLoading('media'),
                 )}
               </div>
               <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">

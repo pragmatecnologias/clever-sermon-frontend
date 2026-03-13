@@ -59,9 +59,8 @@ export default function ManuscriptRichEditor({ value, onChange, className }: Man
         contentEditable
         suppressContentEditableWarning
         onInput={(event) => onChange((event.currentTarget as HTMLDivElement).innerHTML)}
-        className="w-full min-h-[260px] bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-gray-100 prose prose-invert prose-p:my-2 prose-h2:my-2 prose-h3:my-2 max-w-none overflow-auto focus:outline-none focus:ring-2 focus:ring-cyan-500/40"
+        className="w-full min-h-[420px] bg-black/40 border border-white/10 rounded-2xl px-6 py-6 text-gray-100 prose prose-invert prose-lg prose-headings:text-white prose-headings:font-semibold prose-h2:text-[2.15rem] prose-h2:leading-[1.15] prose-h2:tracking-[-0.02em] prose-h2:mt-10 prose-h2:mb-5 prose-h2:pb-2 prose-h2:border-b prose-h2:border-white/10 prose-h3:text-[1.5rem] prose-h3:mt-8 prose-h3:mb-4 prose-h3:text-cyan-100 prose-p:text-gray-100 prose-p:leading-[1.95] prose-p:my-6 prose-p:text-[1.06rem] prose-li:my-2 prose-blockquote:border-l-4 prose-blockquote:border-cyan-500/40 prose-blockquote:bg-cyan-500/5 prose-blockquote:px-5 prose-blockquote:py-4 prose-blockquote:rounded-r-xl max-w-none overflow-auto focus:outline-none focus:ring-2 focus:ring-cyan-500/40"
       />
     </div>
   )
 }
-

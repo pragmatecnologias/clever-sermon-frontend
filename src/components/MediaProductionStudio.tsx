@@ -354,11 +354,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
   }, [token, sermonSummary.title, sermonSummary.passage])
 
   const generatedSocialMeta = useMemo(() => {
-    const sourcePrompt =
-      socialCaption ||
-      resolvedSocialOptions.find((item: any) => item.id === socialPromptId)?.prompt ||
-      autoPrompts.social.caption ||
-      ''
+    const sourcePrompt = [socialCaption, socialQuote, autoPrompts.social.caption].filter(Boolean).join(' ')
 
     const hashtagMatches: string[] = sourcePrompt.match(/#[A-Za-z0-9_]+/g) || []
     const normalizedHashtags = Array.from(new Set(hashtagMatches.map((tag: string) => tag.trim()))).slice(0, 6)
@@ -381,17 +377,13 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
       normalizedHashtags.push(...Array.from(new Set([...dynamic, ...base])).slice(0, 6))
     }
 
-    const ctaText =
-      language === 'es'
-        ? `Acompáñanos en "${sermonSummary.title}" (${sermonSummary.passage}).`
-        : `Join us for "${sermonSummary.title}" (${sermonSummary.passage}).`
-
     return {
-      ctaText,
+      ctaText: '',
       hashtags: normalizedHashtags.join(' '),
     }
   }, [
     socialCaption,
+    socialQuote,
     resolvedSocialOptions,
     socialPromptId,
     autoPrompts.social.caption,
@@ -401,29 +393,6 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     sermonSummary.passage,
     sermonSummary.theme,
   ])
-
-  const extractOverlayCopyFromVisualPrompt = (input: string) => {
-    const raw = String(input || '').trim()
-    if (!raw) return { visualPrompt: '', overlayCopy: '' }
-
-    const patterns = [
-      /text in (spanish|english)\s*:\s*["“”']?(.+)$/i,
-      /texto en (espanol|español|ingles|inglés)\s*:\s*["“”']?(.+)$/i,
-      /text overlay\s*:\s*["“”']?(.+)$/i,
-      /incluye texto\s*:\s*["“”']?(.+)$/i,
-    ]
-
-    for (const pattern of patterns) {
-      const match = raw.match(pattern)
-      if (match?.[2]) {
-        const overlayCopy = String(match[2]).replace(/["”']+$/g, '').trim()
-        const visualPrompt = raw.slice(0, Math.max(0, match.index || 0)).replace(/[,\-–:\s]+$/g, '').trim()
-        return { visualPrompt, overlayCopy }
-      }
-    }
-
-    return { visualPrompt: raw, overlayCopy: '' }
-  }
 
   const sanitizeSocialCaptionCopy = (input: string) => {
     let value = String(input || '').trim()
@@ -449,11 +418,11 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
   const handleGenerateSocialPack = async () => {
     setSocialGenerating(true)
     try {
-      const extracted = extractOverlayCopyFromVisualPrompt(
-        socialVisualPrompt || studyMediaPrompts.imageOptions[0]?.prompt || autoPrompts.image,
-      )
+      const resolvedVisualPrompt = String(
+        socialVisualPrompt || studyMediaPrompts.imageOptions[0]?.prompt || autoPrompts.image || '',
+      ).trim()
       const resolvedCaption = sanitizeSocialCaptionCopy(
-        socialCaption || extracted.overlayCopy || autoPrompts.social.caption,
+        socialCaption || autoPrompts.social.caption,
       )
       await slidesApi.generateSocialKit(
         {
@@ -463,7 +432,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
           passage: sermonSummary.passage,
           quote: socialQuote || autoPrompts.social.quote,
           caption: resolvedCaption,
-          prompt: extracted.visualPrompt || autoPrompts.image,
+          prompt: resolvedVisualPrompt || autoPrompts.image,
           mode: socialMode,
           useCase: 'social-pack',
           overlay: {
@@ -612,13 +581,13 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
       
       // Step 6: Generate Social Media
       setCurrentStep('Creating social media assets...')
-      const extractedPackPrompt = extractOverlayCopyFromVisualPrompt(autoPrompts.image)
+      const resolvedPackPrompt = String(autoPrompts.image || '').trim()
       await slidesApi.generateSocialKit({
         sermonId: sermonId || undefined,
         workspaceId: workspace.id,
         quote: autoPrompts.social.quote,
-        caption: sanitizeSocialCaptionCopy(extractedPackPrompt.overlayCopy || autoPrompts.social.caption),
-        prompt: extractedPackPrompt.visualPrompt || autoPrompts.image,
+        caption: sanitizeSocialCaptionCopy(autoPrompts.social.caption),
+        prompt: resolvedPackPrompt || autoPrompts.image,
         title: sermonSummary.title,
         passage: sermonSummary.passage,
         overlay: {

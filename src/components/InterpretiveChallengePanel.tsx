@@ -60,6 +60,11 @@ export default function InterpretiveChallengePanel({ passage, token, language = 
       )
       if (response.ok) {
         const data = await response.json()
+        if (!data || typeof data !== 'object') {
+          setError('No interpretive challenges documented for this passage')
+          setChallenge(null)
+          return
+        }
         if (data.dataSource === 'unavailable') {
           setError('No interpretive challenges documented for this passage')
           setChallenge(null)
