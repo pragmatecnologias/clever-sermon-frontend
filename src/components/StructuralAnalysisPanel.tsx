@@ -81,8 +81,8 @@ export default function StructuralAnalysisPanel({ passage, token, language = 'en
     }
   }
 
-  const getTypeColor = (type: string) => {
-    switch (type.toLowerCase()) {
+  const getTypeColor = (type?: string) => {
+    switch ((type || '').toLowerCase()) {
       case 'introduction':
         return 'bg-blue-500/20 text-blue-200 border-blue-400/40'
       case 'body':

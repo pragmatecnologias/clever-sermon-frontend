@@ -3947,22 +3947,26 @@ export default function WorkspaceDetailPage() {
     }
   }
 
-  const handleManuscriptSave = async (id: string) => {
+  const handleManuscriptSave = async (id: string, inlineHtml?: string) => {
     const config = withToken()
     if (!config) return
     setActionLoading((prev) => (prev.includes('manuscript-edit') ? prev : [...prev, 'manuscript-edit']))
     try {
+      const textToSave = inlineHtml !== undefined ? inlineHtml : manuscriptDraft
+      const cuesToSave = inlineHtml !== undefined ? (workspace?.manuscripts?.find((m: any) => m.id === id)?.content?.cues || {}) : manuscriptCueDraft
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_URL}/workspaces/manuscripts/${id}`,
-        { content: { formatVersion: 'v2', text: manuscriptDraft, cues: manuscriptCueDraft } },
+        { content: { formatVersion: 'v2', text: textToSave, cues: cuesToSave } },
         config,
       )
       const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
       setWorkspace(refreshed.data)
-      setEditingManuscriptId(null)
-      setLegacyConvertCandidateId(null)
-      setManuscriptDraft('')
-      setManuscriptCueDraft(emptyManuscriptCues())
+      if (!inlineHtml) {
+        setEditingManuscriptId(null)
+        setLegacyConvertCandidateId(null)
+        setManuscriptDraft('')
+        setManuscriptCueDraft(emptyManuscriptCues())
+      }
     } catch (err) {
       console.error('Failed to update manuscript', err)
       setError('Unable to save manuscript changes.')
@@ -4858,22 +4862,6 @@ export default function WorkspaceDetailPage() {
                             </div>
                           )}
                         </div>
-                        <button
-                          onClick={() => {
-                            if (isManuscriptV2(manuscript)) {
-                              setEditingManuscriptId(manuscript.id)
-                              setLegacyConvertCandidateId(null)
-                              setManuscriptDraft(sanitizeManuscriptHtml(String(manuscript.content?.text || '')))
-                              setManuscriptCueDraft(normalizeManuscriptCues(manuscript.content?.cues))
-                              return
-                            }
-                            setLegacyConvertCandidateId(manuscript.id)
-                            setEditingManuscriptId(null)
-                          }}
-                          className="cyber-outline px-4 py-1.5 text-xs rounded-full"
-                        >
-                          Edit
-                        </button>
                       </div>
                       <div className="p-5 space-y-4">
                       {!isManuscriptV2(manuscript) && legacyConvertCandidateId === manuscript.id && (
@@ -4930,7 +4918,32 @@ export default function WorkspaceDetailPage() {
                       ) : isManuscriptV2(manuscript) ? (
                         <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6 items-start">
                           <div
-                            className="manuscript-display rounded-3xl border border-white/10 bg-gradient-to-b from-black/45 to-black/20 px-8 py-8 md:px-14 md:py-12 prose prose-invert prose-lg md:prose-xl prose-headings:text-white prose-headings:font-semibold prose-h2:text-[2.35rem] prose-h2:leading-[1.12] prose-h2:tracking-[-0.02em] prose-h2:mt-14 prose-h2:mb-6 prose-h2:pb-3 prose-h2:border-b prose-h2:border-white/10 prose-h3:text-[1.65rem] prose-h3:leading-[1.22] prose-h3:tracking-[-0.01em] prose-h3:mt-10 prose-h3:mb-4 prose-h3:text-cyan-100 prose-p:text-gray-100 prose-p:leading-[1.95] prose-p:my-6 prose-p:text-[1.08rem] prose-ul:my-6 prose-ol:my-6 prose-li:my-2 prose-li:text-gray-200 prose-strong:text-white prose-em:text-cyan-100/90 prose-blockquote:my-8 prose-blockquote:not-italic prose-blockquote:text-gray-100 [&_.manuscript-section-title]:text-white [&_.manuscript-subsection-title]:text-cyan-100 [&_.manuscript-scripture-ref]:my-5 [&_.manuscript-scripture-ref]:text-cyan-100 [&_.manuscript-scripture-ref]:text-[1.3rem] [&_.manuscript-scripture-ref]:font-medium [&_.manuscript-scripture-ref]:italic [&_.manuscript-scripture-block]:my-8 [&_.manuscript-scripture-block]:rounded-2xl [&_.manuscript-scripture-block]:border [&_.manuscript-scripture-block]:border-cyan-400/20 [&_.manuscript-scripture-block]:bg-cyan-500/6 [&_.manuscript-scripture-block]:px-6 [&_.manuscript-scripture-block]:py-5 [&_.manuscript-scripture-block>p]:my-3 [&_.manuscript-scripture-block>p]:text-[1.08rem] [&_.manuscript-scripture-block>p]:leading-[1.85] [&_.manuscript-scripture-block>p]:text-gray-100 [&_.manuscript-callout]:my-6 [&_.manuscript-callout]:rounded-xl [&_.manuscript-callout]:border [&_.manuscript-callout]:border-white/10 [&_.manuscript-callout]:bg-white/5 [&_.manuscript-callout]:px-5 [&_.manuscript-callout]:py-4 max-w-5xl selection:bg-cyan-500/30"
+                            contentEditable
+                            suppressContentEditableWarning
+                            onBlur={(e) => {
+                              const newHtml = (e.target as HTMLDivElement).innerHTML
+                              if (newHtml !== manuscript.content?.text) {
+                                handleManuscriptSave(manuscript.id, newHtml)
+                              }
+                            }}
+                            className="manuscript-display rounded-lg shadow-xl bg-white px-12 py-16 md:px-16 md:py-20 max-w-4xl mx-auto
+                              text-gray-900 text-[1.05rem] leading-[1.9] outline-none focus:ring-2 focus:ring-cyan-400/50 cursor-text
+                              [&_h1]:text-[2.5rem] [&_h1]:leading-tight [&_h1]:text-center [&_h1]:mb-8 [&_h1]:mt-0 [&_h1]:font-bold [&_h1]:text-black
+                              [&_h2]:text-[1.75rem] [&_h2]:leading-snug [&_h2]:mt-12 [&_h2]:mb-4 [&_h2]:pb-2 [&_h2]:border-b [&_h2]:border-gray-300 [&_h2]:font-semibold [&_h2]:text-black
+                              [&_h3]:text-[1.35rem] [&_h3]:leading-snug [&_h3]:mt-8 [&_h3]:mb-3 [&_h3]:text-gray-900 [&_h3]:font-medium
+                              [&_p]:text-gray-900 [&_p]:leading-[1.9] [&_p]:my-4 [&_p]:text-[1.05rem]
+                              [&_ul]:my-4 [&_ol]:my-4 [&_li]:my-1 [&_li]:text-gray-900 [&_li]:leading-relaxed
+                              [&_strong]:text-black [&_strong]:font-bold
+                              [&_em]:text-gray-800 [&_em]:italic
+                              [&_blockquote]:my-6 [&_blockquote]:pl-6 [&_blockquote]:border-l-4 [&_blockquote]:border-gray-400 [&_blockquote]:italic [&_blockquote]:text-gray-700 [&_blockquote]:bg-gray-100 [&_blockquote]:py-3 [&_blockquote]:pr-4 [&_blockquote]:rounded-r
+                              [&_.manuscript-section-title]:text-black [&_.manuscript-section-title]:font-serif
+                              [&_.manuscript-subsection-title]:text-gray-900
+                              [&_.manuscript-scripture-ref]:my-4 [&_.manuscript-scripture-ref]:text-gray-700 [&_.manuscript-scripture-ref]:text-[1.15rem] [&_.manuscript-scripture-ref]:font-medium [&_.manuscript-scripture-ref]:italic
+                              [&_.manuscript-scripture-block]:my-6 [&_.manuscript-scripture-block]:rounded-lg [&_.manuscript-scripture-block]:border [&_.manuscript-scripture-block]:border-gray-300 [&_.manuscript-scripture-block]:bg-gray-100 [&_.manuscript-scripture-block]:px-6 [&_.manuscript-scripture-block]:py-4
+                              [&_.manuscript-scripture-block>p]:my-2 [&_.manuscript-scripture-block>p]:text-[1.05rem] [&_.manuscript-scripture-block>p]:leading-relaxed [&_.manuscript-scripture-block>p]:text-gray-900
+                              [&_.manuscript-callout]:my-5 [&_.manuscript-callout]:rounded-lg [&_.manuscript-callout]:border [&_.manuscript-callout]:border-blue-300 [&_.manuscript-callout]:bg-blue-50 [&_.manuscript-callout]:px-5 [&_.manuscript-callout]:py-4
+                              selection:bg-blue-200 print:shadow-none print:px-8 print:py-12"
+                            style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
                             dangerouslySetInnerHTML={{
                               __html: ensureManuscriptRichHtml(String(manuscript.content?.text || ''), markdownLikeToHtml),
                             }}
@@ -4939,8 +4952,13 @@ export default function WorkspaceDetailPage() {
                         </div>
                       ) : (
                         <div className="space-y-3">
-                          <p className="text-xs uppercase tracking-widest text-amber-300">Legacy manuscript format</p>
-                          {renderMarkdown(sanitizeManuscriptForDisplay(manuscript.content?.text || ''))}
+                          <p className="text-xs uppercase tracking-widest text-amber-300 mb-4">Legacy manuscript format</p>
+                          <div 
+                            className="rounded-lg shadow-xl bg-white px-12 py-16 md:px-16 md:py-20 prose prose-lg prose-slate max-w-4xl mx-auto prose-headings:text-gray-900 prose-headings:font-serif prose-p:text-gray-700 prose-p:leading-[1.9] prose-strong:text-gray-900 prose-em:text-gray-800"
+                            style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+                          >
+                            {renderMarkdown(sanitizeManuscriptForDisplay(manuscript.content?.text || ''))}
+                          </div>
                         </div>
                       )}
                       </div>
