@@ -14,7 +14,6 @@ export default function NewWorkspacePage() {
     theme: '',
     audienceProfile: '',
     sermonGoals: '',
-    theologicalLens: '',
     style: '',
     storyArc: '',
     language: 'en',
@@ -44,7 +43,7 @@ export default function NewWorkspacePage() {
         theme: formData.theme || undefined,
         audienceProfile: formData.audienceProfile || undefined,
         sermonGoals: formData.sermonGoals || undefined,
-        theologicalLens: formData.theologicalLens || undefined,
+        theologicalLens: 'adventist',
         style: formData.style || undefined,
         storyArc: formData.storyArc || undefined,
         language: formData.language || 'en',
@@ -202,18 +201,9 @@ export default function NewWorkspacePage() {
             </div>
             <div>
               <label className="block text-xs uppercase tracking-widest cyber-muted mb-2">Theological Lens</label>
-              <select
-                value={formData.theologicalLens}
-                onChange={(e) => setFormData({ ...formData, theologicalLens: e.target.value })}
-                className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-gray-100/90"
-              >
-                <option value="">Select lens</option>
-                <option value="devotional">Devotional</option>
-                <option value="pastoral">Pastoral</option>
-                <option value="academic">Academic</option>
-                <option value="conservative">Conservative</option>
-                <option value="historical-critical">Historical-critical</option>
-              </select>
+              <div className="w-full px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-gray-100/90">
+                Adventist (fixed)
+              </div>
             </div>
 
             <div className="flex gap-4">

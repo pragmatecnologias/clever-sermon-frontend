@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Book } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 
 interface EGWQuote {
   reference: string;
@@ -25,6 +26,24 @@ interface StudyReportEGWSectionProps {
 export default function StudyReportEGWSection({ section }: StudyReportEGWSectionProps) {
   if (!section) return null;
 
+  const markdownComponents = {
+    p: ({ children }: any) => <p className="mb-3 last:mb-0">{children}</p>,
+    strong: ({ children }: any) => <strong className="font-semibold text-white">{children}</strong>,
+    em: ({ children }: any) => <em className="italic text-gray-200">{children}</em>,
+    ul: ({ children }: any) => <ul className="list-disc list-inside space-y-1 mb-3 last:mb-0">{children}</ul>,
+    ol: ({ children }: any) => <ol className="list-decimal list-inside space-y-1 mb-3 last:mb-0">{children}</ol>,
+    li: ({ children }: any) => <li>{children}</li>,
+    h1: ({ children }: any) => <h5 className="text-base font-semibold text-blue-200 mb-2">{children}</h5>,
+    h2: ({ children }: any) => <h5 className="text-base font-semibold text-blue-200 mb-2">{children}</h5>,
+    h3: ({ children }: any) => <h6 className="text-sm font-semibold text-blue-200 mb-2">{children}</h6>,
+    h4: ({ children }: any) => <h6 className="text-sm font-semibold text-blue-200 mb-2">{children}</h6>,
+    blockquote: ({ children }: any) => (
+      <blockquote className="border-l-2 border-blue-400/30 pl-3 italic text-gray-200 mb-3 last:mb-0">
+        {children}
+      </blockquote>
+    ),
+  };
+
   return (
     <div className="mt-8 border-t border-gray-700 pt-6">
       <div className="flex items-center gap-2 mb-4">
@@ -45,7 +64,9 @@ export default function StudyReportEGWSection({ section }: StudyReportEGWSection
             Thematic Emphasis
           </h4>
           <div className="text-sm text-gray-300 leading-relaxed whitespace-pre-line bg-gray-800/30 rounded-lg p-4 border border-gray-700">
-            {section.thematicEmphasis}
+            <ReactMarkdown components={markdownComponents}>
+              {section.thematicEmphasis}
+            </ReactMarkdown>
           </div>
         </div>
       )}
@@ -57,7 +78,9 @@ export default function StudyReportEGWSection({ section }: StudyReportEGWSection
             Devotional Insight
           </h4>
           <div className="text-sm text-gray-300 leading-relaxed whitespace-pre-line bg-gray-800/30 rounded-lg p-4 border border-gray-700">
-            {section.devotionalInsight}
+            <ReactMarkdown components={markdownComponents}>
+              {section.devotionalInsight}
+            </ReactMarkdown>
           </div>
         </div>
       )}
@@ -69,7 +92,9 @@ export default function StudyReportEGWSection({ section }: StudyReportEGWSection
             Practical Counsel
           </h4>
           <div className="text-sm text-gray-300 leading-relaxed whitespace-pre-line bg-gray-800/30 rounded-lg p-4 border border-gray-700">
-            {section.practicalCounsel}
+            <ReactMarkdown components={markdownComponents}>
+              {section.practicalCounsel}
+            </ReactMarkdown>
           </div>
         </div>
       )}
@@ -81,7 +106,9 @@ export default function StudyReportEGWSection({ section }: StudyReportEGWSection
             Prophetic Expansion
           </h4>
           <div className="text-sm text-gray-300 leading-relaxed whitespace-pre-line bg-gray-800/30 rounded-lg p-4 border border-gray-700">
-            {section.propheticExpansion}
+            <ReactMarkdown components={markdownComponents}>
+              {section.propheticExpansion}
+            </ReactMarkdown>
           </div>
         </div>
       )}
@@ -104,7 +131,9 @@ export default function StudyReportEGWSection({ section }: StudyReportEGWSection
                   </span>
                 </div>
                 <blockquote className="text-sm text-gray-300 leading-relaxed italic border-l-2 border-blue-400/30 pl-4 mb-2">
-                  "{quote.text}"
+                  <ReactMarkdown components={markdownComponents}>
+                    {quote.text}
+                  </ReactMarkdown>
                 </blockquote>
                 <p className="text-xs text-gray-400">
                   — {quote.bookTitle}, {quote.reference}

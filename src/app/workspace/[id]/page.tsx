@@ -41,6 +41,8 @@ import MediaProductionStudio from '@/components/MediaProductionStudio'
 import ChurchSettingsPanel from '@/components/ChurchSettingsPanel'
 import BiblicalNarrativeMap from '@/components/BiblicalNarrativeMap'
 import ManuscriptRichEditor from '@/components/ManuscriptRichEditor'
+import InterlinearView from '@/components/InterlinearView'
+import SermonCore, { SermonCoreData } from '@/components/SermonCore'
 import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut'
 import { getLoadingMessage } from '@/utils/loadingMessages'
 import {
@@ -96,6 +98,15 @@ type ManuscriptCues = {
   cta: string[]
 }
 
+type CueAnchor = {
+  cueType: keyof ManuscriptCues
+  cueIndex: number
+  excerpt: string
+  paragraphIndex: number
+  paragraphHash: string
+  confidence: number
+}
+
 const emptyManuscriptCues = (): ManuscriptCues => ({
   slide: [],
   keyLine: [],
@@ -106,12 +117,11 @@ const emptyManuscriptCues = (): ManuscriptCues => ({
   cta: [],
 })
 
-type StudyAssetType = 'applications' | 'questions' | 'illustrations' | 'media'
-
-type StudyAssetChainState = {
-  target: StudyAssetType | null
-  phase: 'idle' | 'study-report' | 'asset'
+const formatTheologicalLens = (): string => {
+  return 'Adventist'
 }
+
+type StudyAssetType = 'applications' | 'questions' | 'illustrations' | 'media'
 
 type WorkspaceSection =
   | 'workspace'
@@ -168,7 +178,8 @@ export default function WorkspaceDetailPage() {
   const [manuscriptAudienceMode, setManuscriptAudienceMode] = useState('default')
   const [manuscriptIncludeSlideCues, setManuscriptIncludeSlideCues] = useState(true)
   const [manuscriptIncludeKeyLines, setManuscriptIncludeKeyLines] = useState(true)
-  const [studyAssetChain, setStudyAssetChain] = useState<StudyAssetChainState>({ target: null, phase: 'idle' })
+  const [manuscriptCuesCollapsed, setManuscriptCuesCollapsed] = useState(false)
+  const [sermonCoreGenerating, setSermonCoreGenerating] = useState(false)
   const [editingApplicationId, setEditingApplicationId] = useState<string | null>(null)
   const [applicationDraft, setApplicationDraft] = useState<string>('')
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null)
@@ -245,6 +256,14 @@ export default function WorkspaceDetailPage() {
   const [scriptureInputWarning, setScriptureInputWarning] = useState<string | null>(null)
   const [scriptureValidationWarning, setScriptureValidationWarning] = useState<string | null>(null)
   const [scriptureLookupHistory, setScriptureLookupHistory] = useState<ScriptureLookupSnapshot[]>([])
+  const [manuscriptCueHealth, setManuscriptCueHealth] = useState<Record<string, { total: number; matched: number; stale: boolean }>>({})
+  const [pendingSearchJump, setPendingSearchJump] = useState<{ manuscriptId: string | null; query: string } | null>(null)
+  const manuscriptContentRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const highlightedCueElementRef = useRef<{
+    element: HTMLElement | null
+    backgroundColor: string
+    transition: string
+  }>({ element: null, backgroundColor: '', transition: '' })
   const [wordStudyWord, setWordStudyWord] = useState('')
   const [wordStudyLanguage, setWordStudyLanguage] = useState('greek')
   const [availableLanguages] = useState([{value: 'greek', label: 'Greek'}, {value: 'hebrew', label: 'Hebrew'}, {value: 'aramaic', label: 'Aramaic'}])
@@ -282,7 +301,6 @@ export default function WorkspaceDetailPage() {
     context?: string
     loading: boolean
   } | null>(null)
-  const [studyEgwRefreshKey, setStudyEgwRefreshKey] = useState(0)
   const autosaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const autosaveHashes = useRef<Record<string, string>>({})
   const scriptureLookupRequestId = useRef(0)
@@ -368,6 +386,7 @@ export default function WorkspaceDetailPage() {
 
     return null
   }
+
 
   const extractVerses = (result: any): any[] => {
     if (!result) return []
@@ -614,21 +633,23 @@ export default function WorkspaceDetailPage() {
   }
 
   // Map sections to phases
+  // PASSAGE = "What does the text say?" (reading tools)
+  // STUDY = "What does the text mean?" (analysis tools)
   const phaseContentMap: Record<Phase, WorkspaceSection[]> = {
     THEME: ['workspace'],
-    PASSAGE: ['scripture', 'word-study', 'cross-references', 'visualizations'],
-    STUDY: ['study-report'],
+    PASSAGE: ['scripture'],  // Text-focused: scripture display, translations, interlinear, audio
+    STUDY: ['study-report', 'word-study', 'cross-references', 'visualizations'],  // Analysis: word studies, cross-refs, themes, visualizations
     OUTLINE: ['outlines'],
     WRITE: ['manuscript', 'citations'],
-    REFINE: ['coach', 'dna', 'visualizations'],
+    REFINE: ['coach', 'dna'],
     DELIVER: ['media', 'church-settings']
   }
 
   const sectionPhaseMap: Partial<Record<WorkspaceSection, Phase>> = {
     scripture: 'PASSAGE',
-    'word-study': 'PASSAGE',
-    'cross-references': 'PASSAGE',
-    visualizations: activePhase === 'REFINE' ? 'REFINE' : 'PASSAGE',
+    'word-study': 'STUDY',
+    'cross-references': 'STUDY',
+    visualizations: 'STUDY',
     'study-report': 'STUDY',
     workspace: 'THEME',
     outlines: 'OUTLINE',
@@ -641,15 +662,13 @@ export default function WorkspaceDetailPage() {
   }
 
   const resolvePhaseForSection = (section: WorkspaceSection, preferredPhase?: Phase): Phase => {
-    if (section === 'visualizations') {
-      return preferredPhase === 'REFINE' ? 'REFINE' : 'PASSAGE'
-    }
     return (
       ({
         workspace: 'THEME',
         scripture: 'PASSAGE',
-        'word-study': 'PASSAGE',
-        'cross-references': 'PASSAGE',
+        'word-study': 'STUDY',
+        'cross-references': 'STUDY',
+        visualizations: 'STUDY',
         'study-report': 'STUDY',
         outlines: 'OUTLINE',
         manuscript: 'WRITE',
@@ -731,6 +750,10 @@ export default function WorkspaceDetailPage() {
     if (item?.type === 'manuscript') {
       setActiveSection('manuscript')
       setActivePhase('WRITE')
+      setPendingSearchJump({
+        manuscriptId: item?.id || null,
+        query: String(searchQuery || '').trim(),
+      })
     }
     if (item?.type === 'note') {
       setActiveSection('workspace')
@@ -951,7 +974,7 @@ export default function WorkspaceDetailPage() {
         theme: workspaceDraft.theme,
         audienceProfile: workspaceDraft.audienceProfile,
         sermonGoals: workspaceDraft.sermonGoals,
-        theologicalLens: workspaceDraft.theologicalLens,
+        theologicalLens: 'adventist',
         style: workspaceDraft.style,
         storyArc: workspaceDraft.storyArc,
         language: workspaceDraft.language,
@@ -1121,6 +1144,29 @@ export default function WorkspaceDetailPage() {
 
   const hasCueContent = (cues: ManuscriptCues) =>
     Object.values(cues).some((list) => Array.isArray(list) && list.length > 0)
+
+  const manuscriptOptionsDrifted = (options: any) => {
+    if (!options || typeof options !== 'object') return false
+    const generatedTone = String(options.tone || 'teaching').toLowerCase()
+    const generatedFormat = String(options.format || 'full').toLowerCase() === 'notes' ? 'notes' : 'full'
+    const generatedTargetMinutes = Number(options.targetMinutes || 22)
+    const generatedSlideCues = options.includeSlideCues !== false
+    const generatedKeyLines = options.includeKeyLines !== false
+    const currentAudience =
+      manuscriptAudienceMode === 'default'
+        ? String(workspace?.audienceProfile || 'general congregation')
+        : String(manuscriptAudienceMode || 'general congregation')
+    const generatedAudience = String(options.audienceMode || '')
+
+    return (
+      generatedTone !== String(manuscriptTone || 'teaching').toLowerCase() ||
+      generatedFormat !== manuscriptFormat ||
+      generatedTargetMinutes !== manuscriptTargetMinutes ||
+      generatedSlideCues !== manuscriptIncludeSlideCues ||
+      generatedKeyLines !== manuscriptIncludeKeyLines ||
+      generatedAudience !== currentAudience
+    )
+  }
 
   const cueLabelMap: Record<keyof ManuscriptCues, string> = {
     slide: 'Slide Cues',
@@ -1396,9 +1442,234 @@ export default function WorkspaceDetailPage() {
     cta: { border: 'border-orange-400/40', bg: 'bg-orange-500/10', text: 'text-orange-200' },
   }
 
+  const normalizeCueSearchText = (value: string) =>
+    String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[\u2018\u2019\u201C\u201D]/g, "'")
+      .replace(/[^a-zA-Z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase()
+
+  const applyManuscriptHighlight = (element: HTMLElement, tone: 'exact' | 'approximate' = 'exact') => {
+    const previous = highlightedCueElementRef.current
+    if (previous.element) {
+      previous.element.style.backgroundColor = previous.backgroundColor
+      previous.element.style.transition = previous.transition
+    }
+    highlightedCueElementRef.current = {
+      element,
+      backgroundColor: element.style.backgroundColor,
+      transition: element.style.transition,
+    }
+    element.style.transition = 'background-color 0.2s ease'
+    element.style.backgroundColor = tone === 'exact' ? 'rgba(250, 204, 21, 0.45)' : 'rgba(251, 191, 36, 0.38)'
+  }
+
+  const cueAnchorKey = (cueType: keyof ManuscriptCues, cueIndex: number) => `${cueType}:${cueIndex}`
+
+  const cueParagraphHash = (value: string) => {
+    const normalized = normalizeCueSearchText(value)
+    if (!normalized) return ''
+    let hash = 0
+    for (let i = 0; i < normalized.length; i += 1) {
+      hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0
+    }
+    return `h${hash.toString(16)}`
+  }
+
+  const scoreCueMatch = (cueText: string, candidateText: string) => {
+    const cueNorm = normalizeCueSearchText(cueText)
+    const candNorm = normalizeCueSearchText(candidateText)
+    if (!cueNorm || !candNorm) return 0
+    if (candNorm.includes(cueNorm)) return 1
+    const probe = cueNorm.slice(0, Math.min(90, cueNorm.length))
+    if (probe && candNorm.includes(probe)) return 0.92
+    const cueTokens = cueNorm.split(' ').filter(Boolean)
+    const candTokens = new Set(candNorm.split(' ').filter(Boolean))
+    if (!cueTokens.length || !candTokens.size) return 0
+    const overlap = cueTokens.filter((token) => candTokens.has(token)).length
+    return overlap / cueTokens.length
+  }
+
+  const buildCueAnchorsFromHtml = (html: string, cues: ManuscriptCues): Record<string, CueAnchor> => {
+    if (typeof window === 'undefined') return {}
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(String(html || ''), 'text/html')
+    const blocks = Array.from(doc.body.querySelectorAll<HTMLElement>('h1,h2,h3,h4,p,li,blockquote'))
+      .map((element, index) => ({
+        index,
+        text: String(element.textContent || '').trim(),
+      }))
+      .filter((item) => item.text)
+
+    const anchors: Record<string, CueAnchor> = {}
+    ;(['slide', 'keyLine', 'transition', 'pause', 'read', 'quote', 'cta'] as Array<keyof ManuscriptCues>).forEach((cueType) => {
+      cues[cueType].forEach((cueText, cueIndex) => {
+        let bestIndex = -1
+        let bestText = ''
+        let bestScore = 0
+        blocks.forEach((block) => {
+          const score = scoreCueMatch(cueText, block.text)
+          if (score > bestScore) {
+            bestScore = score
+            bestIndex = block.index
+            bestText = block.text
+          }
+        })
+        if (bestIndex >= 0 && bestScore >= 0.35) {
+          anchors[cueAnchorKey(cueType, cueIndex)] = {
+            cueType,
+            cueIndex,
+            excerpt: bestText.slice(0, 240),
+            paragraphIndex: bestIndex,
+            paragraphHash: cueParagraphHash(bestText),
+            confidence: Number(bestScore.toFixed(3)),
+          }
+        }
+      })
+    })
+    return anchors
+  }
+
+  const evaluateCueCoverage = (
+    cues: ManuscriptCues,
+    html: string,
+    anchors?: Record<string, CueAnchor>,
+  ): { total: number; matched: number; stale: boolean } => {
+    if (typeof window === 'undefined') return { total: 0, matched: 0, stale: false }
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(String(html || ''), 'text/html')
+    const blocks = Array.from(doc.body.querySelectorAll<HTMLElement>('h1,h2,h3,h4,p,li,blockquote'))
+      .map((element) => String(element.textContent || '').trim())
+      .filter(Boolean)
+
+    let total = 0
+    let matched = 0
+    ;(['slide', 'keyLine', 'transition', 'pause', 'read', 'quote', 'cta'] as Array<keyof ManuscriptCues>).forEach((cueType) => {
+      cues[cueType].forEach((cueText, cueIndex) => {
+        total += 1
+        const key = cueAnchorKey(cueType, cueIndex)
+        const anchor = anchors?.[key]
+        if (anchor && blocks[anchor.paragraphIndex] && cueParagraphHash(blocks[anchor.paragraphIndex]) === anchor.paragraphHash) {
+          matched += 1
+          return
+        }
+        const bestScore = blocks.reduce((max, blockText) => Math.max(max, scoreCueMatch(cueText, blockText)), 0)
+        if (bestScore >= 0.55) matched += 1
+      })
+    })
+
+    const stale = total > 0 ? matched / total < 0.7 : false
+    return { total, matched, stale }
+  }
+
+  const focusCueInManuscript = (
+    manuscriptId: string,
+    cueText: string,
+    cueType: keyof ManuscriptCues,
+    cueIndex: number,
+    cueAnchors?: Record<string, CueAnchor>,
+  ) => {
+    const container = manuscriptContentRefs.current[manuscriptId]
+    if (!container) return
+
+    const candidates = Array.from(container.querySelectorAll<HTMLElement>('h1,h2,h3,h4,p,li,blockquote'))
+    const anchor = cueAnchors?.[cueAnchorKey(cueType, cueIndex)]
+    if (anchor && candidates[anchor.paragraphIndex]) {
+      const direct = candidates[anchor.paragraphIndex]
+      const directHash = cueParagraphHash(direct.textContent || '')
+      if (directHash === anchor.paragraphHash) {
+        direct.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        applyManuscriptHighlight(direct, 'exact')
+        return
+      }
+    }
+
+    const normalizedCue = normalizeCueSearchText(cueText)
+    if (!normalizedCue) return
+    const probe = normalizedCue.slice(0, Math.min(90, normalizedCue.length))
+    const target = candidates.find((element) => {
+      const normalizedElementText = normalizeCueSearchText(element.textContent || '')
+      return normalizedElementText.includes(probe)
+    })
+
+    if (!target) {
+      const fuzzy = candidates
+        .map((element) => ({
+          element,
+          score: scoreCueMatch(cueText, element.textContent || ''),
+        }))
+        .sort((a, b) => b.score - a.score)[0]
+      if (fuzzy && fuzzy.score >= 0.45) {
+        fuzzy.element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        applyManuscriptHighlight(fuzzy.element, 'approximate')
+        setError('Approximate cue match used after manual edits.')
+        return
+      }
+      setError('No matching manuscript section found for that cue yet.')
+      return
+    }
+
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    applyManuscriptHighlight(target, 'exact')
+  }
+
+  const focusSearchQueryInManuscript = (manuscriptId: string | null, query: string) => {
+    const normalizedQuery = normalizeCueSearchText(query)
+    if (!normalizedQuery) return false
+
+    const ids = manuscriptId ? [manuscriptId] : Object.keys(manuscriptContentRefs.current)
+    for (const id of ids) {
+      const container = manuscriptContentRefs.current[id]
+      if (!container) continue
+      const candidates = Array.from(container.querySelectorAll<HTMLElement>('h1,h2,h3,h4,p,li,blockquote'))
+      const exactTarget = candidates.find((element) =>
+        normalizeCueSearchText(element.textContent || '').includes(normalizedQuery),
+      )
+      if (exactTarget) {
+        exactTarget.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        applyManuscriptHighlight(exactTarget, 'exact')
+        return true
+      }
+      const fuzzy = candidates
+        .map((element) => ({
+          element,
+          score: scoreCueMatch(query, element.textContent || ''),
+        }))
+        .sort((a, b) => b.score - a.score)[0]
+      if (fuzzy && fuzzy.score >= 0.5) {
+        fuzzy.element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        applyManuscriptHighlight(fuzzy.element, 'approximate')
+        return true
+      }
+    }
+    return false
+  }
+
+  useEffect(() => {
+    if (!pendingSearchJump) return
+    if (activeSection !== 'manuscript') return
+    const run = window.setTimeout(() => {
+      const found = focusSearchQueryInManuscript(pendingSearchJump.manuscriptId, pendingSearchJump.query)
+      if (!found) {
+        setError('Search result selected, but exact manuscript match is not available in current content.')
+      }
+      setPendingSearchJump(null)
+    }, 220)
+    return () => window.clearTimeout(run)
+  }, [pendingSearchJump, activeSection, workspace?.manuscripts])
+
   const renderManuscriptCuesPanel = (
     cues: ManuscriptCues,
     editable: boolean,
+    onCueClick?: (cue: string, cueType: keyof ManuscriptCues, cueIndex: number) => void,
+    options?: {
+      staleInfo?: { total: number; matched: number; stale: boolean } | null
+      onRegenerateCues?: () => void
+      regenerating?: boolean
+    },
   ) => {
     if (!hasCueContent(cues) && !editable) return null
     
@@ -1427,12 +1698,24 @@ export default function WorkspaceDetailPage() {
                 </div>
                 <div className="space-y-1.5 pl-6">
                   {values.length ? values.map((item, index) => (
-                    <div
-                      key={`${key}-${index}`}
-                      className={`px-3 py-2 rounded-lg border ${colors.border} ${colors.bg} text-sm leading-relaxed`}
-                    >
-                      {item}
-                    </div>
+                    onCueClick && !editable ? (
+                      <button
+                        key={`${key}-${index}`}
+                        type="button"
+                        onClick={() => onCueClick(item, key, index)}
+                        className={`w-full text-left px-3 py-2 rounded-lg border ${colors.border} ${colors.bg} text-sm leading-relaxed hover:brightness-110 transition`}
+                        title="Jump to this cue in manuscript"
+                      >
+                        {item}
+                      </button>
+                    ) : (
+                      <div
+                        key={`${key}-${index}`}
+                        className={`px-3 py-2 rounded-lg border ${colors.border} ${colors.bg} text-sm leading-relaxed`}
+                      >
+                        {item}
+                      </div>
+                    )
                   )) : editable ? (
                     <span className="text-[11px] text-gray-500 italic">None generated</span>
                   ) : null}
@@ -1444,19 +1727,63 @@ export default function WorkspaceDetailPage() {
       )
     }
     
+    const totalCueCount = Object.values(cues).reduce((sum, items) => sum + items.length, 0)
+
     return (
-      <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-black/30 to-black/10 p-4 space-y-5 sticky top-4">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold text-white">Preaching Cues</p>
-          <span className="text-[10px] uppercase tracking-widest text-gray-500">Sidebar</span>
+      <div
+        className={`rounded-2xl border border-white/10 bg-gradient-to-b from-black/30 to-black/10 sticky top-4 self-start max-h-[calc(100vh-1.5rem)] overflow-y-auto transition-all duration-300 ${
+          manuscriptCuesCollapsed ? 'p-2 w-16' : 'p-4 space-y-5'
+        }`}
+      >
+        <div className={`flex ${manuscriptCuesCollapsed ? 'flex-col items-center gap-2' : 'items-center justify-between'}`}>
+          {!manuscriptCuesCollapsed ? (
+            <>
+              <p className="text-sm font-semibold text-white">Preaching Cues</p>
+              <span className="text-[10px] uppercase tracking-widest text-gray-500">Sidebar</span>
+            </>
+          ) : (
+            <span className="text-[10px] uppercase tracking-widest text-gray-500 [writing-mode:vertical-rl] rotate-180">Cues</span>
+          )}
+          <button
+            type="button"
+            onClick={() => setManuscriptCuesCollapsed((prev) => !prev)}
+            className="cyber-outline text-[10px] px-2 py-1 rounded-full"
+            title={manuscriptCuesCollapsed ? 'Expand preaching cues' : 'Collapse preaching cues'}
+          >
+            {manuscriptCuesCollapsed ? '›' : '‹'}
+          </button>
+          {manuscriptCuesCollapsed ? (
+            <span className="text-[10px] text-cyan-300/80">{totalCueCount}</span>
+          ) : null}
         </div>
-        {editable && (
+        {!manuscriptCuesCollapsed && editable && (
           <p className="text-[11px] text-gray-400 leading-relaxed">
             Cues are generated with the manuscript based on your settings. Regenerate to update.
           </p>
         )}
-        {renderCueSection(priorityCues, 'Key Moments')}
-        {renderCueSection(secondaryCues, 'Delivery Notes')}
+        {!manuscriptCuesCollapsed && options?.staleInfo?.stale ? (
+          <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-3 space-y-2">
+            <p className="text-xs text-amber-100">
+              Cues may be outdated after manual edits ({options.staleInfo.matched}/{options.staleInfo.total} matched).
+            </p>
+            {options.onRegenerateCues ? (
+              <button
+                type="button"
+                onClick={options.onRegenerateCues}
+                disabled={options.regenerating}
+                className="cyber-outline text-xs px-3 py-1.5 rounded-full disabled:opacity-60"
+              >
+                {options.regenerating ? 'Regenerating Cues...' : 'Regenerate Cues'}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {!manuscriptCuesCollapsed && (
+          <>
+            {renderCueSection(priorityCues, 'Key Moments')}
+            {renderCueSection(secondaryCues, 'Delivery Notes')}
+          </>
+        )}
       </div>
     )
   }
@@ -1725,10 +2052,20 @@ export default function WorkspaceDetailPage() {
     const normalizeMediaSuggestionCards = (items: any[]) =>
       (Array.isArray(items) ? items : [])
         .map((item: any) => {
+          const isLikelyJsonNoise = (text: string) => {
+            const trimmed = String(text || '').trim()
+            if (!trimmed) return true
+            if (/^[\{\}\[\],]+$/.test(trimmed)) return true
+            if (trimmed.startsWith('"') && trimmed.includes('":')) return true
+            if (/^[A-Za-z0-9_]+\s*:\s*[\[{]?\s*$/.test(trimmed)) return true
+            if (/^["']?mediaSuggestions["']?\s*:/.test(trimmed)) return true
+            return false
+          }
+
           if (!item) return null
           if (typeof item === 'string') {
             const prompt = String(item).trim()
-            if (!prompt) return null
+            if (!prompt || isLikelyJsonNoise(prompt)) return null
             return {
               type: workspace?.language === 'es' ? 'Medio' : 'Media',
               intent: workspace?.language === 'es' ? 'Sugerencia de estudio' : 'Study suggestion',
@@ -1748,7 +2085,7 @@ export default function WorkspaceDetailPage() {
           const intent = String(item?.intent || item?.category || item?.purpose || '').trim()
           const useCase = String(item?.useCase || item?.usage || item?.howToUse || '').trim()
           const prompt = String(item?.prompt || item?.text || item?.content || '').trim()
-          if (!prompt) return null
+          if (!prompt || isLikelyJsonNoise(prompt)) return null
           return {
             type: type || (workspace?.language === 'es' ? 'Medio' : 'Media'),
             intent: intent || (workspace?.language === 'es' ? 'Sugerencia de estudio' : 'Study suggestion'),
@@ -1979,7 +2316,6 @@ export default function WorkspaceDetailPage() {
 
   const isStudyAssetLoading = (asset: 'report' | 'applications' | 'questions' | 'illustrations' | 'media' | 'egw' | 'references') => {
     if (asset === 'report') return actionLoading.includes('study-report')
-    if (studyAssetChain.phase === 'study-report' && studyAssetChain.target === asset) return true
     if (asset === 'applications') return actionLoading.includes('applications')
     if (asset === 'questions') return actionLoading.includes('questions')
     if (asset === 'illustrations') return actionLoading.includes('illustrations')
@@ -1988,9 +2324,6 @@ export default function WorkspaceDetailPage() {
   }
 
   const getStudyAssetLoadingLabel = (asset: StudyAssetType) => {
-    if (studyAssetChain.phase === 'study-report' && studyAssetChain.target === asset) {
-      return 'Generating Study Report...'
-    }
     const labels: Record<StudyAssetType, string> = {
       applications: 'Generating Applications...',
       questions: 'Generating Discussion Questions...',
@@ -2648,6 +2981,46 @@ export default function WorkspaceDetailPage() {
   useKeyboardShortcut('6', () => handlePhaseChange('REFINE'), { cmd: true })
   useKeyboardShortcut('7', () => handlePhaseChange('DELIVER'), { cmd: true })
 
+  const handleGenerateSermonCore = async (): Promise<SermonCoreData | null> => {
+    const config = withToken()
+    if (!config) return null
+    
+    setSermonCoreGenerating(true)
+    try {
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/sermon-core`,
+        {},
+        config
+      )
+      if (response?.data) {
+        setWorkspace((prev: any) => prev ? { ...prev, sermonCore: response.data } : prev)
+        return response.data
+      }
+      return null
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Failed to generate sermon core')
+      return null
+    } finally {
+      setSermonCoreGenerating(false)
+    }
+  }
+
+  const handleSermonCoreChange = async (data: SermonCoreData) => {
+    const config = withToken()
+    if (!config) return
+    
+    setWorkspace((prev: any) => prev ? { ...prev, sermonCore: data } : prev)
+    try {
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`,
+        { sermonCore: data },
+        config
+      )
+    } catch (err) {
+      console.error('Failed to save sermon core:', err)
+    }
+  }
+
   const handleGenerate = async (type: string, override?: string) => {
     const config = withToken()
     if (!config) return
@@ -2665,60 +3038,17 @@ export default function WorkspaceDetailPage() {
       return
     }
 
-    if (isStudyAssetType(type) && studyAssetChain.phase !== 'idle') {
-      if (studyAssetChain.target === type) {
-        setError(`${studyAssetLabels[type]} generation is already in progress.`)
-      } else {
-        setError(`Please wait for ${studyAssetLabels[studyAssetChain.target as StudyAssetType]} to finish generating.`)
-      }
-      return
-    }
-
-    if (isStudyAssetType(type) && studyAssetChain.target && studyAssetChain.target !== type) {
-      setError(`Please wait for ${studyAssetLabels[studyAssetChain.target]} to finish generating.`)
-      return
-    }
-
     setActionLoading((prev) => (prev.includes(type) ? prev : [...prev, type]))
     try {
       let generatedResponse: any = null
       if (isStudyAssetType(type)) {
-        const hasStudyReport = Array.isArray(workspace?.studyReports) && workspace.studyReports.length > 0
-        if (!hasStudyReport) {
-          setStudyAssetChain({ target: type, phase: 'study-report' })
-          setActionLoading((prev) => (prev.includes('study-report') ? prev : [...prev, 'study-report']))
-          try {
-            const studyReportResponse = await axios.post(
-              `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/study-report`,
-              {
-                includeEGW: workspace?.egwEnabled || false,
-              },
-              config,
-            )
-            if (studyReportResponse?.data) {
-              setWorkspace((prev: any) =>
-                prev
-                  ? {
-                      ...prev,
-                      studyReports: [
-                        studyReportResponse.data,
-                        ...(prev.studyReports || []).filter((item: any) => item.id !== studyReportResponse.data.id),
-                      ],
-                    }
-                  : prev,
-              )
-            }
-          } catch (studyError) {
-            console.error('Study report generation failed before study asset generation', studyError)
-            setError('Study Report generation failed. Please retry.')
-            setStudyAssetChain({ target: null, phase: 'idle' })
+        if (type === 'media') {
+          const hasStudyReport = Array.isArray(workspace?.studyReports) && workspace.studyReports.length > 0
+          if (!hasStudyReport) {
+            setError('Generate the Study Report first before creating media suggestions.')
             return
-          } finally {
-            setActionLoading((prev) => prev.filter((item) => item !== 'study-report'))
           }
         }
-
-        setStudyAssetChain({ target: type, phase: 'asset' })
         try {
           if (type === 'applications') {
             generatedResponse = await axios.post(
@@ -2768,8 +3098,6 @@ export default function WorkspaceDetailPage() {
           console.error(`${type} generation failed`, assetError)
           setError(`${studyAssetLabels[type]} generation failed. Please retry.`)
           return
-        } finally {
-          setStudyAssetChain({ target: null, phase: 'idle' })
         }
       } else if (type === 'outlines') {
         generatedResponse = await axios.post(
@@ -2843,7 +3171,6 @@ export default function WorkspaceDetailPage() {
       console.error('Generation failed', err)
       setError('Action failed. Check backend logs.')
     } finally {
-      setStudyAssetChain((prev) => (prev.phase === 'idle' ? prev : { target: null, phase: 'idle' }))
       setActionLoading((prev) => prev.filter((item) => item !== type && item !== 'study-report'))
     }
   }
@@ -3272,6 +3599,7 @@ export default function WorkspaceDetailPage() {
       setWordStudyError('Enter a word to analyze (ex: agape, logos).')
       return
     }
+
     setWordStudyError(null)
     setWordStudyWord(normalizedWord)
     setWordStudyLanguage(normalizedLang)
@@ -3494,7 +3822,7 @@ export default function WorkspaceDetailPage() {
   const latestOutline = workspace?.outlines?.find((o: any) => o.isSelected) || workspace?.outlines?.[0]
   const outlinePointsForDna = getOutlinePointNodes(latestOutline?.structure || {}).map((point: any) => String(point.title || '').trim()).filter(Boolean)
   const manuscriptWordCount = latestManuscriptText ? latestManuscriptText.split(/\s+/).filter(Boolean).length : 0
-  const estimatedMinutesDna = manuscriptWordCount ? Math.max(1, Math.ceil(manuscriptWordCount / 145)) : 0
+  const estimatedMinutesDna = manuscriptWordCount ? Math.max(1, Math.ceil(manuscriptWordCount / 110)) : 0
   const scriptureReferencesInManuscript = Array.from(
     new Set((latestManuscriptText.match(/\b(?:[1-3]\s*)?[A-Z][a-zA-Z]+\s+\d+:\d+(?:-\d+)?\b/g) || []).map((item) => item.trim())),
   )
@@ -3896,7 +4224,7 @@ export default function WorkspaceDetailPage() {
           theme: workspaceDraft.theme,
           audienceProfile: workspaceDraft.audienceProfile,
           sermonGoals: workspaceDraft.sermonGoals,
-          theologicalLens: workspaceDraft.theologicalLens,
+          theologicalLens: 'adventist',
           style: workspaceDraft.style,
           storyArc: workspaceDraft.storyArc,
           language: workspaceDraft.language,
@@ -3953,10 +4281,26 @@ export default function WorkspaceDetailPage() {
     setActionLoading((prev) => (prev.includes('manuscript-edit') ? prev : [...prev, 'manuscript-edit']))
     try {
       const textToSave = inlineHtml !== undefined ? inlineHtml : manuscriptDraft
-      const cuesToSave = inlineHtml !== undefined ? (workspace?.manuscripts?.find((m: any) => m.id === id)?.content?.cues || {}) : manuscriptCueDraft
+      const existingManuscript = workspace?.manuscripts?.find((m: any) => m.id === id)
+      const cuesToSaveRaw = inlineHtml !== undefined ? (existingManuscript?.content?.cues || {}) : manuscriptCueDraft
+      const cuesToSave = normalizeManuscriptCues(cuesToSaveRaw)
+      const cueAnchors = buildCueAnchorsFromHtml(textToSave, cuesToSave)
+      const staleInfo = evaluateCueCoverage(cuesToSave, textToSave, cueAnchors)
+      setManuscriptCueHealth((prev) => ({ ...prev, [id]: staleInfo }))
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_URL}/workspaces/manuscripts/${id}`,
-        { content: { formatVersion: 'v2', text: textToSave, cues: cuesToSave } },
+        {
+          content: {
+            formatVersion: 'v2',
+            text: textToSave,
+            cues: cuesToSave,
+            metadata: {
+              ...(existingManuscript?.content?.metadata || {}),
+              cueAnchors,
+              cueAnchorUpdatedAt: new Date().toISOString(),
+            },
+          },
+        },
         config,
       )
       const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
@@ -3972,6 +4316,27 @@ export default function WorkspaceDetailPage() {
       setError('Unable to save manuscript changes.')
     } finally {
       setActionLoading((prev) => prev.filter((item) => item !== 'manuscript-edit'))
+    }
+  }
+
+  const handleRegenerateManuscriptCues = async (manuscriptId: string) => {
+    const config = withToken()
+    if (!config) return
+    const actionKey = `manuscript-cues-${manuscriptId}`
+    setActionLoading((prev) => (prev.includes(actionKey) ? prev : [...prev, actionKey]))
+    try {
+      await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/manuscripts/${manuscriptId}/cues/regenerate`,
+        {},
+        config,
+      )
+      const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
+      setWorkspace(refreshed.data)
+    } catch (err) {
+      console.error('Failed to regenerate manuscript cues', err)
+      setError('Unable to regenerate manuscript cues.')
+    } finally {
+      setActionLoading((prev) => prev.filter((item) => item !== actionKey))
     }
   }
 
@@ -4167,11 +4532,11 @@ export default function WorkspaceDetailPage() {
                     type="button"
                     key={`${item.type}-${item.id}`}
                     onClick={() => handleSearchResultSelect(item)}
-                    className="w-full text-left border border-white/10 rounded-xl p-3 bg-black/30 hover:border-cyan-400/40 transition-colors"
+                    className="w-full text-left border border-white/10 rounded-xl p-3 bg-black/30 hover:border-cyan-400/40 transition-colors cursor-pointer"
                   >
                     <p className="text-[10px] uppercase tracking-widest cyber-muted">{item.type}</p>
                     <p className="text-sm text-gray-100/90 font-semibold">{item.title}</p>
-                    {item.snippet && <p className="text-xs text-gray-200/80 mt-1">{item.snippet}</p>}
+                    {item.snippet && <p className="text-xs text-gray-200/80 mt-1">{String(item.snippet).replace(/<[^>]+>/g, '')}</p>}
                   </button>
                 ))}
               </div>
@@ -4193,7 +4558,7 @@ export default function WorkspaceDetailPage() {
               <span className="cyber-tag">{workspace.status}</span>
             </div>
 
-            <div className="cyber-panel rounded-2xl relative overflow-hidden">
+            <div className={`cyber-panel rounded-2xl relative ${activeSection === 'manuscript' ? 'overflow-visible' : 'overflow-hidden'}`}>
               <div className="p-6">
               {activeSection === 'workspace' && (
                 <div className="space-y-6 min-h-full">
@@ -4294,21 +4659,12 @@ export default function WorkspaceDetailPage() {
                       {editingWorkspace ? (
                         <div className="space-y-2">
                           <label className="text-xs uppercase tracking-widest cyber-muted">Theological Lens</label>
-                          <select
-                            value={workspaceDraft?.theologicalLens || ''}
-                            onChange={(e) => setWorkspaceDraft({ ...workspaceDraft, theologicalLens: e.target.value })}
-                            className="w-full mb-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                          >
-                            <option value="">Lens</option>
-                            <option value="devotional">Devotional</option>
-                            <option value="pastoral">Pastoral</option>
-                            <option value="academic">Academic</option>
-                            <option value="conservative">Conservative</option>
-                            <option value="historical-critical">Historical-critical</option>
-                          </select>
+                          <div className="w-full mb-2 bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-gray-200/90">
+                            Adventist (fixed)
+                          </div>
                         </div>
                       ) : (
-                        <p><span className="font-semibold text-cyan-300">Lens:</span> {workspace.theologicalLens || '—'}</p>
+                        <p><span className="font-semibold text-cyan-300">Lens:</span> {formatTheologicalLens()}</p>
                       )}
                       {editingWorkspace && (
                         <StoryArcSelector
@@ -4447,6 +4803,18 @@ export default function WorkspaceDetailPage() {
 
               {activeSection === 'outlines' && (
                 <div className="space-y-4 relative min-h-full">
+                  {/* Sermon Core - The DNA of the message */}
+                  <SermonCore
+                    workspaceId={workspaceId}
+                    mainPassage={workspace?.mainPassage || ''}
+                    theme={workspace?.theme}
+                    studyReport={workspace?.studyReports?.[0]?.sections}
+                    initialData={workspace?.sermonCore}
+                    onDataChange={handleSermonCoreChange}
+                    onGenerate={handleGenerateSermonCore}
+                    isGenerating={sermonCoreGenerating}
+                  />
+
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
                       <h3 className="text-xl font-semibold">Outlines</h3>
@@ -4772,6 +5140,7 @@ export default function WorkspaceDetailPage() {
                       className="w-full bg-black/50 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-gray-100 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 transition-colors"
                     >
                       <option value={10}>10 minutes (~1,450 words)</option>
+                      <option value={22}>22 minutes (~3,190 words)</option>
                       <option value={20}>20 minutes (~2,900 words)</option>
                       <option value={30}>30 minutes (~4,350 words)</option>
                       <option value={40}>40 minutes (~5,800 words)</option>
@@ -4838,7 +5207,7 @@ export default function WorkspaceDetailPage() {
               {workspace.manuscripts?.length ? (
                 <div className="space-y-4">
                   {workspace.manuscripts.map((manuscript: any) => (
-                    <div key={manuscript.id} className="border border-white/10 rounded-2xl overflow-hidden bg-black/30">
+                    <div key={manuscript.id} className="border border-white/10 rounded-2xl overflow-visible bg-black/30">
                       <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-black/40 to-transparent border-b border-white/5">
                         <div className="flex items-center gap-6">
                           <div className="flex items-center gap-2">
@@ -4849,16 +5218,23 @@ export default function WorkspaceDetailPage() {
                             </div>
                           </div>
                           {manuscript.content?.metadata?.options && (
-                            <div className="flex items-center gap-2 text-[10px] text-gray-500">
-                              <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 capitalize">
-                                {manuscript.content.metadata.options.tone || 'teaching'}
-                              </span>
-                              <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10">
-                                {manuscript.content.metadata.options.format === 'notes' ? 'notes' : 'full'}
-                              </span>
-                              <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10">
-                                {manuscript.content.metadata.options.targetMinutes || 22} min
-                              </span>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                                <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 capitalize">
+                                  {manuscript.content.metadata.options.tone || 'teaching'}
+                                </span>
+                                <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10">
+                                  {manuscript.content.metadata.options.format === 'notes' ? 'notes' : 'full'}
+                                </span>
+                                <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10">
+                                  {manuscript.content.metadata.options.targetMinutes || 22} min
+                                </span>
+                              </div>
+                              {manuscriptOptionsDrifted(manuscript.content.metadata.options) ? (
+                                <p className="text-[10px] text-amber-300/90">
+                                  Controls changed after this draft. Regenerate to apply current settings.
+                                </p>
+                              ) : null}
                             </div>
                           )}
                         </div>
@@ -4916,8 +5292,11 @@ export default function WorkspaceDetailPage() {
                           </div>
                         </div>
                       ) : isManuscriptV2(manuscript) ? (
-                        <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6 items-start">
+                        <div className={`grid grid-cols-1 gap-6 items-start ${manuscriptCuesCollapsed ? 'xl:grid-cols-[1fr_64px]' : 'xl:grid-cols-[1fr_320px]'}`}>
                           <div
+                            ref={(node) => {
+                              manuscriptContentRefs.current[manuscript.id] = node
+                            }}
                             contentEditable
                             suppressContentEditableWarning
                             onBlur={(e) => {
@@ -4948,7 +5327,29 @@ export default function WorkspaceDetailPage() {
                               __html: ensureManuscriptRichHtml(String(manuscript.content?.text || ''), markdownLikeToHtml),
                             }}
                           />
-                          {renderManuscriptCuesPanel(normalizeManuscriptCues(manuscript.content?.cues), false)}
+                          {renderManuscriptCuesPanel(
+                            normalizeManuscriptCues(manuscript.content?.cues),
+                            false,
+                            (cue, cueType, cueIndex) =>
+                              focusCueInManuscript(
+                                manuscript.id,
+                                cue,
+                                cueType,
+                                cueIndex,
+                                manuscript?.content?.metadata?.cueAnchors || {},
+                              ),
+                            {
+                              staleInfo:
+                                manuscriptCueHealth[manuscript.id] ||
+                                evaluateCueCoverage(
+                                  normalizeManuscriptCues(manuscript.content?.cues),
+                                  String(manuscript.content?.text || ''),
+                                  manuscript?.content?.metadata?.cueAnchors || {},
+                                ),
+                              onRegenerateCues: () => handleRegenerateManuscriptCues(manuscript.id),
+                              regenerating: actionLoading.includes(`manuscript-cues-${manuscript.id}`),
+                            },
+                          )}
                         </div>
                       ) : (
                         <div className="space-y-3">
@@ -5275,6 +5676,34 @@ export default function WorkspaceDetailPage() {
                         onError={(error) => setAudioError(error)}
                       />
                     )}
+                    
+                    {/* Interlinear View - Greek/Hebrew */}
+                    <InterlinearView
+                      reference={scriptureLastLookup}
+                      verses={extractVerses(scriptureResult).map((verse: any) => ({
+                        reference: verse.reference || '',
+                        text: verse.text || ''
+                      }))}
+                      language={workspace?.language || 'en'}
+                      onWordClick={(word) => {
+                        const hasHebrew = /[\u0590-\u05FF]/.test(String(word?.original || ''))
+                        const inferredLanguage = hasHebrew ? 'hebrew' : 'greek'
+                        const lookupWord = String(
+                          word?.transliteration || word?.original || word?.english || '',
+                        ).trim()
+
+                        if (!lookupWord) {
+                          return
+                        }
+
+                        // Open Word Study and trigger lookup with the clicked word.
+                        setActiveSection('word-study')
+                        setActivePhase('STUDY')
+                        setWordStudyWord(lookupWord)
+                        setWordStudyLanguage(inferredLanguage)
+                        handleWordStudyLookup({ word: lookupWord, language: inferredLanguage })
+                      }}
+                    />
                     
                     {/* Passage Summary - Interpretive Framing */}
                     <div className="relative">
@@ -5836,10 +6265,213 @@ export default function WorkspaceDetailPage() {
             <div className="space-y-4 relative min-h-full">
               {(() => {
                 const studyAssets = getStudyAssetsSource()
-                const studyEgwPassage = parsePassageForEgwPanel(workspace.mainPassage)
                 const studyMediaPrompts = getStudyMediaPrompts()
                 return (
                   <>
+              {/* Scripture Analysis Section - Interpretation Tools */}
+              {scriptureLastLookup && (
+                <div className="mb-6">
+                <CollapsibleSection 
+                  title="Scripture Analysis" 
+                  defaultOpen={false}
+                >
+                  <div className="space-y-4">
+                    <p className="text-xs text-cyan-200/70 mb-4">
+                      Deep exegetical analysis of {scriptureLastLookup}
+                    </p>
+                    
+                    {/* Passage Summary */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => regenerateScriptureSection('passageSummary')}
+                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
+                      >
+                        Generate
+                      </button>
+                      {generatedScriptureSections.passageSummary ? (
+                        <PassageSummary 
+                          key={`study-${scriptureLastLookup}-passageSummary`}
+                          reference={scriptureLastLookup}
+                          token={localStorage.getItem('token') || ''}
+                          language={workspace?.language || 'en'}
+                          cachedData={passageSummary}
+                          onDataLoad={(data: any) => {
+                            setPassageSummary(data)
+                            persistCurrentScriptureSection('passageSummary', data)
+                          }}
+                        />
+                      ) : (
+                        <div className="cyber-panel rounded-2xl p-6">
+                          <div className="flex items-center gap-2 mb-1">
+                            <BookOpen className="w-5 h-5 text-cyan-400" />
+                            <h3 className="text-lg font-semibold">Passage Summary</h3>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Structural Analysis */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => regenerateScriptureSection('structuralAnalysis')}
+                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
+                      >
+                        Generate
+                      </button>
+                      {generatedScriptureSections.structuralAnalysis ? (
+                        <StructuralAnalysisPanel 
+                          key={`study-${scriptureLastLookup}-structuralAnalysis`}
+                          passage={scriptureLastLookup}
+                          token={localStorage.getItem('token') || ''}
+                          language={workspace?.language || 'en'}
+                          cachedData={structuralAnalysis}
+                          onDataLoad={(data: any) => {
+                            setStructuralAnalysis(data)
+                            persistCurrentScriptureSection('structuralAnalysis', data)
+                          }}
+                        />
+                      ) : (
+                        <div className="cyber-panel rounded-2xl p-6">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Layers className="w-5 h-5 text-cyan-400" />
+                            <h3 className="text-lg font-semibold">Structural Analysis</h3>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Interpretive Challenges */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => regenerateScriptureSection('interpretiveChallenges')}
+                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
+                      >
+                        Generate
+                      </button>
+                      {generatedScriptureSections.interpretiveChallenges ? (
+                        <InterpretiveChallengePanel 
+                          key={`study-${scriptureLastLookup}-interpretiveChallenges`}
+                          passage={scriptureLastLookup}
+                          token={localStorage.getItem('token') || ''}
+                          language={workspace?.language || 'en'}
+                          cachedData={interpretiveChallenges}
+                          onDataLoad={(data: any) => {
+                            setInterpretiveChallenges(data)
+                            persistCurrentScriptureSection('interpretiveChallenges', data)
+                          }}
+                        />
+                      ) : (
+                        <div className="cyber-panel rounded-2xl p-6">
+                          <div className="flex items-center gap-2 mb-1">
+                            <AlertCircle className="w-5 h-5 text-cyan-400" />
+                            <h3 className="text-lg font-semibold">Interpretive Challenges</h3>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Canonical Theme Tracing */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => regenerateScriptureSection('canonicalThemes')}
+                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
+                      >
+                        Generate
+                      </button>
+                      {generatedScriptureSections.canonicalThemes ? (
+                        <CanonicalThemeTracing 
+                          key={`study-${scriptureLastLookup}-canonicalThemes`}
+                          reference={scriptureLastLookup}
+                          token={localStorage.getItem('token') || ''}
+                          workspaceId={workspaceId}
+                          language={workspace?.language || 'en'}
+                          cachedData={canonicalThemes}
+                          onDataLoad={(data: any) => {
+                            setCanonicalThemes(data)
+                            persistCurrentScriptureSection('canonicalThemes', data)
+                          }}
+                          onAddToOutline={async (theme, verses) => {
+                            const selectedOutline = workspace.outlines?.find((o: any) => o.isSelected) || workspace.outlines?.[0]
+                            if (!selectedOutline) return
+                            const newPoint = {
+                              id: Date.now().toString(),
+                              text: theme,
+                              level: 1,
+                              supportingVerses: verses,
+                              notes: `Canonical theme: ${verses.join(', ')}`
+                            }
+                            const updatedPoints = [...(selectedOutline.structure?.points || []), newPoint]
+                            const updatedOutline = {
+                              ...selectedOutline,
+                              structure: { ...selectedOutline.structure, points: updatedPoints }
+                            }
+                            const updatedOutlines = workspace.outlines.map((o: any) => 
+                              o.id === selectedOutline.id ? updatedOutline : o
+                            )
+                            setWorkspace({ ...workspace, outlines: updatedOutlines })
+                            try {
+                              await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/outlines/${selectedOutline.id}`, {
+                                method: 'PUT',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  Authorization: `Bearer ${localStorage.getItem('token')}`
+                                },
+                                body: JSON.stringify(updatedOutline)
+                              })
+                            } catch (error) {
+                              console.error('Failed to save outline:', error)
+                            }
+                          }}
+                        />
+                      ) : (
+                        <div className="cyber-panel rounded-2xl p-6">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Network className="w-5 h-5 text-cyan-400" />
+                            <h3 className="text-lg font-semibold">Canonical Theme Tracing</h3>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Study Synthesis */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => regenerateScriptureSection('studySynthesis')}
+                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
+                      >
+                        Generate
+                      </button>
+                      {generatedScriptureSections.studySynthesis ? (
+                        <StudySynthesis 
+                          key={`study-${scriptureLastLookup}-studySynthesis`}
+                          reference={scriptureLastLookup}
+                          token={localStorage.getItem('token') || ''}
+                          language={workspace?.language || 'en'}
+                          cachedData={studySynthesis}
+                          onDataLoad={(data: any) => {
+                            setStudySynthesis(data)
+                            persistCurrentScriptureSection('studySynthesis', data)
+                          }}
+                        />
+                      ) : (
+                        <div className="cyber-panel rounded-2xl p-6">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Lightbulb className="w-5 h-5 text-cyan-400" />
+                            <h3 className="text-lg font-semibold">Study Synthesis</h3>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CollapsibleSection>
+                </div>
+              )}
+
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <h3 className="text-xl font-semibold">Study Report</h3>
@@ -5852,7 +6484,7 @@ export default function WorkspaceDetailPage() {
                 </div>
                 <button
                   onClick={() => handleGenerate('study-report')}
-                  disabled={studyAssetChain.phase !== 'idle' || actionLoading.includes('study-report')}
+                  disabled={actionLoading.includes('study-report')}
                   className="cyber-outline text-xs px-3 py-2 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Generate
@@ -5886,7 +6518,7 @@ export default function WorkspaceDetailPage() {
               )}
               <div className="space-y-4">
                 <p className="text-xs text-cyan-100/80">
-                  If no study report exists, we&apos;ll generate it first.
+                  Media Suggestions require a generated Study Report. Other assets can run independently.
                 </p>
         {renderStudyAssetCard(
           'study-applications',
@@ -5902,7 +6534,7 @@ export default function WorkspaceDetailPage() {
           () => setStudyAssetEditor('applications'),
           isStudyAssetLoading('applications'),
           getStudyAssetLoadingLabel('applications'),
-          studyAssetChain.phase !== 'idle' || isStudyAssetLoading('applications'),
+          isStudyAssetLoading('applications'),
         )}
                 {renderStudyAssetCard(
                   'study-questions',
@@ -5918,7 +6550,7 @@ export default function WorkspaceDetailPage() {
           () => setStudyAssetEditor('questions'),
           isStudyAssetLoading('questions'),
           getStudyAssetLoadingLabel('questions'),
-          studyAssetChain.phase !== 'idle' || isStudyAssetLoading('questions'),
+          isStudyAssetLoading('questions'),
         )}
                 {renderStudyAssetCard(
                   'study-illustrations',
@@ -5934,7 +6566,7 @@ export default function WorkspaceDetailPage() {
           () => setStudyAssetEditor('illustrations'),
           isStudyAssetLoading('illustrations'),
           getStudyAssetLoadingLabel('illustrations'),
-          studyAssetChain.phase !== 'idle' || isStudyAssetLoading('illustrations'),
+          isStudyAssetLoading('illustrations'),
         )}
                 {renderStudyAssetCard(
                   'study-media',
@@ -5961,59 +6593,7 @@ export default function WorkspaceDetailPage() {
                   undefined,
                   isStudyAssetLoading('media'),
                   getStudyAssetLoadingLabel('media'),
-                  studyAssetChain.phase !== 'idle' || isStudyAssetLoading('media'),
-                )}
-              </div>
-              <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
-                <div className="flex items-center justify-between gap-3 mb-4">
-                  <div className="flex items-center gap-3">
-                    <Book className="w-5 h-5 text-amber-300" />
-                    <div>
-                      <h4 className="text-lg font-semibold">Spirit of Prophecy Insight</h4>
-                      <p className="text-xs text-gray-400 mt-1">Direct EGW support for this study passage, without leaving Study.</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setStudyEgwRefreshKey((prev) => prev + 1)}
-                    className="cyber-outline text-xs px-3 py-2 rounded-full"
-                  >
-                    Refresh
-                  </button>
-                </div>
-                {workspace?.includeEGW === false ? (
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-sm text-gray-300">EGW support is disabled for this workspace.</p>
-                  </div>
-                ) : !studyEgwPassage ? (
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-sm text-gray-300">Unable to parse the main passage for EGW support.</p>
-                  </div>
-                ) : isStudyAssetLoading('egw') ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-cyan-200/80">
-                      <span>Refreshing EGW support</span>
-                      <span>In progress</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-                      <div className="h-full w-2/3 bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 animate-pulse rounded-full" />
-                    </div>
-                    <div className="space-y-2">
-                      <div className="h-3 rounded bg-white/10 animate-pulse w-5/6" />
-                      <div className="h-3 rounded bg-white/10 animate-pulse w-4/6" />
-                      <div className="h-3 rounded bg-white/10 animate-pulse w-3/6" />
-                    </div>
-                  </div>
-                ) : (
-                  <EGWPassagePanel
-                    key={`${workspace.mainPassage}-${studyEgwRefreshKey}`}
-                    passage={workspace.mainPassage}
-                    book={studyEgwPassage.book}
-                    chapter={studyEgwPassage.chapter}
-                    verseStart={studyEgwPassage.verseStart}
-                    verseEnd={studyEgwPassage.verseEnd}
-                    language={workspace?.language || 'en'}
-                    showHeader={false}
-                  />
+                  isStudyAssetLoading('media'),
                 )}
               </div>
               <div className="cyber-panel rounded-2xl p-6 space-y-6">

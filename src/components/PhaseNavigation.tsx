@@ -24,49 +24,49 @@ export default function PhaseNavigation({ activePhase, onPhaseChange, progress }
       id: 'THEME' as Phase, 
       label: 'Theme', 
       icon: Compass,
-      description: 'Direction and setup',
+      description: 'What are we preaching?',
       complete: progress.themeConfigured
     },
     { 
       id: 'PASSAGE' as Phase, 
       label: 'Passage', 
       icon: BookOpen,
-      description: 'Scripture intelligence',
+      description: 'What does it say?',
       complete: progress.passageExplored
     },
     { 
       id: 'STUDY' as Phase, 
       label: 'Study', 
       icon: Brain,
-      description: 'Sermon material',
+      description: 'What does it mean?',
       complete: progress.studyGenerated
     },
     { 
       id: 'OUTLINE' as Phase, 
       label: 'Outline', 
       icon: PenTool,
-      description: 'Point structure',
+      description: 'What will I say?',
       complete: progress.outlineCreated
     },
     { 
       id: 'WRITE' as Phase,
       label: 'Write',
       icon: FileText,
-      description: 'Manuscript and notes',
+      description: 'How will I say it?',
       complete: progress.manuscriptWritten
     },
     {
       id: 'REFINE' as Phase, 
       label: 'Refine', 
       icon: Sparkles,
-      description: 'Polish and improve',
+      description: 'How can it be stronger?',
       complete: progress.refineCompleted
     },
     {
       id: 'DELIVER' as Phase,
       label: 'Deliver',
       icon: Layers,
-      description: 'Slides and media',
+      description: 'How will it be presented?',
       complete: progress.deliverPrepared
     },
   ]
