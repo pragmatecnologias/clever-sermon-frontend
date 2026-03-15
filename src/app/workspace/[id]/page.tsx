@@ -209,6 +209,23 @@ export default function WorkspaceDetailPage() {
   const [socraticCoachSession, setSocraticCoachSession] = useState<any>(null)
   const [coachAnswers, setCoachAnswers] = useState<Record<string, string>>({})
   const [coachFeedback, setCoachFeedback] = useState<Record<string, any>>({})
+  const [repairLockedAnchors, setRepairLockedAnchors] = useState<string[]>([])
+  const [repairJob, setRepairJob] = useState<{
+    manuscriptId: string
+    jobId: string
+    status: string
+    state?: string
+    message?: string
+  } | null>(null)
+  const [lastRepairNotice, setLastRepairNotice] = useState<{
+    manuscriptId: string
+    repairedCount: number
+    remainingCount: number
+    lastRepairedAt: string
+  } | null>(null)
+  const [showRepairMarkers, setShowRepairMarkers] = useState(true)
+  const [manuscriptQualityExpanded, setManuscriptQualityExpanded] = useState<Record<string, boolean>>({})
+  const [repairHistoryExpanded, setRepairHistoryExpanded] = useState<Record<string, boolean>>({})
   const [scriptureQuery, setScriptureQuery] = useState('')
   const [scriptureTranslation, setScriptureTranslation] = useState('KJV')
   const [scriptureResult, setScriptureResult] = useState<any>(null)
@@ -684,6 +701,17 @@ export default function WorkspaceDetailPage() {
   // Calculate progress
   const latestStudyReport = workspace?.studyReports?.[0]
   const latestManuscript = workspace?.manuscripts?.[0]
+  const repairedIssueIds = new Set(
+    (Array.isArray(latestManuscript?.content?.metadata?.quality?.repairedIssues)
+      ? latestManuscript.content.metadata.quality.repairedIssues
+      : []
+    ).map((item: any) => String(item || '').trim()),
+  )
+  const coachRepairPlan = Array.isArray(socraticCoachSession?.repairPlan) ? socraticCoachSession.repairPlan : []
+  const pendingCoachRepairPlan = coachRepairPlan.filter((item: any) => {
+    const issueId = String(item?.issueId || '').trim()
+    return issueId && !repairedIssueIds.has(issueId)
+  })
   const themeConfigured =
     Boolean(String(workspace?.title || '').trim()) &&
     Boolean(String(workspace?.mainPassage || '').trim()) &&
@@ -1051,6 +1079,76 @@ export default function WorkspaceDetailPage() {
   }, [workspace?.metadata, socraticCoachSession])
 
   useEffect(() => {
+    if (!repairJob?.jobId || !repairJob?.manuscriptId) return
+    const config = withToken()
+    if (!config) return
+
+    const poll = async () => {
+      try {
+        const response = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/manuscripts/${repairJob.manuscriptId}/repair/jobs/${repairJob.jobId}`,
+          config,
+        )
+        const data = response.data || {}
+        const nextStatus = String(data.status || data.state || '').toLowerCase()
+        setRepairJob((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: nextStatus || prev.status,
+                state: data.state || prev.state,
+                message: data.message || '',
+              }
+            : prev,
+        )
+
+        if (nextStatus === 'completed') {
+          const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
+          const refreshedWorkspace = refreshed.data || {}
+          setWorkspace(refreshedWorkspace)
+          const refreshedManuscript = (refreshedWorkspace?.manuscripts || []).find(
+            (item: any) => String(item?.id || '') === String(repairJob.manuscriptId || ''),
+          )
+          if (refreshedManuscript?.id) {
+            const repairedCount = Array.isArray(refreshedManuscript?.content?.metadata?.quality?.repairedIssues)
+              ? refreshedManuscript.content.metadata.quality.repairedIssues.length
+              : 0
+            const remainingCount = Array.isArray(refreshedManuscript?.content?.metadata?.quality?.remainingIssues)
+              ? refreshedManuscript.content.metadata.quality.remainingIssues.length
+              : 0
+            const lastRepairedAt = String(
+              refreshedManuscript?.content?.metadata?.repair?.lastRepairedAt || new Date().toISOString(),
+            )
+            setLastRepairNotice({
+              manuscriptId: refreshedManuscript.id,
+              repairedCount,
+              remainingCount,
+              lastRepairedAt,
+            })
+            setManuscriptQualityExpanded((prev) => ({
+              ...prev,
+              [refreshedManuscript.id]: true,
+            }))
+          }
+          setError(null)
+          setRepairJob(null)
+        } else if (nextStatus === 'failed') {
+          setError(data.error || 'Repair job failed.')
+          setRepairJob(null)
+        }
+      } catch (err) {
+        console.error('Failed to poll repair job status', err)
+        setError('Unable to track repair progress.')
+        setRepairJob(null)
+      }
+    }
+
+    poll()
+    const timer = window.setInterval(poll, 2000)
+    return () => window.clearInterval(timer)
+  }, [repairJob?.jobId, repairJob?.manuscriptId, workspaceId])
+
+  useEffect(() => {
     if (!editingIllustrationId || !illustrationDraft) return
     scheduleAutosave(
       `illustration-${editingIllustrationId}`,
@@ -1166,6 +1264,180 @@ export default function WorkspaceDetailPage() {
       generatedKeyLines !== manuscriptIncludeKeyLines ||
       generatedAudience !== currentAudience
     )
+  }
+
+  const getManuscriptQualityUi = (manuscript: any) => {
+    const quality = manuscript?.content?.metadata?.quality || {}
+    const status = String(quality?.status || '').toLowerCase()
+    const repairedIssues = Array.isArray(quality?.repairedIssues) ? quality.repairedIssues : []
+    if (repairedIssues.length > 0) {
+      return { label: 'Auto-Repaired', className: 'bg-emerald-500/15 text-emerald-200 border-emerald-400/40' }
+    }
+    if (status === 'ok') {
+      return { label: 'OK', className: 'bg-cyan-500/15 text-cyan-200 border-cyan-400/40' }
+    }
+    return { label: 'Needs Review', className: 'bg-amber-500/15 text-amber-200 border-amber-400/40' }
+  }
+
+  const getRepairAuditTrail = (manuscript: any) => {
+    const entries = manuscript?.content?.metadata?.repair?.auditTrail
+    return Array.isArray(entries) ? entries : []
+  }
+
+  const summarizeRepairSnippet = (value: string, max = 220) => {
+    const clean = String(value || '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (!clean) return 'No snippet was captured for this repair action.'
+    return clean.length > max ? `${clean.slice(0, max)}…` : clean
+  }
+
+  const normalizeRepairSnippetRaw = (value: string) =>
+    String(value || '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  const getRepairedAuditItems = (manuscript: any) =>
+    getRepairAuditTrail(manuscript).filter((item: any) => String(item?.result || '').toLowerCase() === 'repaired')
+
+  const getRepairItemMatchQuery = (entry: any) => {
+    const primary = String(entry?.afterSnippet || entry?.beforeSnippet || '').trim()
+    const clean = primary
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (!clean) return String(entry?.anchor || '').trim()
+    const shortProbe = clean.slice(0, Math.min(120, clean.length)).trim()
+    return shortProbe || clean
+  }
+
+  const tokenizeDiffText = (value: string) =>
+    String(value || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(' ')
+      .filter(Boolean)
+
+  const buildWordDiff = (before: string, after: string) => {
+    const left = tokenizeDiffText(before)
+    const right = tokenizeDiffText(after)
+    const m = left.length
+    const n = right.length
+    const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0))
+
+    for (let i = m - 1; i >= 0; i -= 1) {
+      for (let j = n - 1; j >= 0; j -= 1) {
+        dp[i][j] = left[i] === right[j] ? 1 + dp[i + 1][j + 1] : Math.max(dp[i + 1][j], dp[i][j + 1])
+      }
+    }
+
+    const removed: string[] = []
+    const added: string[] = []
+    let i = 0
+    let j = 0
+    while (i < m && j < n) {
+      if (left[i] === right[j]) {
+        i += 1
+        j += 1
+        continue
+      }
+      if (dp[i + 1][j] >= dp[i][j + 1]) {
+        removed.push(left[i])
+        i += 1
+      } else {
+        added.push(right[j])
+        j += 1
+      }
+    }
+    while (i < m) {
+      removed.push(left[i])
+      i += 1
+    }
+    while (j < n) {
+      added.push(right[j])
+      j += 1
+    }
+
+    return {
+      removedText: removed.join(' ').trim(),
+      addedText: added.join(' ').trim(),
+    }
+  }
+
+  const escapeHtml = (value: string) =>
+    String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+
+  const buildInlineWordDiff = (before: string, after: string) => {
+    const left = tokenizeDiffText(before)
+    const right = tokenizeDiffText(after)
+    const m = left.length
+    const n = right.length
+    const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0))
+
+    for (let i = m - 1; i >= 0; i -= 1) {
+      for (let j = n - 1; j >= 0; j -= 1) {
+        dp[i][j] = left[i] === right[j] ? 1 + dp[i + 1][j + 1] : Math.max(dp[i + 1][j], dp[i][j + 1])
+      }
+    }
+
+    const beforeTokens: Array<{ text: string; kind: 'same' | 'removed' }> = []
+    const afterTokens: Array<{ text: string; kind: 'same' | 'added' }> = []
+    let i = 0
+    let j = 0
+    while (i < m && j < n) {
+      if (left[i] === right[j]) {
+        beforeTokens.push({ text: left[i], kind: 'same' })
+        afterTokens.push({ text: right[j], kind: 'same' })
+        i += 1
+        j += 1
+        continue
+      }
+      if (dp[i + 1][j] >= dp[i][j + 1]) {
+        beforeTokens.push({ text: left[i], kind: 'removed' })
+        i += 1
+      } else {
+        afterTokens.push({ text: right[j], kind: 'added' })
+        j += 1
+      }
+    }
+    while (i < m) {
+      beforeTokens.push({ text: left[i], kind: 'removed' })
+      i += 1
+    }
+    while (j < n) {
+      afterTokens.push({ text: right[j], kind: 'added' })
+      j += 1
+    }
+
+    const toHtml = (
+      tokens: Array<{ text: string; kind: 'same' | 'removed' | 'added' }>,
+      highlight: 'removed' | 'added',
+    ) =>
+      tokens
+        .map((token) => {
+          const safe = escapeHtml(token.text)
+          if (token.kind === highlight) {
+            const cls =
+              highlight === 'removed'
+                ? 'bg-rose-500/15 text-rose-200 line-through rounded px-0.5'
+                : 'bg-emerald-500/15 text-emerald-200 rounded px-0.5'
+            return `<span class="${cls}">${safe}</span>`
+          }
+          return safe
+        })
+        .join(' ')
+
+    return {
+      beforeHtml: toHtml(beforeTokens as Array<{ text: string; kind: 'same' | 'removed' | 'added' }>, 'removed'),
+      afterHtml: toHtml(afterTokens as Array<{ text: string; kind: 'same' | 'removed' | 'added' }>, 'added'),
+    }
   }
 
   const cueLabelMap: Record<keyof ManuscriptCues, string> = {
@@ -1648,6 +1920,72 @@ export default function WorkspaceDetailPage() {
     return false
   }
 
+  const focusRepairAuditChange = (manuscriptId: string, auditItem: any) => {
+    const query = getRepairItemMatchQuery(auditItem)
+    if (!query) {
+      setError('No searchable content found for this repair action.')
+      return
+    }
+    const found = focusSearchQueryInManuscript(manuscriptId, query)
+    if (!found) {
+      setError('Could not locate that repaired section in the current manuscript view.')
+    }
+  }
+
+  const clearRepairMarkers = (manuscriptId: string) => {
+    const container = manuscriptContentRefs.current[manuscriptId]
+    if (!container) return
+    const marked = Array.from(container.querySelectorAll<HTMLElement>('[data-repair-marker="true"]'))
+    marked.forEach((element) => {
+      element.removeAttribute('data-repair-marker')
+      element.removeAttribute('data-repair-label')
+      element.removeAttribute('title')
+      element.style.boxShadow = ''
+      element.style.backgroundColor = ''
+      element.style.borderRadius = ''
+      element.style.transition = ''
+    })
+  }
+
+  const applyRepairMarkers = (manuscriptId: string, manuscript: any) => {
+    const container = manuscriptContentRefs.current[manuscriptId]
+    if (!container) return
+    clearRepairMarkers(manuscriptId)
+    const repairedItems = getRepairedAuditItems(manuscript)
+    if (!repairedItems.length) return
+
+    const candidates = Array.from(container.querySelectorAll<HTMLElement>('h1,h2,h3,h4,p,li,blockquote'))
+    repairedItems.forEach((entry: any) => {
+      const query = getRepairItemMatchQuery(entry)
+      if (!query) return
+      const normalizedQuery = normalizeCueSearchText(query)
+      if (!normalizedQuery) return
+      const probe = normalizedQuery.slice(0, Math.min(80, normalizedQuery.length))
+      const exact = candidates.find((element) => {
+        const text = normalizeCueSearchText(String(element.textContent || ''))
+        return text.includes(normalizedQuery) || (probe.length >= 20 && text.includes(probe))
+      })
+      const target =
+        exact ||
+        candidates
+          .map((element) => ({
+            element,
+            score: scoreCueMatch(query, String(element.textContent || '')),
+          }))
+          .sort((a, b) => b.score - a.score)
+          .find((item) => item.score >= 0.5)?.element
+      if (!target) return
+      const issueShort = String(entry?.issueId || '').trim().slice(0, 18)
+      target.setAttribute('data-repair-marker', 'true')
+      target.setAttribute('data-repair-label', issueShort ? `Repaired ${issueShort}` : 'Repaired')
+      target.setAttribute('title', `Repaired · ${String(entry?.issueId || 'issue')}`)
+      target.style.transition = 'box-shadow 0.2s ease, background-color 0.2s ease'
+      target.style.borderRadius = '0.35rem'
+      target.style.boxShadow = 'inset 0 0 0 2px rgba(245, 158, 11, 0.55)'
+      target.style.backgroundColor = 'rgba(245, 158, 11, 0.12)'
+    })
+  }
+
   useEffect(() => {
     if (!pendingSearchJump) return
     if (activeSection !== 'manuscript') return
@@ -1660,6 +1998,23 @@ export default function WorkspaceDetailPage() {
     }, 220)
     return () => window.clearTimeout(run)
   }, [pendingSearchJump, activeSection, workspace?.manuscripts])
+
+  useEffect(() => {
+    if (activeSection !== 'manuscript') return
+    const timer = window.setTimeout(() => {
+      const manuscripts = workspace?.manuscripts || []
+      manuscripts.forEach((manuscript: any) => {
+        const manuscriptId = String(manuscript?.id || '')
+        if (!manuscriptId) return
+        if (!showRepairMarkers) {
+          clearRepairMarkers(manuscriptId)
+          return
+        }
+        applyRepairMarkers(manuscriptId, manuscript)
+      })
+    }, 180)
+    return () => window.clearTimeout(timer)
+  }, [activeSection, workspace?.manuscripts, showRepairMarkers])
 
   const renderManuscriptCuesPanel = (
     cues: ManuscriptCues,
@@ -3211,6 +3566,8 @@ export default function WorkspaceDetailPage() {
       setSocraticCoachSession(response.data || null)
       setCoachFeedback({})
       setCoachAnswers({})
+      setRepairLockedAnchors([])
+      setRepairJob(null)
       const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
       setWorkspace(refreshed.data)
     } catch (err) {
@@ -3246,6 +3603,91 @@ export default function WorkspaceDetailPage() {
     } finally {
       setActionLoading((prev) => prev.filter((item) => item !== actionKey))
     }
+  }
+
+  const queueCoachRepairJob = async (issueIds: string[], conversationSummary: string) => {
+    const config = withToken()
+    if (!config) return
+    if (!Array.isArray(issueIds) || issueIds.length === 0) {
+      setError('No mapped repair action was found.')
+      return
+    }
+    const selectedManuscript = workspace?.manuscripts?.[0]
+    if (!selectedManuscript?.id) {
+      setError('No manuscript available to repair.')
+      return
+    }
+    const actionKey = 'coach-repair-apply'
+    setActionLoading((prev) => (prev.includes(actionKey) ? prev : [...prev, actionKey]))
+    try {
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/manuscripts/${selectedManuscript.id}/repair/apply`,
+        {
+          selectedIssueIds: issueIds,
+          doNotTouchAnchors: repairLockedAnchors,
+          conversationSummary: String(conversationSummary || '').trim(),
+          mode: 'targeted',
+        },
+        config,
+      )
+      const data = response.data || {}
+      setRepairJob({
+        manuscriptId: selectedManuscript.id,
+        jobId: String(data.jobId || ''),
+        status: String(data.status || 'queued'),
+        state: 'queued',
+        message: 'Repair queued.',
+      })
+      setError(null)
+    } catch (err) {
+      console.error('Failed to apply coach repair', err)
+      setError('Unable to start targeted repair.')
+    } finally {
+      setActionLoading((prev) => prev.filter((item) => item !== actionKey))
+    }
+  }
+
+  const handleApplyCoachRepair = async (questionId: string) => {
+    const issue = getRepairIssueByQuestionId(questionId)
+    const issueId = String(issue?.issueId || '').trim()
+    if (!issueId) {
+      setError('This question does not have a mapped manuscript repair action.')
+      return
+    }
+    if (repairedIssueIds.has(issueId)) {
+      setError('This repair action is already applied in the current manuscript.')
+      return
+    }
+    await queueCoachRepairJob([issueId], String(coachAnswers?.[questionId] || '').trim())
+  }
+
+  const handleApplyAllCoachRepairs = async () => {
+    const issueIds: string[] = Array.from(
+      new Set(
+        pendingCoachRepairPlan
+          .map((item: any) => String(item?.issueId || '').trim())
+          .filter((value: string) => value.length > 0),
+      ),
+    )
+    if (issueIds.length === 0) {
+      setError('No repair actions are available for this session.')
+      return
+    }
+    const combinedSummary = (socraticCoachSession?.questions || [])
+      .map((question: any) => {
+        const questionId = String(question?.id || '').trim()
+        if (!questionId) return ''
+        const answer = String(coachAnswers?.[questionId] || '').trim()
+        return answer ? `[${questionId}] ${answer}` : ''
+      })
+      .filter(Boolean)
+      .join('\n')
+    await queueCoachRepairJob(issueIds, combinedSummary)
+  }
+
+  const getRepairIssueByQuestionId = (questionId: string) => {
+    const plan = Array.isArray(socraticCoachSession?.repairPlan) ? socraticCoachSession.repairPlan : []
+    return plan.find((item: any) => String(item?.questionId || '').trim() === String(questionId || '').trim())
   }
 
   const buildCoachApplyText = (question: any, feedback: any, answerText: string) => {
@@ -5206,6 +5648,37 @@ export default function WorkspaceDetailPage() {
               </div>
               {workspace.manuscripts?.length ? (
                 <div className="space-y-4">
+                  {lastRepairNotice ? (
+                    <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest text-emerald-300">Last Repair Applied</p>
+                        <p>
+                          Changed sections: {lastRepairNotice.repairedCount} · Remaining review items: {lastRepairNotice.remainingCount}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="cyber-outline text-xs px-3 py-2 rounded-full"
+                          onClick={() => setShowRepairMarkers((prev) => !prev)}
+                        >
+                          {showRepairMarkers ? 'Hide Inline Markers' : 'Show Inline Markers'}
+                        </button>
+                        <button
+                          type="button"
+                          className="cyber-outline text-xs px-3 py-2 rounded-full"
+                          onClick={() =>
+                            setManuscriptQualityExpanded((prev) => ({
+                              ...prev,
+                              [lastRepairNotice.manuscriptId]: true,
+                            }))
+                          }
+                        >
+                          Show Repair Changes
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                   {workspace.manuscripts.map((manuscript: any) => (
                     <div key={manuscript.id} className="border border-white/10 rounded-2xl overflow-visible bg-black/30">
                       <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-black/40 to-transparent border-b border-white/5">
@@ -5238,8 +5711,183 @@ export default function WorkspaceDetailPage() {
                             </div>
                           )}
                         </div>
+                        <div className="flex items-center gap-2">
+                          {(() => {
+                            const qualityUi = getManuscriptQualityUi(manuscript)
+                            return (
+                              <span className={`text-[10px] px-2 py-1 rounded-full border uppercase tracking-widest ${qualityUi.className}`}>
+                                {qualityUi.label}
+                              </span>
+                            )
+                          })()}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setManuscriptQualityExpanded((prev) => ({
+                                ...prev,
+                                [manuscript.id]: !prev[manuscript.id],
+                              }))
+                            }
+                            className="cyber-outline text-[10px] px-2 py-1 rounded-full"
+                          >
+                            {manuscriptQualityExpanded[manuscript.id] ? 'Hide details' : 'Quality details'}
+                          </button>
+                        </div>
                       </div>
                       <div className="p-5 space-y-4">
+                      {manuscriptQualityExpanded[manuscript.id] ? (
+                        <div className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
+                          <p className="text-[10px] uppercase tracking-widest text-cyan-300">Quality Governance</p>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-gray-300">
+                            <p>Attempts: {manuscript?.content?.metadata?.quality?.repairAttempts ?? 0}</p>
+                            <p>Fixed: {Array.isArray(manuscript?.content?.metadata?.quality?.repairedIssues) ? manuscript.content.metadata.quality.repairedIssues.length : 0}</p>
+                            <p>Remaining: {Array.isArray(manuscript?.content?.metadata?.quality?.remainingIssues) ? manuscript.content.metadata.quality.remainingIssues.length : 0}</p>
+                          </div>
+                          {manuscript?.content?.metadata?.quality?.warningMessage ? (
+                            <p className="text-xs text-amber-200">{String(manuscript.content.metadata.quality.warningMessage)}</p>
+                          ) : null}
+                          {Array.isArray(manuscript?.content?.metadata?.repair?.auditTrail) ? (
+                            <p className="text-[11px] text-gray-400">
+                              Repair provenance: {manuscript.content.metadata.repair.auditTrail.length} patch actions.
+                            </p>
+                          ) : null}
+                          {(() => {
+                            const auditTrail = getRepairAuditTrail(manuscript)
+                            if (!auditTrail.length) return null
+                            return (
+                              <div className="pt-2 space-y-2">
+                                <p className="text-[10px] uppercase tracking-widest text-cyan-300">What Changed</p>
+                                {auditTrail.map((entry: any, idx: number) => {
+                                  const result = String(entry?.result || 'unknown')
+                                  const resultTone =
+                                    result === 'repaired'
+                                      ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-100'
+                                      : result === 'locked'
+                                        ? 'border-amber-400/30 bg-amber-500/10 text-amber-100'
+                                        : 'border-white/15 bg-black/30 text-gray-200'
+                                  return (
+                                    <div key={`${entry?.issueId || 'issue'}-${idx}`} className={`rounded-lg border p-3 space-y-2 ${resultTone}`}>
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <p className="text-[11px] uppercase tracking-widest">
+                                          {String(entry?.issueId || 'issue')} · {result}
+                                        </p>
+                                        <button
+                                          type="button"
+                                          onClick={() => focusRepairAuditChange(manuscript.id, entry)}
+                                          className="cyber-outline text-[10px] px-2 py-1 rounded-full"
+                                        >
+                                          Locate in Manuscript
+                                        </button>
+                                      </div>
+                                      <p className="text-xs text-cyan-100/90">Anchor: {String(entry?.anchor || '—')}</p>
+                                      {(() => {
+                                        const rawBefore = normalizeRepairSnippetRaw(String(entry?.beforeSnippet || ''))
+                                        const rawAfter = normalizeRepairSnippetRaw(String(entry?.afterSnippet || ''))
+                                        const displayBefore = rawBefore || 'No snippet was captured for this repair action.'
+                                        const displayAfter = rawAfter || 'No snippet was captured for this repair action.'
+                                        const { beforeHtml, afterHtml } = buildInlineWordDiff(displayBefore, displayAfter)
+                                        const { removedText, addedText } = buildWordDiff(displayBefore, displayAfter)
+                                        const showDiff = Boolean(removedText || addedText)
+                                        return (
+                                          <>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                                              <div className="rounded-md border border-white/15 bg-black/25 p-2">
+                                                <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1">Before</p>
+                                                <div className="max-h-36 overflow-y-auto pr-1">
+                                                  <p
+                                                    className="text-gray-200 whitespace-pre-wrap"
+                                                    dangerouslySetInnerHTML={{ __html: beforeHtml }}
+                                                  />
+                                                </div>
+                                              </div>
+                                              <div className="rounded-md border border-white/15 bg-black/25 p-2">
+                                                <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1">After</p>
+                                                <div className="max-h-36 overflow-y-auto pr-1">
+                                                  <p
+                                                    className="text-gray-100 whitespace-pre-wrap"
+                                                    dangerouslySetInnerHTML={{ __html: afterHtml }}
+                                                  />
+                                                </div>
+                                              </div>
+                                            </div>
+                                            {showDiff ? (
+                                              <div className="rounded-md border border-white/15 bg-black/35 p-2">
+                                                <p className="text-[10px] uppercase tracking-widest text-cyan-200 mb-2">Diff</p>
+                                                <div className="max-h-36 overflow-y-auto space-y-1 font-mono text-[11px] leading-relaxed pr-1">
+                                                  {removedText ? (
+                                                    <p className="whitespace-pre-wrap text-rose-200 bg-rose-500/10 border border-rose-400/20 rounded px-2 py-1">
+                                                      <span className="text-rose-300 mr-1">-</span>
+                                                      {removedText}
+                                                    </p>
+                                                  ) : null}
+                                                  {addedText ? (
+                                                    <p className="whitespace-pre-wrap text-emerald-200 bg-emerald-500/10 border border-emerald-400/20 rounded px-2 py-1">
+                                                      <span className="text-emerald-300 mr-1">+</span>
+                                                      {addedText}
+                                                    </p>
+                                                  ) : null}
+                                                </div>
+                                              </div>
+                                            ) : null}
+                                          </>
+                                        );
+                                      })()}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )
+                          })()}
+                        </div>
+                      ) : null}
+                      {(() => {
+                        const repairedItems = getRepairedAuditItems(manuscript)
+                        if (!repairedItems.length) return null
+                        const expanded = !!repairHistoryExpanded[manuscript.id]
+                        const visibleItems = expanded ? repairedItems : repairedItems.slice(0, 3)
+                        return (
+                          <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 p-3 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-[10px] uppercase tracking-widest text-emerald-300">
+                                Repaired Sections ({repairedItems.length})
+                              </p>
+                              {repairedItems.length > 3 ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setRepairHistoryExpanded((prev) => ({
+                                      ...prev,
+                                      [manuscript.id]: !expanded,
+                                    }))
+                                  }
+                                  className="cyber-outline text-[10px] px-2 py-1 rounded-full"
+                                >
+                                  {expanded ? 'Show Less' : `Show ${repairedItems.length - 3} More`}
+                                </button>
+                              ) : null}
+                            </div>
+                            <div className="space-y-2">
+                              {visibleItems.map((entry: any, idx: number) => (
+                                <div key={`repair-visible-${entry?.issueId || 'issue'}-${idx}`} className="rounded-md border border-emerald-400/20 bg-black/25 p-2">
+                                  <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                                    <p className="text-[11px] text-emerald-100">
+                                      {String(entry?.issueId || 'issue')} · {String(entry?.anchor || 'anchor')}
+                                    </p>
+                                    <button
+                                      type="button"
+                                      onClick={() => focusRepairAuditChange(manuscript.id, entry)}
+                                      className="cyber-outline text-[10px] px-2 py-1 rounded-full"
+                                    >
+                                      Locate
+                                    </button>
+                                  </div>
+                                  <p className="text-xs text-emerald-50/90">{summarizeRepairSnippet(String(entry?.afterSnippet || entry?.beforeSnippet || ''))}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })()}
                       {!isManuscriptV2(manuscript) && legacyConvertCandidateId === manuscript.id && (
                         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100 space-y-2">
                           <p className="text-xs uppercase tracking-widest text-amber-300">Legacy manuscript format</p>
@@ -5292,6 +5940,14 @@ export default function WorkspaceDetailPage() {
                           </div>
                         </div>
                       ) : isManuscriptV2(manuscript) ? (
+                        <div className="space-y-3">
+                          {getRepairedAuditItems(manuscript).length > 0 ? (
+                            <div className="text-[11px] text-amber-200">
+                              {showRepairMarkers
+                                ? `Inline repaired markers visible (${getRepairedAuditItems(manuscript).length}).`
+                                : `Inline repaired markers hidden (${getRepairedAuditItems(manuscript).length}).`}
+                            </div>
+                          ) : null}
                         <div className={`grid grid-cols-1 gap-6 items-start ${manuscriptCuesCollapsed ? 'xl:grid-cols-[1fr_64px]' : 'xl:grid-cols-[1fr_320px]'}`}>
                           <div
                             ref={(node) => {
@@ -5321,6 +5977,8 @@ export default function WorkspaceDetailPage() {
                               [&_.manuscript-scripture-block]:my-6 [&_.manuscript-scripture-block]:rounded-lg [&_.manuscript-scripture-block]:border [&_.manuscript-scripture-block]:border-gray-300 [&_.manuscript-scripture-block]:bg-gray-100 [&_.manuscript-scripture-block]:px-6 [&_.manuscript-scripture-block]:py-4
                               [&_.manuscript-scripture-block>p]:my-2 [&_.manuscript-scripture-block>p]:text-[1.05rem] [&_.manuscript-scripture-block>p]:leading-relaxed [&_.manuscript-scripture-block>p]:text-gray-900
                               [&_.manuscript-callout]:my-5 [&_.manuscript-callout]:rounded-lg [&_.manuscript-callout]:border [&_.manuscript-callout]:border-blue-300 [&_.manuscript-callout]:bg-blue-50 [&_.manuscript-callout]:px-5 [&_.manuscript-callout]:py-4
+                              [&_[data-repair-marker='true']]:relative
+                              [&_[data-repair-marker='true']::after]:content-[attr(data-repair-label)] [&_[data-repair-marker='true']::after]:block [&_[data-repair-marker='true']::after]:w-fit [&_[data-repair-marker='true']::after]:ml-auto [&_[data-repair-marker='true']::after]:mt-1 [&_[data-repair-marker='true']::after]:rounded-full [&_[data-repair-marker='true']::after]:border [&_[data-repair-marker='true']::after]:border-amber-500/60 [&_[data-repair-marker='true']::after]:bg-amber-100 [&_[data-repair-marker='true']::after]:px-1.5 [&_[data-repair-marker='true']::after]:py-0.5 [&_[data-repair-marker='true']::after]:text-[9px] [&_[data-repair-marker='true']::after]:leading-none [&_[data-repair-marker='true']::after]:font-semibold [&_[data-repair-marker='true']::after]:uppercase [&_[data-repair-marker='true']::after]:tracking-wider [&_[data-repair-marker='true']::after]:text-amber-900
                               selection:bg-blue-200 print:shadow-none print:px-8 print:py-12"
                             style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
                             dangerouslySetInnerHTML={{
@@ -5350,6 +6008,7 @@ export default function WorkspaceDetailPage() {
                               regenerating: actionLoading.includes(`manuscript-cues-${manuscript.id}`),
                             },
                           )}
+                        </div>
                         </div>
                       ) : (
                         <div className="space-y-3">
@@ -6695,25 +7354,58 @@ export default function WorkspaceDetailPage() {
               {socraticCoachSession ? (
                 <div className="space-y-4">
                   <div className="cyber-panel rounded-2xl p-5">
-                    <p className="text-xs uppercase tracking-widest cyber-muted mb-2">Coaching Summary</p>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <p className="text-xs uppercase tracking-widest cyber-muted mb-2">Coach + Repair</p>
+                      <button
+                        type="button"
+                        onClick={handleApplyAllCoachRepairs}
+                        disabled={actionLoading.includes('coach-repair-apply') || !!repairJob || pendingCoachRepairPlan.length === 0}
+                        className="cyber-button text-xs px-3 py-2 rounded-full disabled:opacity-60"
+                      >
+                        {actionLoading.includes('coach-repair-apply')
+                          ? 'Queueing...'
+                          : pendingCoachRepairPlan.length > 0
+                            ? `Repair All Pending Sections (${pendingCoachRepairPlan.length})`
+                            : 'All Actions Repaired'}
+                      </button>
+                    </div>
                     <p className="text-sm text-gray-200">{socraticCoachSession.summary || 'No summary available.'}</p>
-                    {Array.isArray(socraticCoachSession.weakAreas) && socraticCoachSession.weakAreas.length > 0 ? (
+                    <p className="text-xs text-gray-400 mt-2">
+                      Repair actions edit manuscript sections mapped to each question anchor. They do not edit the question text itself.
+                    </p>
+                    {repairJob ? (
+                      <div className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3 text-xs text-cyan-100 mt-3">
+                        <span className="uppercase tracking-widest text-cyan-300 mr-2">Repair Job</span>
+                        {repairJob.state || repairJob.status}
+                        {repairJob.message ? ` · ${repairJob.message}` : ''}
+                      </div>
+                    ) : null}
+                    {pendingCoachRepairPlan.length > 0 ? (
                       <div className="mt-4 flex flex-wrap gap-2">
-                        {socraticCoachSession.weakAreas.map((item: string, idx: number) => (
+                        {pendingCoachRepairPlan.map((item: any, idx: number) => (
                           <span
-                            key={`${item}-${idx}`}
+                            key={`${String(item?.issueId || 'pending')}-${idx}`}
                             className="px-2 py-1 rounded-md text-[10px] uppercase tracking-widest bg-red-500/10 text-red-200 border border-red-500/20"
                           >
-                            {item}
+                            {String(item?.issueType || 'issue')} · {String(item?.severity || 'medium')}
                           </span>
                         ))}
                       </div>
-                    ) : null}
+                    ) : (
+                      <div className="mt-4 rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+                        All mapped repair actions are already applied for this manuscript.
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-3">
                     {(socraticCoachSession.questions || []).map((question: any, index: number) => {
                       const feedback = coachFeedback?.[question.id]
+                      const repairIssue = getRepairIssueByQuestionId(String(question.id || ''))
+                      const repairIssueId = String(repairIssue?.issueId || '').trim()
+                      const repairResolved = Boolean(repairIssueId) && repairedIssueIds.has(repairIssueId)
+                      const anchor = String(repairIssue?.targetAnchor || question?.sourceAnchor || workspace.mainPassage)
+                      const locked = repairLockedAnchors.includes(anchor)
                       const answerLoading = actionLoading.includes(`coach-answer-${question.id}`)
                       const applyOutlineLoading = actionLoading.includes(`coach-apply-outline-${question.id}`)
                       const applyManuscriptLoading = actionLoading.includes(`coach-apply-manuscript-${question.id}`)
@@ -6740,6 +7432,55 @@ export default function WorkspaceDetailPage() {
                             <p className="text-xs text-gray-300">
                               <span className="text-cyan-200">Listener Challenge:</span> {question.listenerAngle}
                             </p>
+                          ) : null}
+                          {repairIssue ? (
+                            <div className="rounded-lg border border-white/10 bg-black/25 p-3 space-y-2">
+                              <div className="flex items-start justify-between gap-3">
+                                <p className="text-xs text-gray-200">
+                                  <span className="uppercase tracking-widest text-cyan-300 mr-2">Repair Action</span>
+                                  {String(repairIssue?.issueType || 'text_fidelity')} · {String(repairIssue?.severity || 'medium')}
+                                  <span className="block text-gray-400 mt-1">{String(repairIssue?.proposedAction || '')}</span>
+                                </p>
+                                {repairResolved ? (
+                                  <span className="text-[10px] px-2 py-1 rounded-full border border-emerald-400/40 text-emerald-200 bg-emerald-500/15 uppercase tracking-widest">
+                                    Repaired
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setRepairLockedAnchors((prev) =>
+                                        locked ? prev.filter((value) => value !== anchor) : [...prev, anchor],
+                                      )
+                                    }
+                                    className={`text-[10px] px-2 py-1 rounded-full border ${
+                                      locked
+                                        ? 'border-amber-400/40 text-amber-200 bg-amber-500/15'
+                                        : 'border-white/20 text-gray-300 bg-black/30'
+                                    }`}
+                                  >
+                                    {locked ? 'Locked' : 'Lock Anchor'}
+                                  </button>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-cyan-200">Anchor: {anchor}</p>
+                              {repairResolved ? (
+                                <p className="text-[11px] text-emerald-200 pt-1">
+                                  Already applied to the current manuscript version.
+                                </p>
+                              ) : (
+                                <div className="pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApplyCoachRepair(String(question.id || ''))}
+                                    disabled={actionLoading.includes('coach-repair-apply') || !!repairJob}
+                                    className="cyber-button text-xs px-3 py-2 rounded-full disabled:opacity-60"
+                                  >
+                                    {actionLoading.includes('coach-repair-apply') ? 'Queueing...' : 'Repair Manuscript For This Question'}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           ) : null}
 
                           <textarea
