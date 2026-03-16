@@ -155,11 +155,11 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
   const previewScale = columns === 1 ? 1 : columns === 2 ? 0.62 : 0.48
 
   const fontOptions = useMemo(
-    () => ['Playfair Display', 'Source Sans Pro', 'Lora', 'Merriweather', 'Montserrat', 'Poppins'],
+    () => ['Montserrat', 'Inter', 'Playfair Display', 'Source Sans Pro', 'Lora', 'Merriweather', 'Poppins', 'Roboto'],
     []
   )
 
-  const fontSizeOptions = useMemo(() => [18, 22, 26, 32, 36, 42, 48, 54], [])
+  const fontSizeOptions = useMemo(() => [18, 22, 26, 32, 36, 42, 48, 54, 64, 72, 84], [])
 
   useEffect(() => {
     const linkId = 'google-fonts-deck-editor'
@@ -175,60 +175,61 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
   }, [fontOptions])
 
   const defaultStyleForField = (variant?: string): FieldStyle => {
-    const headingFont = deck?.theme?.fontHeading || 'Playfair Display'
-    const bodyFont = deck?.theme?.fontBody || 'Source Sans Pro'
+    const headingFont = deck?.theme?.fontHeading || 'Montserrat'
+    const bodyFont = deck?.theme?.fontBody || 'Inter'
+    const primaryColor = deck?.theme?.primaryColor || '#60A5FA'
     switch (variant) {
       case 'title':
         return {
           fontFamily: headingFont,
-          fontSize: 42,
-          color: deck?.theme?.primaryColor || '#1D4ED8',
+          fontSize: 48,
+          color: '#FFFFFF',
           bold: true,
           align: 'center',
           verticalAlign: 'middle',
-          backgroundColor: '#FFFFFF',
-          backgroundOpacity: 0.86,
+          backgroundColor: '#000000',
+          backgroundOpacity: 0.55,
         }
       case 'subtitle':
         return {
           fontFamily: bodyFont,
-          fontSize: 20,
-          color: '#334155',
+          fontSize: 28,
+          color: '#E5E5E5',
           align: 'center',
           verticalAlign: 'middle',
-          backgroundColor: '#FFFFFF',
-          backgroundOpacity: 0.74,
+          backgroundColor: '#000000',
+          backgroundOpacity: 0.45,
         }
       case 'reference':
         return {
           fontFamily: headingFont,
-          fontSize: 28,
-          color: deck?.theme?.primaryColor || '#1D4ED8',
+          fontSize: 36,
+          color: primaryColor,
           bold: true,
           align: 'center',
-          verticalAlign: 'top',
-          backgroundColor: '#FFFFFF',
-          backgroundOpacity: 0.86,
+          verticalAlign: 'middle',
+          backgroundColor: '#000000',
+          backgroundOpacity: 0.55,
         }
       case 'message':
         return {
           fontFamily: bodyFont,
           fontSize: 24,
-          color: '#0f172a',
+          color: '#FFFFFF',
           align: 'center',
           verticalAlign: 'middle',
-          backgroundColor: '#FFFFFF',
-          backgroundOpacity: 0.72,
+          backgroundColor: '#000000',
+          backgroundOpacity: 0.6,
         }
       default:
         return {
           fontFamily: bodyFont,
-          fontSize: 21,
-          color: '#1e293b',
+          fontSize: 22,
+          color: '#FFFFFF',
           align: 'left',
           verticalAlign: 'top',
-          backgroundColor: '#FFFFFF',
-          backgroundOpacity: 0.76,
+          backgroundColor: '#000000',
+          backgroundOpacity: 0.5,
         }
     }
   }
@@ -236,30 +237,10 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
   const normalizeFieldStyle = (variant: SlideFieldBox['variant'], style?: FieldStyle): FieldStyle => {
     const base = defaultStyleForField(variant)
     const candidate = { ...base, ...(style || {}) }
-    const fontSize = Number(candidate.fontSize || base.fontSize || 20)
-    const maxByVariant: Record<string, number> = {
-      title: 50,
-      subtitle: 28,
-      reference: 34,
-      body: 28,
-      message: 30,
-      caption: 24,
-    }
-    const minByVariant: Record<string, number> = {
-      title: 28,
-      subtitle: 16,
-      reference: 18,
-      body: 16,
-      message: 18,
-      caption: 14,
-    }
-    const key = String(variant || 'body')
-    const min = minByVariant[key] ?? 16
-    const max = maxByVariant[key] ?? 30
+    // Don't clamp font sizes - let defaults apply as-is
     return {
       ...candidate,
-      fontSize: Math.max(min, Math.min(max, fontSize)),
-      backgroundOpacity: Math.max(0.45, Math.min(1, Number(candidate.backgroundOpacity ?? base.backgroundOpacity ?? 0.8))),
+      backgroundOpacity: Math.max(0.4, Math.min(1, Number(candidate.backgroundOpacity ?? base.backgroundOpacity ?? 0.55))),
     }
   }
 
@@ -291,36 +272,10 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
     value: string,
     multiline: boolean | undefined,
   ) => {
-    let scale = previewScale
-
-    if (variant === 'title') {
-      scale *= columns === 1 ? 1 : columns === 2 ? 0.86 : 0.78
-    } else if (variant === 'reference') {
-      scale *= columns === 1 ? 1 : columns === 2 ? 0.88 : 0.8
-    } else if (variant === 'subtitle') {
-      scale *= columns === 1 ? 1 : columns === 2 ? 0.9 : 0.84
-    } else {
-      scale *= columns === 1 ? 1 : columns === 2 ? 0.9 : 0.84
-    }
-
-    const length = String(value || '').trim().length
-    if (!multiline && length > 0) {
-      const singleLineLimit = columns === 1 ? 34 : columns === 2 ? 22 : 16
-      if (length > singleLineLimit) {
-        const ratio = singleLineLimit / length
-        scale *= Math.max(0.62, ratio + 0.18)
-      }
-    }
-
-    if (multiline && length > 0) {
-      const multilineLimit = columns === 1 ? 220 : columns === 2 ? 150 : 100
-      if (length > multilineLimit) {
-        const ratio = multilineLimit / length
-        scale *= Math.max(0.68, ratio + 0.22)
-      }
-    }
-
-    return Math.max(0.34, scale)
+    // Keep scale at 1 for single column, minimal reduction for multi-column
+    if (columns === 1) return 1
+    if (columns === 2) return 0.85
+    return 0.75
   }
 
   useEffect(() => {
