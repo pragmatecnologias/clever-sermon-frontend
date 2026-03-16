@@ -5679,7 +5679,7 @@ export default function WorkspaceDetailPage() {
                       </div>
                     </div>
                   ) : null}
-                  {workspace.manuscripts.map((manuscript: any) => (
+                  {[latestManuscript].filter(Boolean).map((manuscript: any) => (
                     <div key={manuscript.id} className="border border-white/10 rounded-2xl overflow-visible bg-black/30">
                       <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-black/40 to-transparent border-b border-white/5">
                         <div className="flex items-center gap-6">

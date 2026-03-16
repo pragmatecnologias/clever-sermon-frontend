@@ -278,6 +278,61 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
     return 0.75
   }
 
+  // Dynamic font sizing for titles that are too long
+  const getDynamicFontSize = (
+    baseFontSize: number,
+    text: string,
+    variant: SlideFieldBox['variant'],
+    boxWidthPercent: number,
+  ): number => {
+    if (!text || (variant !== 'title' && variant !== 'reference')) {
+      return baseFontSize
+    }
+
+    const textLength = text.length
+    // More conservative estimate: ~0.5 char width ratio for Montserrat bold
+    // Box width percentage of container (preview is scaled down)
+    const charsPerLine = Math.floor((boxWidthPercent * 0.9) / (baseFontSize * 0.035))
+
+    if (textLength <= charsPerLine) {
+      return baseFontSize
+    }
+
+    // Calculate font size needed to fit text on one line
+    const targetFontSize = Math.floor((boxWidthPercent * 0.9) / (textLength * 0.035))
+    const minFontSize = variant === 'title' ? 24 : 20
+    
+    return Math.max(minFontSize, Math.min(baseFontSize, targetFontSize))
+  }
+
+  // Calculate dynamic box height when title wraps
+  const getDynamicBoxHeight = (
+    baseHeight: number,
+    text: string,
+    fontSize: number,
+    boxWidthPercent: number,
+    variant: SlideFieldBox['variant'],
+  ): { height: number; overflow: number } => {
+    if (!text || (variant !== 'title' && variant !== 'reference')) {
+      return { height: baseHeight, overflow: 0 }
+    }
+
+    // Estimate how many lines the text will take
+    const charsPerLine = Math.floor((boxWidthPercent * 0.9) / (fontSize * 0.035))
+    const estimatedLines = Math.ceil(text.length / charsPerLine)
+
+    if (estimatedLines <= 1) {
+      return { height: baseHeight, overflow: 0 }
+    }
+
+    // Each additional line adds ~5% height
+    const additionalHeight = (estimatedLines - 1) * 5
+    const newHeight = Math.min(baseHeight + additionalHeight, 40) // Cap at 40%
+    const overflow = newHeight - baseHeight
+
+    return { height: newHeight, overflow }
+  }
+
   useEffect(() => {
     loadDeck()
     loadSlides()
@@ -654,34 +709,60 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
                     <div className="absolute inset-0 bg-slate-900/20" />
                   </>
                 )}
-                {layout?.boxes?.map((box) => {
+                {(() => {
+                // Calculate cumulative overflow from title boxes to push content down
+                let cumulativeOverflow = 0
+                return layout?.boxes?.map((box, boxIndex) => {
                   const value = contentDrafts[slide.id]?.[box.field] || ''
                   const style = styleDrafts[slide.id]?.[box.field] || defaultStyleForField(box.variant)
                   const fieldScale = getPreviewFieldScale(box.variant, value, box.multiline)
+
+                  // Dynamic font sizing for titles
+                  const baseFontSize = style.fontSize || 48
+                  const dynamicFontSize = getDynamicFontSize(baseFontSize, value, box.variant, box.w)
+
+                  // Dynamic box height for titles that wrap
+                  const { height: dynamicHeight, overflow } = getDynamicBoxHeight(
+                    box.h,
+                    value,
+                    dynamicFontSize,
+                    box.w,
+                    box.variant,
+                  )
+
+                  // Track overflow for pushing subsequent boxes down
+                  const currentTop = box.y + cumulativeOverflow
+                  if (box.variant === 'title' || box.variant === 'reference') {
+                    cumulativeOverflow += overflow
+                  }
+
                   const textStyle: React.CSSProperties = {
                     fontFamily: style.fontFamily,
-                    fontSize: style.fontSize ? `${Math.max(9, style.fontSize * fieldScale)}px` : undefined,
+                    fontSize: `${Math.max(9, dynamicFontSize * fieldScale)}px`,
                     color: style.color,
                     fontWeight: style.bold ? 700 : 400,
                     fontStyle: style.italic ? 'italic' : 'normal',
                     textDecoration: style.underline ? 'underline' : 'none',
                     textAlign: style.align,
-                    lineHeight: box.multiline ? String(Math.max(1.04, lineSpacing * fieldScale)) : undefined,
+                    lineHeight: box.multiline ? String(Math.max(1.04, lineSpacing * fieldScale)) : '1.2',
                     overflow: 'hidden',
+                    wordWrap: 'break-word',
+                    overflowWrap: 'break-word',
                   }
 
                   return (
                     <div
                       key={box.field}
-                      className="absolute flex rounded border border-slate-300/70 shadow-[0_8px_24px_-18px_rgba(0,0,0,0.55)]"
+                      className="absolute flex rounded-lg shadow-lg"
                       style={{
                         left: `${box.x}%`,
-                        top: `${box.y}%`,
+                        top: `${currentTop}%`,
                         width: `${box.w}%`,
-                        height: `${box.h}%`,
+                        height: `${dynamicHeight}%`,
                         backgroundColor: style.backgroundColor
                           ? hexToRgba(style.backgroundColor, style.backgroundOpacity ?? 1)
                           : undefined,
+                        backdropFilter: style.backgroundOpacity && style.backgroundOpacity > 0 ? 'blur(8px)' : undefined,
                       }}
                     >
                       {box.multiline ? (
@@ -734,7 +815,8 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
                       )}
                     </div>
                   )
-                })}
+                })
+                })()}
               </div>
               <div className="mt-3">
                 <label className="block text-xs text-gray-400 mb-1">Speaker Notes</label>

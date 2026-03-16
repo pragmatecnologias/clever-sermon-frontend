@@ -95,14 +95,31 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
     setError(null)
 
     try {
-      const pointNodes = Array.isArray(workspace?.outlines?.[0]?.structure?.pointNodes)
-        ? workspace.outlines[0].structure.pointNodes
+      const selectedOutline = workspace?.outlines?.find((outline: any) => outline?.isSelected) || workspace?.outlines?.[0]
+      const rawPointNodes = Array.isArray(selectedOutline?.structure?.pointNodes)
+        ? selectedOutline.structure.pointNodes
         : []
-      const legacyPoints = Array.isArray(workspace?.outlines?.[0]?.structure?.points)
-        ? workspace.outlines[0].structure.points
+      const canonicalPoints = Array.isArray(selectedOutline?.structure?.points)
+        ? selectedOutline.structure.points
         : []
+      const pointNodes = (canonicalPoints.length ? canonicalPoints : rawPointNodes)
+        .map((point: any, index: number) => {
+          const canonicalTitle = typeof point === 'string' ? point : (point?.title || point?.content || '')
+          const node = rawPointNodes[index]
+          if (node && typeof node === 'object') {
+            return {
+              ...node,
+              title: node?.title || canonicalTitle,
+            }
+          }
+          if (typeof point === 'string') {
+            return { title: point }
+          }
+          return point
+        })
+        .filter(Boolean)
 
-      const normalizedPoints = (pointNodes.length ? pointNodes : legacyPoints)
+      const normalizedPoints = (canonicalPoints.length ? canonicalPoints : pointNodes)
         .map((point: any) => {
           const title = typeof point === 'string' ? point : (point?.title || point?.content || '')
           const summary = typeof point === 'string' ? '' : (point?.summary || point?.preachingInsight || '')
@@ -153,7 +170,16 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
         audienceContext: workspace.audienceProfile,
         tone: workspace.metadata?.tone,
         notes: [manuscriptText, ...studySummaryParts].filter(Boolean).join('\n\n'),
-        outline: workspace.outlines?.[0],
+        outline: selectedOutline
+          ? {
+              ...selectedOutline,
+              structure: {
+                ...(selectedOutline.structure || {}),
+                points: normalizedPoints,
+                pointNodes,
+              },
+            }
+          : selectedOutline,
         manuscript: workspace.manuscripts?.[0],
         applications: unique(mergedApplications),
         questions: unique(mergedQuestions),
@@ -171,10 +197,8 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
   }
 
   const handleGenerateDeck = async () => {
-    let resolvedSermonId = sermonId
-    if (!resolvedSermonId) {
-      resolvedSermonId = await handleSyncWorkspace()
-    }
+    // Always sync first so slide generation uses the latest outline/manuscript content.
+    const resolvedSermonId = await handleSyncWorkspace()
     if (!resolvedSermonId) return
 
     setGenerating(true)
@@ -202,8 +226,11 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
         const data = JSON.parse(event.data)
         setProgress(data.progress || 0)
         setProgressMessage(data.message || 'Generating slides...')
+        if (data?.status) {
+          setExistingDeckStatus(String(data.status).toLowerCase())
+        }
         
-        if (data.status === 'completed') {
+        if (data.status === 'completed' || data.status === 'ready') {
           eventSource.close()
           setGenerating(false)
           setProgress(100)
