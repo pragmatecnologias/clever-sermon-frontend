@@ -19,6 +19,15 @@ export interface MediaPromptEntry {
   fields?: Record<string, string>
 }
 
+export function buildFallbackImagePrompt(input: {
+  theme?: string
+  scripture: string
+  title: string
+}): string {
+  const theme = input.theme || 'faith'
+  return `Create a cinematic worship image representing ${theme}. Biblical context: ${input.scripture}. Sermon title: "${input.title}". Church setting, inspirational, no text on image.`
+}
+
 export function composeImagePrompt(fields: ImagePromptFields, isSpanish: boolean): string {
   if (isSpanish) {
     return [

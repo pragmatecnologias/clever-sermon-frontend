@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Image, Sparkles, Loader2 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
-import { composeImagePrompt, type ImagePromptFields } from '@/lib/media-prompts'
+import { buildFallbackImagePrompt, composeImagePrompt, type ImagePromptFields } from '@/lib/media-prompts'
 
 interface ImageGenerationPanelProps {
   workspaceId: string
@@ -82,11 +82,11 @@ export default function ImageGenerationPanel({
 
   const generateAutoPrompt = () => {
     if (autoPrompt?.trim()) return autoPrompt.trim()
-    const theme = workspaceData.theme || 'faith'
-    const scripture = workspaceData.mainPassage
-    const title = workspaceData.title
-    
-    return `Create a cinematic worship image representing ${theme}. Biblical context: ${scripture}. Sermon title: "${title}". Church setting, inspirational, no text on image.`
+    return buildFallbackImagePrompt({
+      theme: workspaceData.theme || 'faith',
+      scripture: workspaceData.mainPassage,
+      title: workspaceData.title,
+    })
   }
 
   const handleAutoGenerate = () => {
