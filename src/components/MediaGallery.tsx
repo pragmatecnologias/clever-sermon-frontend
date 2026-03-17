@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Image, FileText, Music, Mic, Video, Download, Trash2, Loader2, Share2 } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { Image, FileText, Music, Mic, Video, Download, Trash2, Loader2, Share2, Play, Pause } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
 
 interface MediaItem {
@@ -13,6 +13,19 @@ interface MediaItem {
   errorMessage?: string
   label?: string
   dimensions?: string
+  selectedTrackId?: string
+  tracksCount?: number
+  progressCurrent?: number
+  progressTotal?: number
+  progressPercent?: number
+  progressLabel?: string
+}
+
+interface MusicTrackOption {
+  trackId: string
+  title?: string
+  durationSeconds?: number
+  previewUrl?: string
 }
 
 function formatSocialToken(value?: string): string {
@@ -22,6 +35,56 @@ function formatSocialToken(value?: string): string {
     .filter(Boolean)
     .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
     .join(' ')
+}
+
+function parseSunoProgress(errorMessage?: string): {
+  progressCurrent?: number
+  progressTotal?: number
+  progressPercent?: number
+  progressLabel?: string
+} {
+  const raw = String(errorMessage || '').trim()
+  if (!raw) return {}
+
+  const statusMatch = raw.match(/\[Suno\s+([A-Z_]+)\]/i)
+  const ratioMatch = raw.match(/\((\d+)\s*\/\s*(\d+)\)/)
+  const attemptMatch = raw.match(/\(attempt\s+(\d+)\)/i)
+
+  let progressCurrent: number | undefined
+  let progressTotal: number | undefined
+  if (ratioMatch) {
+    progressCurrent = Number(ratioMatch[1])
+    progressTotal = Number(ratioMatch[2])
+  } else if (attemptMatch) {
+    progressCurrent = Number(attemptMatch[1])
+    progressTotal = 75
+  }
+
+  const progressPercent =
+    typeof progressCurrent === 'number' && typeof progressTotal === 'number' && progressTotal > 0
+      ? Math.max(0, Math.min(100, Math.round((progressCurrent / progressTotal) * 100)))
+      : undefined
+
+  const progressLabel = statusMatch ? `Suno ${statusMatch[1].replace(/_/g, ' ')}` : undefined
+
+  return {
+    progressCurrent,
+    progressTotal,
+    progressPercent,
+    progressLabel,
+  }
+}
+
+function formatEtaFromProgress(current?: number, total?: number): string | null {
+  if (typeof current !== 'number' || typeof total !== 'number') return null
+  if (total <= 0 || current >= total) return null
+  const remainingAttempts = Math.max(0, total - current)
+  const estimatedSeconds = remainingAttempts * 4
+  if (estimatedSeconds <= 0) return null
+  const minutes = Math.floor(estimatedSeconds / 60)
+  const seconds = estimatedSeconds % 60
+  if (minutes <= 0) return `~${seconds}s remaining`
+  return `~${minutes}m ${seconds}s remaining`
 }
 
 interface MediaGalleryProps {
@@ -97,9 +160,12 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
     }
   }
 
-  const loadMediaLibrary = useCallback(async () => {
+  const loadMediaLibrary = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = Boolean(options?.silent)
     try {
-      setLoading(true)
+      if (!silent) {
+        setLoading(true)
+      }
       const [decksResult, imagesResult, audioResult, musicResult, videoResult, socialResult] = await Promise.allSettled([
         slidesApi.getDecks(token),
         slidesApi.listImages(workspaceId, token),
@@ -142,14 +208,23 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
 
       if (musicResult.status === 'fulfilled' && Array.isArray(musicResult.value)) {
         mappedMedia.push(
-          ...musicResult.value.map((item: any) => ({
-            id: item.id,
-            type: 'music' as const,
-            status: (String(item.status || '').toLowerCase() === 'ready' ? 'completed' : String(item.status || '').toLowerCase()) as MediaItem['status'],
-            filePath: item.filePath,
-            createdAt: item.createdAt,
-            errorMessage: item.errorMessage,
-          }))
+          ...musicResult.value.map((item: any) => {
+            const progress = parseSunoProgress(item.errorMessage)
+            return {
+              id: item.id,
+              type: 'music' as const,
+              status: (String(item.status || '').toLowerCase() === 'ready' ? 'completed' : String(item.status || '').toLowerCase()) as MediaItem['status'],
+              filePath: item.filePath,
+              createdAt: item.createdAt,
+              errorMessage: item.errorMessage,
+              selectedTrackId: item.selectedTrackId,
+              tracksCount: Array.isArray(item.tracks) ? item.tracks.length : 0,
+              progressCurrent: progress.progressCurrent,
+              progressTotal: progress.progressTotal,
+              progressPercent: progress.progressPercent,
+              progressLabel: progress.progressLabel,
+            }
+          })
         )
       }
 
@@ -189,7 +264,9 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
     } catch (err) {
       console.error('Failed to load media library:', err)
     } finally {
-      setLoading(false)
+      if (!silent) {
+        setLoading(false)
+      }
     }
   }, [workspaceId, token])
 
@@ -211,7 +288,7 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
     if (!hasInFlightItems) return
 
     const interval = setInterval(() => {
-      void loadMediaLibrary()
+      void loadMediaLibrary({ silent: true })
     }, 2500)
 
     return () => clearInterval(interval)
@@ -462,16 +539,53 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
                 ) : null}
 
                 {mediaItem.status === 'processing' && (
-                  <div className="mb-3">
-                    <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
-                      <div className="h-full w-full animate-[progress_loop_1.1s_linear_infinite] bg-gradient-to-r from-transparent via-cyan-300 to-transparent" />
+                  <div className="mb-3 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] text-gray-300">
+                      <span>{mediaItem.progressLabel || 'Processing'}</span>
+                      {typeof mediaItem.progressCurrent === 'number' && typeof mediaItem.progressTotal === 'number' ? (
+                        <span>
+                          {mediaItem.progressCurrent}/{mediaItem.progressTotal}
+                          {typeof mediaItem.progressPercent === 'number' ? ` • ${mediaItem.progressPercent}%` : ''}
+                        </span>
+                      ) : null}
                     </div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                      <div
+                        className="h-full rounded-full bg-cyan-300 transition-all duration-500"
+                        style={{
+                          width: `${Math.max(
+                            6,
+                            Math.min(100, Number(mediaItem.progressPercent || 12)),
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                    {formatEtaFromProgress(mediaItem.progressCurrent, mediaItem.progressTotal) ? (
+                      <p className="text-[11px] text-gray-400">
+                        {formatEtaFromProgress(mediaItem.progressCurrent, mediaItem.progressTotal)}
+                      </p>
+                    ) : null}
                   </div>
                 )}
 
                 {mediaItem.status === 'failed' && mediaItem.errorMessage && (
                   <p className="text-xs text-red-300 mb-3">{mediaItem.errorMessage}</p>
                 )}
+
+                {mediaItem.type === 'music' && Number(mediaItem.tracksCount || 0) > 1 ? (
+                  <p className="text-[11px] text-cyan-200 mb-2">
+                    {mediaItem.tracksCount} tracks available
+                  </p>
+                ) : null}
+
+                {mediaItem.type === 'music' && mediaItem.status === 'completed' ? (
+                  <MusicTrackSelector
+                    musicId={mediaItem.id}
+                    token={token}
+                    selectedTrackId={mediaItem.selectedTrackId}
+                    onTrackSelected={loadMediaLibrary}
+                  />
+                ) : null}
 
                 {(mediaItem.status === 'completed' || mediaItem.status === 'failed') && (
                   <div className="flex gap-2 mt-3">
@@ -525,6 +639,159 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+function MusicTrackSelector({
+  musicId,
+  token,
+  selectedTrackId,
+  onTrackSelected,
+}: {
+  musicId: string
+  token: string
+  selectedTrackId?: string
+  onTrackSelected?: () => Promise<void> | void
+}) {
+  const [tracks, setTracks] = useState<MusicTrackOption[]>([])
+  const [activeTrackId, setActiveTrackId] = useState<string>(selectedTrackId || '')
+  const [loading, setLoading] = useState(false)
+  const [selectingTrackId, setSelectingTrackId] = useState<string>('')
+  const [playingTrackId, setPlayingTrackId] = useState<string>('')
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null)
+
+  const loadTracks = useCallback(async () => {
+    try {
+      setLoading(true)
+      const music = await slidesApi.getMusic(musicId, token)
+      const nextTracks = Array.isArray(music?.tracks) ? music.tracks : []
+      const normalized = nextTracks
+        .map((track: any) => ({
+          trackId: String(track?.trackId || '').trim(),
+          title: String(track?.title || '').trim() || undefined,
+          durationSeconds: Number(track?.durationSeconds) || undefined,
+          previewUrl: String(track?.streamAudioUrl || track?.audioUrl || '').trim() || undefined,
+        }))
+        .filter((track: MusicTrackOption) => Boolean(track.trackId))
+      setTracks(normalized)
+      setActiveTrackId(String(music?.selectedTrackId || selectedTrackId || normalized[0]?.trackId || ''))
+    } catch (error) {
+      console.error('Failed to load music tracks:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [musicId, token, selectedTrackId])
+
+  useEffect(() => {
+    loadTracks()
+  }, [loadTracks])
+
+  if (loading || tracks.length <= 1) return null
+
+  const handleTogglePreview = async (track: MusicTrackOption) => {
+    const previewUrl = String(track.previewUrl || '').trim()
+    if (!previewUrl) return
+
+    const current = previewAudioRef.current
+    if (playingTrackId === track.trackId && current) {
+      current.pause()
+      current.currentTime = 0
+      setPlayingTrackId('')
+      return
+    }
+
+    if (current) {
+      current.pause()
+      current.currentTime = 0
+    }
+
+    const audio = new Audio(previewUrl)
+    previewAudioRef.current = audio
+    audio.onended = () => {
+      setPlayingTrackId('')
+    }
+
+    try {
+      await audio.play()
+      setPlayingTrackId(track.trackId)
+    } catch (error) {
+      console.error('Failed to play track preview:', error)
+      setPlayingTrackId('')
+    }
+  }
+
+  const handleSelectTrack = async (trackId: string) => {
+    if (!trackId || trackId === activeTrackId || selectingTrackId) return
+    try {
+      setSelectingTrackId(trackId)
+      await slidesApi.selectMusicTrack(musicId, trackId, token)
+      setActiveTrackId(trackId)
+      await onTrackSelected?.()
+    } catch (error) {
+      console.error('Failed to select music track:', error)
+    } finally {
+      setSelectingTrackId('')
+    }
+  }
+
+  const playingTrack = tracks.find((track) => track.trackId === playingTrackId)
+
+  return (
+    <div className="mb-3 space-y-2">
+      <p className="text-[11px] text-gray-300">Pick generated track:</p>
+      {playingTrack ? (
+        <p className="text-[11px] text-green-200">
+          Now playing: {playingTrack.title || `Track ${tracks.findIndex((item) => item.trackId === playingTrack.trackId) + 1}`}
+        </p>
+      ) : null}
+      <div className="grid grid-cols-1 gap-1.5">
+        {tracks.map((track, idx) => {
+          const isActive = activeTrackId === track.trackId
+          const isSelecting = selectingTrackId === track.trackId
+          const durationLabel = track.durationSeconds ? `${Math.max(1, Math.round(track.durationSeconds))}s` : null
+          return (
+            <div
+              key={`${musicId}-${track.trackId}`}
+              className={`w-full rounded-lg border px-2 py-1.5 text-xs ${
+                isActive
+                  ? 'border-green-400/50 bg-green-500/10 text-green-100'
+                  : 'border-white/10 bg-black/20 text-gray-200'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span>{track.title || `Track ${idx + 1}`}</span>
+                <span className="text-[11px] text-gray-300">{durationLabel || 'track'}</span>
+              </div>
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    handleTogglePreview(track)
+                  }}
+                  disabled={!track.previewUrl || Boolean(selectingTrackId)}
+                  className="rounded-md border border-white/15 px-2 py-1 text-[11px] text-gray-100 hover:bg-white/10 disabled:opacity-40 flex items-center gap-1"
+                >
+                  {playingTrackId === track.trackId ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                  {playingTrackId === track.trackId ? 'Stop' : 'Preview'}
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    handleSelectTrack(track.trackId)
+                  }}
+                  disabled={Boolean(selectingTrackId) || isActive}
+                  className="rounded-md border border-white/15 px-2 py-1 text-[11px] text-gray-100 hover:bg-white/10 disabled:opacity-40"
+                >
+                  {isSelecting ? 'Selecting...' : isActive ? 'Selected' : 'Use this'}
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

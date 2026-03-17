@@ -6169,7 +6169,7 @@ export default function WorkspaceDetailPage() {
                   {actionLoading.includes('scripture') ? 'Looking up...' : 'Lookup'}
                 </button>
               </div>
-              <div className="cyber-panel rounded-2xl p-6 space-y-4">
+              <div className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-[1.4fr_0.6fr] items-end">
                   <div className="relative">
                     <label className="text-xs uppercase tracking-widest cyber-muted mb-2 block">Scripture Reference</label>
@@ -7286,6 +7286,7 @@ export default function WorkspaceDetailPage() {
                       <SanctuaryProphecyMapper
                         passage={workspace.mainPassage}
                         mode={/Daniel|Revelation/.test(workspace.mainPassage) ? 'prophecy' : 'sanctuary'}
+                        language={workspace.language || 'en'}
                       />
                     </div>
                   )}
@@ -7847,6 +7848,7 @@ export default function WorkspaceDetailPage() {
                       <SanctuaryProphecyMapper 
                         passage={workspace.mainPassage}
                         mode={/Daniel|Revelation/.test(workspace.mainPassage) ? 'prophecy' : 'sanctuary'}
+                        language={workspace.language || 'en'}
                       />
                     </div>
                   )

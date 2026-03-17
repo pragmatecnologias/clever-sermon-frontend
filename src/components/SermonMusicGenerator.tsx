@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Music, Sparkles, Loader2, Eye, Play, Download } from 'lucide-react'
+import { Music, Sparkles, Loader2 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
 
 interface SermonMusicGeneratorProps {
@@ -16,6 +16,8 @@ interface SermonMusicGeneratorProps {
 type SongMode = 'ambient_only' | 'with_lyrics' | 'chorus_only' | 'background_bed'
 type MusicStyle = 'worship' | 'acoustic' | 'cinematic' | 'orchestral' | 'piano_prayer' | 'youth_contemporary' | 'choir_inspired' | 'instrumental_ambient'
 type UseCase = 'sermon-intro' | 'prayer-reflection' | 'recap-video' | 'youth-promo' | 'closing-appeal' | 'offertory' | 'meditation' | 'theme-song'
+
+const normalizeText = (value?: string | null) => String(value || '').trim()
 
 export default function SermonMusicGenerator({
   workspace,
@@ -36,16 +38,24 @@ export default function SermonMusicGenerator({
   const [style, setStyle] = useState<MusicStyle>('worship')
   const [useCase, setUseCase] = useState<UseCase>('theme-song')
   const [duration, setDuration] = useState(180)
-  const [previewing, setPreviewing] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [generatingLyrics, setGeneratingLyrics] = useState(false)
   const [resolvingSermon, setResolvingSermon] = useState(false)
   const [preview, setPreview] = useState<any>(null)
   const [lyricsDraft, setLyricsDraft] = useState<any>(null)
+  const [lyricsDraftDirty, setLyricsDraftDirty] = useState(false)
+  const [savingLyricsDraft, setSavingLyricsDraft] = useState(false)
+  const [lyricsSaveError, setLyricsSaveError] = useState<string | null>(null)
+  const [lyricsEditorText, setLyricsEditorText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [selectedPromptOption, setSelectedPromptOption] = useState<string>('')
   const [resolvedSermonId, setResolvedSermonId] = useState<string | null>(sermonId || null)
   const sermonIdStorageKey = workspace?.id ? `workspace-sermon-id:${workspace.id}` : null
+  const selectedPromptText =
+    suggestedPromptOptions.find((item) => item.id === selectedPromptOption)?.prompt ||
+    suggestedPrompt ||
+    ''
+  const effectiveStudyPrompt = normalizeText(selectedPromptText)
 
   useEffect(() => {
     if (!suggestedPromptOptions.length) return
@@ -94,6 +104,8 @@ export default function SermonMusicGenerator({
       const draft = sermon?.manuscript?.songLyricsDraft
       if (draft) {
         hydratePreviewFromSongDraft(draft)
+        setLyricsDraftDirty(false)
+        setLyricsSaveError(null)
       }
     } catch {
       // Ignore restore failures; manual generation still works.
@@ -112,6 +124,62 @@ export default function SermonMusicGenerator({
     if (resolvedSermonId || resolvingSermon || !workspace?.id) return
     resolveSermonId()
   }, [resolvedSermonId, resolvingSermon, workspace?.id, sermonIdStorageKey])
+
+  useEffect(() => {
+    if (!lyricsDraftDirty || !resolvedSermonId || !lyricsDraft?.lyrics) return
+    const draftSnapshot = lyricsDraft
+    const timer = setTimeout(async () => {
+      try {
+        setSavingLyricsDraft(true)
+        const lyricMode = draftSnapshot?.mode === 'chorus_only' ? 'chorus_only' : 'with_lyrics'
+        const response = await slidesApi.updateSermonLyricsDraft(
+          {
+            sermonId: resolvedSermonId,
+            mode: lyricMode,
+            style: draftSnapshot?.style || style,
+            useCase: draftSnapshot?.useCase || useCase,
+            studyPrompt: draftSnapshot?.studyPrompt ?? effectiveStudyPrompt,
+            language: draftSnapshot?.language || normalizedLanguage,
+            elements: draftSnapshot?.elements || null,
+            lyrics: draftSnapshot?.lyrics || {},
+          },
+          token,
+        )
+        const nextDraft = {
+          mode: response?.draft?.mode || lyricMode,
+          style: response?.draft?.style || draftSnapshot?.style || style,
+          useCase: response?.draft?.useCase || draftSnapshot?.useCase || useCase,
+          studyPrompt: response?.draft?.studyPrompt ?? draftSnapshot?.studyPrompt ?? effectiveStudyPrompt,
+          language: response?.draft?.language || draftSnapshot?.language || normalizedLanguage,
+          elements: response?.elements || draftSnapshot?.elements || null,
+          lyrics: response?.lyrics || draftSnapshot?.lyrics || {},
+        }
+        setLyricsDraft(nextDraft)
+        setPreview({
+          type: 'lyrics',
+          elements: nextDraft.elements || null,
+          lyrics: nextDraft.lyrics,
+        })
+        setLyricsDraftDirty(false)
+        setLyricsSaveError(null)
+      } catch (err: any) {
+        setLyricsSaveError(err.response?.data?.message || 'Failed to save lyrics changes')
+      } finally {
+        setSavingLyricsDraft(false)
+      }
+    }, 700)
+
+    return () => clearTimeout(timer)
+  }, [
+    lyricsDraftDirty,
+    lyricsDraft,
+    resolvedSermonId,
+    style,
+    useCase,
+    effectiveStudyPrompt,
+    normalizedLanguage,
+    token,
+  ])
 
   const musicStyles: { value: MusicStyle; label: string; labelEs: string }[] = [
     { value: 'worship', label: 'Worship', labelEs: 'Adoración' },
@@ -135,46 +203,144 @@ export default function SermonMusicGenerator({
     { value: 'meditation', label: 'Meditation', labelEs: 'Meditación', description: 'Peaceful reflection', descriptionEs: 'Reflexión en paz' },
   ]
 
-  const selectedPromptText =
-    suggestedPromptOptions.find((item) => item.id === selectedPromptOption)?.prompt ||
-    suggestedPrompt ||
-    ''
-  const requiresLyricsDraft = mode === 'with_lyrics' || mode === 'chorus_only'
-  const hasLyricsDraft =
+  const buildLyricsEditorText = (lyrics: any) => {
+    const lines = [
+      '[VERSE 1]',
+      ...(Array.isArray(lyrics?.verse1) ? lyrics.verse1 : []),
+      '',
+      '[CHORUS]',
+      ...(Array.isArray(lyrics?.chorus) ? lyrics.chorus : []),
+      '',
+      '[VERSE 2]',
+      ...(Array.isArray(lyrics?.verse2) ? lyrics.verse2 : []),
+      '',
+      '[BRIDGE]',
+      ...(Array.isArray(lyrics?.bridge) ? lyrics.bridge : []),
+      '',
+      '[OUTRO]',
+      ...(Array.isArray(lyrics?.outro) ? lyrics.outro : []),
+    ]
+    return lines.join('\n').trim()
+  }
+
+  const parseLyricsEditorText = (value: string, fallback: any) => {
+    type LyricSectionKey = 'verse1' | 'chorus' | 'verse2' | 'bridge' | 'outro'
+    const sections: Record<LyricSectionKey, string[]> = {
+      verse1: [],
+      chorus: [],
+      verse2: [],
+      bridge: [],
+      outro: [],
+    }
+    const lines = String(value || '').split('\n')
+    let activeSection: LyricSectionKey | null = null
+    const sectionMap: Record<string, LyricSectionKey> = {
+      'verse 1': 'verse1',
+      chorus: 'chorus',
+      'verse 2': 'verse2',
+      bridge: 'bridge',
+      outro: 'outro',
+    }
+
+    for (const rawLine of lines) {
+      const line = String(rawLine || '').trim()
+      if (!line) continue
+
+      const sectionMatch = line.match(/^\[(.+)\]$/)
+      if (sectionMatch) {
+        const normalized = sectionMatch[1].trim().toLowerCase()
+        activeSection = sectionMap[normalized] ?? null
+        continue
+      }
+
+      if (activeSection) {
+        sections[activeSection].push(line)
+      }
+    }
+
+    return {
+      title: String(fallback?.title || '').trim(),
+      themeStatement: String(fallback?.themeStatement || '').trim(),
+      ...sections,
+    }
+  }
+  const expectedLyricMode = mode === 'chorus_only' ? 'chorus_only' : 'with_lyrics'
+  const hasLyricsCoreDraft =
     !!lyricsDraft?.lyrics?.sunoPrompt &&
-    (lyricsDraft?.mode === (mode === 'chorus_only' ? 'chorus_only' : 'with_lyrics')) &&
+    String(lyricsDraft?.mode || '') === expectedLyricMode &&
     String(lyricsDraft?.language || normalizedLanguage)
       .trim()
       .toLowerCase()
       .startsWith(normalizedLanguage === 'es' ? 'es' : 'en')
+  const hasMatchingCreativeSignature =
+    hasLyricsCoreDraft &&
+    normalizeText(lyricsDraft?.style || 'worship') === normalizeText(style) &&
+    normalizeText(lyricsDraft?.useCase || 'theme-song') === normalizeText(useCase) &&
+    normalizeText(lyricsDraft?.studyPrompt) === effectiveStudyPrompt
+  const hasLyricsDraft =
+    hasLyricsCoreDraft && hasMatchingCreativeSignature && !lyricsDraftDirty && !savingLyricsDraft
   const isSpanish = normalizedLanguage === 'es'
   const uiText = {
-    quickAmbient: isSpanish ? 'Rápido Ambiental' : 'Quick Ambient',
-    quickThemeSong: isSpanish ? 'Rápida Canción Tema' : 'Quick Theme Song',
-    preview: isSpanish ? 'Vista previa' : 'Preview',
     generateMusic: isSpanish ? 'Generar música' : 'Generate Music',
     generateLyrics: isSpanish ? 'Generar letra' : 'Generate Lyrics',
-    generatingPreview: isSpanish ? 'Generando vista previa...' : 'Generating Preview...',
     generatingMusic: isSpanish ? 'Generando...' : 'Generating...',
     generatingLyrics: isSpanish ? 'Generando letra...' : 'Generating Lyrics...',
     mode: isSpanish ? 'Modo' : 'Mode',
     style: isSpanish ? 'Estilo' : 'Style',
     useCase: isSpanish ? 'Caso de uso' : 'Use Case',
     duration: isSpanish ? 'Duración' : 'Duration',
-    previewTitle: isSpanish ? 'Vista previa' : 'Preview',
+    previewTitle: isSpanish ? 'Letra generada' : 'Generated Lyrics',
     keyPhrases: isSpanish ? 'Frases clave' : 'Key Phrases',
     verse1: isSpanish ? 'Verso 1' : 'Verse 1',
     verse2: isSpanish ? 'Verso 2' : 'Verse 2',
     chorus: isSpanish ? 'Coro' : 'Chorus',
     bridge: isSpanish ? 'Puente' : 'Bridge',
     sunoPrompt: isSpanish ? 'Prompt para Suno' : 'Suno Prompt',
+    creativeDirection: isSpanish ? 'Dirección creativa' : 'Creative Direction',
+    creativeDirectionHelp: isSpanish
+      ? 'Esta dirección se aplica junto con modo, estilo y caso de uso para letra + generación final.'
+      : 'This direction is applied together with mode, style, and use case for lyrics + final generation.',
     lyricsRequired: isSpanish
       ? 'Genera y guarda la letra primero para crear música con este modo.'
       : 'Generate and save lyrics first to create music in this mode.',
-    quickThemeSongNeedsLyrics: isSpanish
-      ? 'Primero generaremos la letra y luego lanzaremos la música.'
-      : 'Lyrics will be generated first, then the music job will start.',
+    lyricsRefreshRequired: isSpanish
+      ? 'Cambiaste modo/estilo/caso de uso/dirección creativa. Vuelve a generar la letra antes de generar música.'
+      : 'You changed mode/style/use case/creative direction. Regenerate lyrics before generating music.',
+    savingLyricsDraft: isSpanish ? 'Guardando cambios en letra...' : 'Saving lyrics changes...',
+    lyricsSaved: isSpanish ? 'Letra actualizada' : 'Lyrics updated',
+    liveEditHint: isSpanish ? 'Edita la letra inline; se guarda automáticamente.' : 'Edit lyrics inline; changes auto-save.',
+    editorFormatHint: isSpanish
+      ? 'Edita solo secciones de letra: [VERSE 1], [CHORUS], [VERSE 2], [BRIDGE], [OUTRO].'
+      : 'Edit only lyric sections: [VERSE 1], [CHORUS], [VERSE 2], [BRIDGE], [OUTRO].',
+    songTitle: isSpanish ? 'Título' : 'Title',
+    songTheme: isSpanish ? 'Tema' : 'Theme',
   }
+
+  const applyLyricsPatch = (patch: Record<string, any>) => {
+    setLyricsDraft((prev: any) => {
+      if (!prev?.lyrics) return prev
+      const nextDraft = {
+        ...prev,
+        lyrics: {
+          ...prev.lyrics,
+          ...patch,
+        },
+      }
+      setPreview({
+        type: 'lyrics',
+        elements: nextDraft.elements || null,
+        lyrics: nextDraft.lyrics,
+      })
+      return nextDraft
+    })
+    setLyricsDraftDirty(true)
+    setLyricsSaveError(null)
+  }
+
+  useEffect(() => {
+    if (!preview?.lyrics || lyricsDraftDirty) return
+    setLyricsEditorText(buildLyricsEditorText(preview.lyrics))
+  }, [preview?.lyrics, lyricsDraftDirty])
 
   const resolveSermonId = async (): Promise<string | null> => {
     if (resolvedSermonId) return resolvedSermonId
@@ -249,36 +415,11 @@ export default function SermonMusicGenerator({
     }
   }
 
-  const handlePreview = async () => {
-    const sermonTargetId = await resolveSermonId()
-    if (!sermonTargetId) return
-    setPreviewing(true)
-    setError(null)
-    setPreview(null)
-
-    try {
-      const previewData = await slidesApi.previewSermonSong({
-        sermonId: sermonTargetId,
-        mode,
-        style,
-        useCase,
-        studyPrompt: selectedPromptText || undefined,
-        language: normalizedLanguage,
-      }, token)
-
-      setPreview(previewData)
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to generate preview')
-    } finally {
-      setPreviewing(false)
-    }
-  }
-
   const handleGenerate = async () => {
     const sermonTargetId = await resolveSermonId()
     if (!sermonTargetId) return
-    if (requiresLyricsDraft && !hasLyricsDraft) {
-      setError(uiText.lyricsRequired)
+    if (!hasLyricsDraft) {
+      setError(hasLyricsCoreDraft ? uiText.lyricsRefreshRequired : uiText.lyricsRequired)
       return
     }
     setGenerating(true)
@@ -292,7 +433,7 @@ export default function SermonMusicGenerator({
         style,
         useCase,
         duration,
-        studyPrompt: selectedPromptText || undefined,
+        studyPrompt: effectiveStudyPrompt || undefined,
         language: normalizedLanguage,
       }, token)
 
@@ -301,88 +442,7 @@ export default function SermonMusicGenerator({
           mode: generated?.metadata?.mode || (mode === 'chorus_only' ? 'chorus_only' : 'with_lyrics'),
           style: generated?.metadata?.style || style,
           useCase: generated?.metadata?.useCase || useCase,
-          language: generated?.metadata?.language || normalizedLanguage,
-          type: 'lyrics',
-          elements: generated?.sermonElements,
-          lyrics: {
-            title: generated?.metadata?.title || '',
-            themeStatement: generated?.metadata?.themeStatement || '',
-            verse1: generated?.metadata?.lyrics?.verse1 || [],
-            chorus: generated?.metadata?.lyrics?.chorus || [],
-            verse2: generated?.metadata?.lyrics?.verse2 || [],
-            bridge: generated?.metadata?.lyrics?.bridge || [],
-            outro: generated?.metadata?.lyrics?.outro || [],
-            keyPhrases: generated?.metadata?.keyPhrases || [],
-            scriptureAnchors: generated?.metadata?.scriptureAnchors || [],
-            sunoPrompt: generated?.metadata?.lyrics?.sunoPrompt || '',
-          },
-        }
-        setLyricsDraft(persisted)
-        setPreview(persisted)
-      }
-
-      onGenerated?.()
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to generate music')
-    } finally {
-      setGenerating(false)
-    }
-  }
-
-  const handleQuickGenerate = async (quickMode: SongMode) => {
-    const sermonTargetId = await resolveSermonId()
-    if (!sermonTargetId) return
-    setMode(quickMode)
-    setGenerating(true)
-    setError(null)
-
-    try {
-      const quickRequiresLyrics = quickMode === 'with_lyrics' || quickMode === 'chorus_only'
-      if (quickRequiresLyrics) {
-        const lyricMode = quickMode === 'chorus_only' ? 'chorus_only' : 'with_lyrics'
-        const lyricData = await slidesApi.generateSermonLyrics(
-          {
-            sermonId: sermonTargetId,
-            style: 'worship',
-            mode: lyricMode,
-            useCase: 'theme-song',
-            studyPrompt: selectedPromptText || undefined,
-            language: normalizedLanguage,
-          },
-          token,
-        )
-        const persistedDraft = {
-          mode: lyricMode,
-          style: 'worship',
-          useCase: 'theme-song',
-          language: normalizedLanguage,
-          elements: lyricData.elements,
-          lyrics: lyricData.lyrics,
-        }
-        setLyricsDraft(persistedDraft)
-        setPreview({
-          type: 'lyrics',
-          elements: lyricData.elements,
-          lyrics: lyricData.lyrics,
-        })
-      }
-
-      const generated = await slidesApi.generateSermonSong({
-        sermonId: sermonTargetId,
-        workspaceId: workspace.id,
-        mode: quickMode,
-        style: quickMode === 'ambient_only' ? 'instrumental_ambient' : 'worship',
-        useCase: quickMode === 'ambient_only' ? 'sermon-intro' : 'theme-song',
-        duration: quickMode === 'ambient_only' ? 120 : 180,
-        studyPrompt: selectedPromptText || undefined,
-        language: normalizedLanguage,
-      }, token)
-
-      if (generated?.metadata?.type === 'lyrics' && generated?.metadata?.lyrics && typeof window !== 'undefined') {
-        const persisted = {
-          mode: generated?.metadata?.mode || (quickMode === 'chorus_only' ? 'chorus_only' : 'with_lyrics'),
-          style: generated?.metadata?.style || (quickMode === 'ambient_only' ? 'instrumental_ambient' : 'worship'),
-          useCase: generated?.metadata?.useCase || (quickMode === 'ambient_only' ? 'sermon-intro' : 'theme-song'),
+          studyPrompt: generated?.metadata?.studyPrompt ?? effectiveStudyPrompt,
           language: generated?.metadata?.language || normalizedLanguage,
           type: 'lyrics',
           elements: generated?.sermonElements,
@@ -425,7 +485,7 @@ export default function SermonMusicGenerator({
           style,
           mode: lyricMode,
           useCase,
-          studyPrompt: selectedPromptText || undefined,
+          studyPrompt: effectiveStudyPrompt || undefined,
           language: normalizedLanguage,
         },
         token,
@@ -434,10 +494,13 @@ export default function SermonMusicGenerator({
         mode: lyricMode,
         style,
         useCase,
+        studyPrompt: effectiveStudyPrompt,
         language: normalizedLanguage,
         elements: lyricData.elements,
         lyrics: lyricData.lyrics,
       })
+      setLyricsDraftDirty(false)
+      setLyricsSaveError(null)
       setPreview({
         type: 'lyrics',
         elements: lyricData.elements,
@@ -461,93 +524,62 @@ export default function SermonMusicGenerator({
         </div>
       </div>
 
-      {suggestedPromptOptions.length ? (
-        <div className="border border-purple-400/30 bg-purple-500/10 rounded-xl px-4 py-3 space-y-2">
-          <label className="text-[11px] uppercase tracking-wider text-purple-200/90 block">Study Music Prompt</label>
-          <select
-            value={selectedPromptOption}
-            onChange={(e) => setSelectedPromptOption(e.target.value)}
-            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-          >
-            {suggestedPromptOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}{option.description ? ` — ${option.description}` : ''}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-purple-100/90 leading-relaxed">
-            {suggestedPromptOptions.find((item) => item.id === selectedPromptOption)?.prompt || ''}
-          </p>
-        </div>
-      ) : suggestedPrompt?.trim() ? (
-        <div className="border border-purple-400/30 bg-purple-500/10 rounded-xl px-4 py-3">
-          <p className="text-[11px] uppercase tracking-wider text-purple-200/90 mb-1">Study Music Prompt</p>
-          <p className="text-xs text-purple-100/90 leading-relaxed">{suggestedPrompt}</p>
-        </div>
-      ) : null}
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <button
-          onClick={() => handleQuickGenerate('ambient_only')}
-          disabled={generating || resolvingSermon}
-          title="Genera música instrumental rápida para intro/reflexión (sin letra)."
-          className="cyber-outline px-4 py-3 rounded-xl text-sm flex items-center justify-center gap-2"
-        >
-          <Sparkles className="w-4 h-4" />
-          {uiText.quickAmbient}
-        </button>
-        <button
-          onClick={() => handleQuickGenerate('with_lyrics')}
-          disabled={generating || resolvingSermon}
-          title={uiText.quickThemeSongNeedsLyrics}
-          className="cyber-button px-4 py-3 rounded-xl text-sm flex items-center justify-center gap-2"
-        >
-          <Sparkles className="w-4 h-4" />
-          {uiText.quickThemeSong}
-        </button>
-      </div>
-      <div className="text-xs text-gray-400 space-y-1 -mt-2">
-        <p><span className="text-gray-200 font-medium">{uiText.quickAmbient}:</span> {isSpanish ? 'instrumental en un clic (sin letra), ideal para introducción.' : 'one-click instrumental background (no lyrics), sermon intro focus.'}</p>
-        <p><span className="text-gray-200 font-medium">{uiText.quickThemeSong}:</span> {isSpanish ? 'canción completa en un clic con letra y enfoque de tema central.' : 'one-click full worship song with lyrics, theme-song focus.'}</p>
-      </div>
-
-      {/* Mode Selector */}
-      <div className="space-y-2">
-        <label className="text-xs uppercase tracking-widest text-gray-400">{uiText.mode}</label>
-        <div className="grid grid-cols-2 gap-2">
-          {[
-            { value: 'ambient_only', label: isSpanish ? 'Solo ambiental' : 'Ambient Only' },
-            { value: 'with_lyrics', label: isSpanish ? 'Con letra' : 'With Lyrics' },
-            { value: 'chorus_only', label: isSpanish ? 'Solo coro' : 'Chorus Only' },
-            { value: 'background_bed', label: isSpanish ? 'Base de fondo' : 'Background Bed' },
-          ].map((m) => (
-            <button
-              key={m.value}
-              onClick={() => setMode(m.value as SongMode)}
-              title={
-                m.value === 'ambient_only'
-                  ? 'Solo instrumental, sin letra.'
-                  : m.value === 'with_lyrics'
-                  ? 'Canción completa con letra.'
-                  : m.value === 'chorus_only'
-                  ? 'Genera enfoque en coro/refrán.'
-                  : 'Base instrumental para fondo mientras se habla.'
-              }
-              className={`px-3 py-2 rounded-lg text-sm ${
-                mode === m.value
-                  ? 'bg-purple-500/20 border border-purple-400/40 text-purple-200'
-                  : 'bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10'
-              }`}
+      <div className="border border-purple-400/30 bg-purple-500/10 rounded-xl px-4 py-4 space-y-4">
+        <div className="space-y-2">
+          <label className="text-xs uppercase tracking-widest text-purple-200">{uiText.creativeDirection}</label>
+          {suggestedPromptOptions.length ? (
+            <select
+              value={selectedPromptOption}
+              onChange={(e) => setSelectedPromptOption(e.target.value)}
+              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
             >
-              {m.label}
-            </button>
-          ))}
+              {suggestedPromptOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}{option.description ? ` — ${option.description}` : ''}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          {effectiveStudyPrompt ? (
+            <p className="text-xs text-purple-100/90 leading-relaxed">{effectiveStudyPrompt}</p>
+          ) : null}
+          <p className="text-[11px] text-purple-200/80">{uiText.creativeDirectionHelp}</p>
         </div>
-      </div>
 
-      {/* Style Selector (for lyrical modes) */}
-      {(mode === 'with_lyrics' || mode === 'chorus_only') && (
+        {/* Mode Selector */}
+        <div className="space-y-2">
+          <label className="text-xs uppercase tracking-widest text-gray-400">{uiText.mode}</label>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { value: 'ambient_only', label: isSpanish ? 'Solo ambiental' : 'Ambient Only' },
+              { value: 'with_lyrics', label: isSpanish ? 'Con letra' : 'With Lyrics' },
+              { value: 'chorus_only', label: isSpanish ? 'Solo coro' : 'Chorus Only' },
+              { value: 'background_bed', label: isSpanish ? 'Base de fondo' : 'Background Bed' },
+            ].map((m) => (
+              <button
+                key={m.value}
+                onClick={() => setMode(m.value as SongMode)}
+                title={
+                  m.value === 'ambient_only'
+                    ? 'Solo instrumental, sin letra.'
+                    : m.value === 'with_lyrics'
+                    ? 'Canción completa con letra.'
+                    : m.value === 'chorus_only'
+                    ? 'Genera enfoque en coro/refrán.'
+                    : 'Base instrumental para fondo mientras se habla.'
+                }
+                className={`px-3 py-2 rounded-lg text-sm ${
+                  mode === m.value
+                    ? 'bg-purple-500/20 border border-purple-400/40 text-purple-200'
+                    : 'bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="space-y-2">
           <label className="text-xs uppercase tracking-widest text-gray-400">{uiText.style}</label>
           <select
@@ -562,22 +594,22 @@ export default function SermonMusicGenerator({
             ))}
           </select>
         </div>
-      )}
 
-      {/* Use Case Selector */}
-      <div className="space-y-2">
-        <label className="text-xs uppercase tracking-widest text-gray-400">{uiText.useCase}</label>
-        <select
-          value={useCase}
-          onChange={(e) => setUseCase(e.target.value as UseCase)}
-          className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-        >
-          {useCases.map((uc) => (
-            <option key={uc.value} value={uc.value}>
-              {isSpanish ? `${uc.labelEs} - ${uc.descriptionEs}` : `${uc.label} - ${uc.description}`}
-            </option>
-          ))}
-        </select>
+        {/* Use Case Selector */}
+        <div className="space-y-2">
+          <label className="text-xs uppercase tracking-widest text-gray-400">{uiText.useCase}</label>
+          <select
+            value={useCase}
+            onChange={(e) => setUseCase(e.target.value as UseCase)}
+            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+          >
+            {useCases.map((uc) => (
+              <option key={uc.value} value={uc.value}>
+                {isSpanish ? `${uc.labelEs} - ${uc.descriptionEs}` : `${uc.label} - ${uc.description}`}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Duration Slider */}
@@ -599,26 +631,26 @@ export default function SermonMusicGenerator({
       {/* Actions */}
       <div className="flex gap-3">
         <button
-          onClick={handlePreview}
-          disabled={previewing || resolvingSermon}
-          title="Vista previa de propuesta (no genera ni guarda audio)."
-          className="flex-1 cyber-outline px-4 py-3 rounded-xl text-sm flex items-center justify-center gap-2"
+          onClick={handleGenerateLyrics}
+          disabled={generatingLyrics || resolvingSermon}
+          title="Genera solo la letra (sin audio) y la deja lista para revisar."
+          className="flex-1 cyber-outline px-4 py-3 rounded-xl text-sm flex items-center justify-center gap-2 border-purple-400/40 text-purple-200"
         >
-          {previewing ? (
+          {generatingLyrics ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              {uiText.generatingPreview}
+              {uiText.generatingLyrics}
             </>
           ) : (
             <>
-              <Eye className="w-4 h-4" />
-              {uiText.preview}
+              <Sparkles className="w-4 h-4" />
+              {uiText.generateLyrics}
             </>
           )}
         </button>
         <button
           onClick={handleGenerate}
-          disabled={generating || resolvingSermon}
+          disabled={generating || resolvingSermon || !hasLyricsDraft}
           title="Genera audio real y lo guarda en la biblioteca de medios."
           className="flex-1 cyber-button px-4 py-3 rounded-xl text-sm flex items-center justify-center gap-2"
         >
@@ -634,35 +666,12 @@ export default function SermonMusicGenerator({
             </>
           )}
         </button>
-        {requiresLyricsDraft ? (
-          <button
-            onClick={handleGenerateLyrics}
-            disabled={generatingLyrics || resolvingSermon}
-            title="Genera solo la letra (sin audio) y la deja lista para revisar."
-            className="cyber-outline px-4 py-3 rounded-xl text-sm flex items-center justify-center gap-2 border-purple-400/40 text-purple-200"
-          >
-            {generatingLyrics ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                {uiText.generatingLyrics}
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                {uiText.generateLyrics}
-              </>
-            )}
-          </button>
-        ) : null}
       </div>
       <div className="text-xs text-gray-400 space-y-1 -mt-2">
-        <p><span className="text-gray-200 font-medium">{uiText.preview}:</span> {isSpanish ? 'solo genera borrador (letra/prompt), no crea medio final.' : 'generates a draft only (lyrics/prompt), does not create media asset.'}</p>
-        <p><span className="text-gray-200 font-medium">{uiText.generateMusic}:</span> {requiresLyricsDraft ? (isSpanish ? 'usa la letra guardada para lanzar la generación real en Suno y guarda el audio en Media Library.' : 'uses the saved lyrics draft to start real Suno audio generation and stores it in Media Library.') : (isSpanish ? 'lanza la generación real de audio y la guarda en Media Library.' : 'submits real audio generation job and saves result to Media Library.')}</p>
-        {requiresLyricsDraft ? (
-          <p><span className="text-gray-200 font-medium">{uiText.generateLyrics}:</span> {isSpanish ? 'genera/refina solo la letra; luego Generar música usará esa letra guardada.' : 'creates/refines lyrics only; Generate Music will then use that saved lyrics draft.'}</p>
-        ) : null}
-        {requiresLyricsDraft && !hasLyricsDraft ? (
-          <p className="text-amber-300">{uiText.lyricsRequired}</p>
+        <p><span className="text-gray-200 font-medium">{uiText.generateLyrics}:</span> {isSpanish ? 'genera/refina la letra primero.' : 'generate/refine lyrics first.'}</p>
+        <p><span className="text-gray-200 font-medium">{uiText.generateMusic}:</span> {isSpanish ? 'usa la letra guardada para lanzar la generación real en Suno y guardar el audio en Media Library.' : 'uses the saved lyrics draft to start real Suno generation and save the audio in Media Library.'}</p>
+        {!hasLyricsDraft ? (
+          <p className="text-amber-300">{hasLyricsCoreDraft ? uiText.lyricsRefreshRequired : uiText.lyricsRequired}</p>
         ) : null}
       </div>
 
@@ -701,54 +710,42 @@ export default function SermonMusicGenerator({
           {/* Lyrics Preview */}
           {preview.lyrics && (
             <div className="space-y-3">
-              <div>
-                <p className="text-sm font-semibold text-purple-200">{preview.lyrics.title}</p>
-                <p className="text-xs text-purple-300 italic">{preview.lyrics.themeStatement}</p>
+              <div className="text-xs text-cyan-200 flex items-center justify-between">
+                <span>{uiText.liveEditHint}</span>
+                <span>{savingLyricsDraft ? uiText.savingLyricsDraft : (lyricsDraftDirty ? uiText.savingLyricsDraft : uiText.lyricsSaved)}</span>
               </div>
-
-              {preview.lyrics.verse1?.length > 0 && (
-                <div>
-                  <p className="text-xs uppercase tracking-widest text-purple-300 mb-1">{uiText.verse1}</p>
-                  {preview.lyrics.verse1.map((line: string, idx: number) => (
-                    <p key={idx} className="text-sm text-gray-200">
-                      {line}
-                    </p>
-                  ))}
+              <div className="grid grid-cols-1 gap-2">
+                <div className="space-y-1">
+                  <p className="text-[11px] uppercase tracking-widest text-purple-300">{uiText.songTitle}</p>
+                  <input
+                    value={String(preview.lyrics.title || '')}
+                    onChange={(e) => applyLyricsPatch({ title: e.target.value })}
+                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm font-semibold text-purple-100"
+                    placeholder={isSpanish ? 'Título de la canción' : 'Song title'}
+                  />
                 </div>
-              )}
-
-              {preview.lyrics.chorus?.length > 0 && (
-                <div className="border-l-2 border-purple-400 pl-3">
-                  <p className="text-xs uppercase tracking-widest text-purple-300 mb-1">{uiText.chorus}</p>
-                  {preview.lyrics.chorus.map((line: string, idx: number) => (
-                    <p key={idx} className="text-sm font-medium text-purple-100">
-                      {line}
-                    </p>
-                  ))}
+                <div className="space-y-1">
+                  <p className="text-[11px] uppercase tracking-widest text-purple-300">{uiText.songTheme}</p>
+                  <textarea
+                    value={String(preview.lyrics.themeStatement || '')}
+                    onChange={(e) => applyLyricsPatch({ themeStatement: e.target.value })}
+                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-purple-200"
+                    rows={2}
+                    placeholder={isSpanish ? 'Idea principal de la canción' : 'Song theme statement'}
+                  />
                 </div>
-              )}
-
-              {preview.lyrics.verse2?.length > 0 && (
-                <div>
-                  <p className="text-xs uppercase tracking-widest text-purple-300 mb-1">{uiText.verse2}</p>
-                  {preview.lyrics.verse2.map((line: string, idx: number) => (
-                    <p key={idx} className="text-sm text-gray-200">
-                      {line}
-                    </p>
-                  ))}
-                </div>
-              )}
-
-              {preview.lyrics.bridge?.length > 0 && (
-                <div>
-                  <p className="text-xs uppercase tracking-widest text-purple-300 mb-1">{uiText.bridge}</p>
-                  {preview.lyrics.bridge.map((line: string, idx: number) => (
-                    <p key={idx} className="text-sm text-gray-200">
-                      {line}
-                    </p>
-                  ))}
-                </div>
-              )}
+              </div>
+              <p className="text-[11px] text-purple-200/80">{uiText.editorFormatHint}</p>
+              <textarea
+                value={lyricsEditorText}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setLyricsEditorText(value)
+                  applyLyricsPatch(parseLyricsEditorText(value, preview.lyrics))
+                }}
+                className="w-full min-h-[460px] bg-slate-950/70 border border-cyan-400/30 rounded-xl px-4 py-4 text-[15px] leading-7 text-slate-100 font-mono"
+                spellCheck={false}
+              />
 
               <div className="pt-2 border-t border-purple-400/20">
                 <p className="text-xs text-purple-300">{uiText.sunoPrompt}:</p>

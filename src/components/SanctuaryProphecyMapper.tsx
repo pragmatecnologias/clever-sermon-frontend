@@ -16,9 +16,10 @@ interface Connection {
 interface SanctuaryProphecyMapperProps {
   passage: string;
   mode: 'sanctuary' | 'prophecy';
+  language?: string;
 }
 
-export default function SanctuaryProphecyMapper({ passage, mode }: SanctuaryProphecyMapperProps) {
+export default function SanctuaryProphecyMapper({ passage, mode, language = 'en' }: SanctuaryProphecyMapperProps) {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +28,7 @@ export default function SanctuaryProphecyMapper({ passage, mode }: SanctuaryProp
     if (passage) {
       fetchConnections();
     }
-  }, [passage, mode]);
+  }, [passage, mode, language]);
 
   const fetchConnections = async () => {
     setLoading(true);
@@ -36,7 +37,7 @@ export default function SanctuaryProphecyMapper({ passage, mode }: SanctuaryProp
     try {
       const token = localStorage.getItem('token');
       const endpoint = mode === 'sanctuary' ? 'sanctuary-connections' : 'prophecy-connections';
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/scripture/${endpoint}?passage=${encodeURIComponent(passage)}`;
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/scripture/${endpoint}?passage=${encodeURIComponent(passage)}&language=${encodeURIComponent(language)}`;
 
       const response = await fetch(url, {
         headers: {
@@ -45,7 +46,17 @@ export default function SanctuaryProphecyMapper({ passage, mode }: SanctuaryProp
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to fetch ${mode} connections`);
+        let message = `Unable to generate ${mode} connections right now`;
+        try {
+          const errorBody = await response.json();
+          const fromBody = Array.isArray(errorBody?.message)
+            ? errorBody.message.join(', ')
+            : errorBody?.message;
+          if (typeof fromBody === 'string' && fromBody.trim()) {
+            message = fromBody.trim();
+          }
+        } catch {}
+        throw new Error(message);
       }
 
       const data = await response.json();

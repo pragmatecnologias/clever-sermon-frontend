@@ -24,6 +24,7 @@ export default function AudioGenerationPanel({
   narrationPromptOptions = [],
   onGenerated 
 }: AudioGenerationPanelProps) {
+  const [provider, setProvider] = useState<'local' | 'elevenlabs'>('local')
   const [source, setSource] = useState<'manuscript' | 'scripture' | 'custom'>('manuscript')
   const [text, setText] = useState('')
   const [voiceId, setVoiceId] = useState('')
@@ -32,23 +33,38 @@ export default function AudioGenerationPanel({
   const [error, setError] = useState<string | null>(null)
   const [selectedPromptOption, setSelectedPromptOption] = useState<string>('')
 
+  const stripNarrationMarkup = (value: string) =>
+    String(value || '')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<\/?[^>]+>/g, ' ')
+      .replace(/\*\*/g, '')
+      .replace(/\*/g, '')
+      .replace(/#{1,6}\s/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  const getVoiceValue = (voice: any) => String(voice?.voice_id || voice?.id || voice?.name || '')
+  const getVoiceName = (voice: any) => String(voice?.name || voice?.id || voice?.voice_id || 'Voice')
+
   useEffect(() => {
-    loadVoices()
-  }, [])
+    loadVoices(provider)
+  }, [provider])
 
   useEffect(() => {
     if (source === 'manuscript') {
       const manuscriptText = workspace.manuscripts?.[0]?.content?.text || ''
-      // Strip markdown formatting for clean display
-      const cleanText = manuscriptText
-        .replace(/\*\*/g, '') // Remove bold markers
-        .replace(/\*/g, '')   // Remove italic markers
-        .replace(/#{1,6}\s/g, '') // Remove heading markers
-        .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1') // Convert links to plain text
-      setText(cleanText)
+      setText(stripNarrationMarkup(manuscriptText))
     } else if (source === 'scripture') {
       const scriptureText = workspace.mainPassage || ''
-      setText(scriptureText)
+      setText(stripNarrationMarkup(scriptureText))
     }
   }, [source, workspace])
 
@@ -58,15 +74,17 @@ export default function AudioGenerationPanel({
     setSelectedPromptOption(narrationPromptOptions[0].id)
   }, [narrationPromptOptions, selectedPromptOption])
 
-  const loadVoices = async () => {
+  const loadVoices = async (nextProvider: 'local' | 'elevenlabs') => {
     try {
-      const voicesData = await slidesApi.getVoices(token)
+      const voicesData = await slidesApi.getVoices(token, nextProvider)
       setVoices(voicesData)
       if (voicesData.length > 0) {
-        setVoiceId(voicesData[0].voice_id)
+        setVoiceId(getVoiceValue(voicesData[0]))
       }
     } catch (err) {
       console.error('Failed to load voices:', err)
+      setVoices([])
+      setVoiceId('')
     }
   }
 
@@ -79,13 +97,19 @@ export default function AudioGenerationPanel({
     setGenerating(true)
     setError(null)
 
+    const selectedPromptText =
+      narrationPromptOptions.find((item) => item.id === selectedPromptOption)?.prompt ||
+      narrationPrompt ||
+      ''
     try {
       await slidesApi.generateAudio(
         {
           workspaceId,
           sermonId,
-          text: text.trim(),
+          text: stripNarrationMarkup(text),
           voiceId,
+          provider,
+          narrationPrompt: selectedPromptText.trim() || undefined,
         },
         token
       )
@@ -134,6 +158,30 @@ export default function AudioGenerationPanel({
         </div>
       </div>
 
+      <div>
+        <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+          Provider
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { value: 'local', label: 'Local (Docker)' },
+            { value: 'elevenlabs', label: 'ElevenLabs' },
+          ].map((p) => (
+            <button
+              key={p.value}
+              onClick={() => setProvider(p.value as 'local' | 'elevenlabs')}
+              className={`px-3 py-2 rounded-lg text-sm transition-all ${
+                provider === p.value
+                  ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/40'
+                  : 'bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Voice Selection */}
       {voices.length > 0 && (
         <div>
@@ -146,8 +194,8 @@ export default function AudioGenerationPanel({
             className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
           >
             {voices.map((voice) => (
-              <option key={voice.voice_id} value={voice.voice_id}>
-                {voice.name} ({voice.labels?.gender || 'neutral'})
+              <option key={getVoiceValue(voice)} value={getVoiceValue(voice)}>
+                {getVoiceName(voice)} ({voice.labels?.gender || 'neutral'})
               </option>
             ))}
           </select>
@@ -231,7 +279,7 @@ export default function AudioGenerationPanel({
       </button>
 
       <p className="text-xs text-gray-500 text-center">
-        Powered by ElevenLabs text-to-speech
+        {provider === 'local' ? 'Powered by local Docker text-to-speech' : 'Powered by ElevenLabs text-to-speech'}
       </p>
     </div>
   )

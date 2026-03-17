@@ -545,11 +545,23 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
       
       // Step 3: Generate Audio
       setCurrentStep('Generating audio narration...')
+      const sanitizedNarrationText = String(sermonSummary.manuscript || autoPrompts.audio || '')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<\/?[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/\s+/g, ' ')
+        .trim()
       const audio = await slidesApi.generateAudio({
         sermonId: sermonId || undefined,
         workspaceId: workspace.id,
-        text: (sermonSummary.manuscript || autoPrompts.audio).substring(0, 5000), // Limit for API
-        provider: 'elevenlabs',
+        text: sanitizedNarrationText.substring(0, 5000), // Limit for API
+        provider: 'local',
       }, token)
       audioId = audio.id
       setCompletedSteps(prev => [...prev, 'audio'])
@@ -743,6 +755,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
               token={token}
               suggestedPrompt={autoPrompts.music}
               suggestedPromptOptions={studyMediaPrompts.musicOptions}
+              onGenerated={() => setRefreshKey((prev) => prev + 1)}
             />
           </div>
         )}

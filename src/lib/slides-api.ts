@@ -34,6 +34,7 @@ export interface GenerateAudioRequest {
   text: string;
   voiceId?: string;
   provider?: string;
+  narrationPrompt?: string;
 }
 
 export interface GenerateMusicRequest {
@@ -309,10 +310,11 @@ export const slidesApi = {
     return response.data;
   },
 
-  getVoices: async (token: string) => {
+  getVoices: async (token: string, provider: string = 'local') => {
     const response = await axios.get(
       `${SLIDES_API_URL}/audio/voices`,
       {
+        params: { provider },
         headers: { Authorization: `Bearer ${token}` },
       }
     );
@@ -334,6 +336,17 @@ export const slidesApi = {
   getMusic: async (musicId: string, token: string) => {
     const response = await axios.get(
       `${SLIDES_API_URL}/music/${musicId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  selectMusicTrack: async (musicId: string, trackId: string, token: string) => {
+    const response = await axios.post(
+      `${SLIDES_API_URL}/music/${musicId}/select-track`,
+      { trackId },
       {
         headers: { Authorization: `Bearer ${token}` },
       }
@@ -612,6 +625,36 @@ export const slidesApi = {
   }, token: string) => {
     const response = await axios.post(
       `${SLIDES_API_URL}/music/sermon-song/lyrics`,
+      request,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
+  updateSermonLyricsDraft: async (request: {
+    sermonId: string;
+    mode?: 'with_lyrics' | 'chorus_only';
+    style?: string;
+    useCase?: string;
+    studyPrompt?: string;
+    language?: string;
+    elements?: Record<string, any> | null;
+    lyrics: {
+      title?: string;
+      themeStatement?: string;
+      verse1?: string[];
+      chorus?: string[];
+      verse2?: string[];
+      bridge?: string[];
+      outro?: string[];
+      keyPhrases?: string[];
+      scriptureAnchors?: string[];
+    };
+  }, token: string) => {
+    const response = await axios.post(
+      `${SLIDES_API_URL}/music/sermon-song/lyrics-draft`,
       request,
       {
         headers: { Authorization: `Bearer ${token}` },
