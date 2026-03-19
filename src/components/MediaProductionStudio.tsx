@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Sparkles, FileText, Image, Mic, Music, Video, Share2, Loader2, Calendar, Clock3 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
-import { buildStructuredMediaPrompts, type ImagePromptFields } from '@/lib/media-prompts'
+import {
+  buildStructuredMediaPrompts,
+  MAX_NARRATION_CHARACTERS,
+  type ImagePromptFields,
+} from '@/lib/media-prompts'
 import SlideGenerationPanel from './SlideGenerationPanel'
 import ImageGenerationPanel from './ImageGenerationPanel'
 import AudioGenerationPanel from './AudioGenerationPanel'
@@ -18,6 +22,12 @@ interface MediaProductionStudioProps {
 }
 
 type MediaFilter = 'all' | 'image' | 'slide' | 'audio' | 'music' | 'video' | 'social'
+type OptimisticMediaItem = {
+  id: string
+  type: 'audio'
+  status: 'pending'
+  createdAt: string
+}
 type SocialPackMode = 'auto_multi_network' | 'core4'
 type SocialBackgroundProvider = 'local' | 'openai'
 type SocialBackgroundPreset = 'cyberpunk' | 'modern' | 'aurora' | 'minimal'
@@ -46,7 +56,8 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
   const [currentStep, setCurrentStep] = useState<string>('')
   const [completedSteps, setCompletedSteps] = useState<string[]>([])
   const [refreshKey, setRefreshKey] = useState(0)
-  const [mediaFilter, setMediaFilter] = useState<MediaFilter>('all')
+  const [libraryFilter, setLibraryFilter] = useState<MediaFilter>('all')
+  const [optimisticMediaItems, setOptimisticMediaItems] = useState<OptimisticMediaItem[]>([])
   const [socialPromptId, setSocialPromptId] = useState('')
   const [socialVisualPrompt, setSocialVisualPrompt] = useState('')
   const [socialQuote, setSocialQuote] = useState('')
@@ -83,6 +94,17 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     preset: 'minimal' as 'minimal' | 'bold' | 'announcement',
   })
 
+  useEffect(() => {
+    if (!optimisticMediaItems.length) return
+    const timer = setTimeout(() => {
+      const cutoff = Date.now() - 30_000
+      setOptimisticMediaItems((prev) =>
+        prev.filter((item) => new Date(item.createdAt).getTime() >= cutoff),
+      )
+    }, 5_000)
+    return () => clearTimeout(timer)
+  }, [optimisticMediaItems])
+
   const normalizeChurchDefaults = (data: any) => ({
     churchName: data?.churchName ?? '',
     addressLine1: data?.addressLine1 ?? '',
@@ -116,6 +138,29 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     discussionQuestions: workspace.questions || workspace.discussionQuestions || [],
     illustrations: workspace.illustrations || [],
   }
+
+  const narrationKeyPoints = useMemo(() => {
+    const fromPointNodes = Array.isArray(sermonSummary.pointNodes)
+      ? sermonSummary.pointNodes
+          .map((item: any) => item?.title || item?.pointTitle || item?.summary || item?.content || '')
+          .filter(Boolean)
+      : []
+    const fromOutline = Array.isArray(sermonSummary.outline)
+      ? sermonSummary.outline
+          .map((item: any) => item?.title || item?.point || item?.summary || item?.text || '')
+          .filter(Boolean)
+      : []
+
+    return Array.from(new Set([...fromPointNodes, ...fromOutline].map((item) => String(item).trim()).filter(Boolean))).slice(0, 6)
+  }, [sermonSummary.pointNodes, sermonSummary.outline])
+
+  const narrationApplications = useMemo(() => {
+    return (Array.isArray(sermonSummary.applications) ? sermonSummary.applications : [])
+      .map((item: any) => item?.content || item?.text || item?.application || item)
+      .map((item: any) => String(item || '').trim())
+      .filter(Boolean)
+      .slice(0, 4)
+  }, [sermonSummary.applications])
 
   function extractBestQuote(manuscript: string, applications: any[]): string {
     // Extract a powerful quote from manuscript or applications
@@ -545,23 +590,31 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
       
       // Step 3: Generate Audio
       setCurrentStep('Generating audio narration...')
-      const sanitizedNarrationText = String(sermonSummary.manuscript || autoPrompts.audio || '')
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<\/?[^>]+>/g, ' ')
-        .replace(/&nbsp;/gi, ' ')
-        .replace(/&amp;/gi, '&')
-        .replace(/&lt;/gi, '<')
-        .replace(/&gt;/gi, '>')
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;/gi, "'")
-        .replace(/\s+/g, ' ')
-        .trim()
+      const narrationResponse = await slidesApi.generateNarrationScript(
+        {
+          language: workspace.language || workspace.metadata?.language || 'en',
+          title: sermonSummary.title,
+          passage: sermonSummary.passage,
+          theme: sermonSummary.theme,
+          manuscript: sermonSummary.manuscript || autoPrompts.audio,
+          keyPoints: narrationKeyPoints,
+          applications: narrationApplications,
+          narrationPrompt: autoPrompts.audio,
+          maxChars: MAX_NARRATION_CHARACTERS,
+        },
+        token,
+      )
+      const generatedNarration = String(narrationResponse?.text || '').trim()
+      const narrationText = (generatedNarration || sermonSummary.manuscript || autoPrompts.audio || '').slice(
+        0,
+        MAX_NARRATION_CHARACTERS,
+      )
       const audio = await slidesApi.generateAudio({
         sermonId: sermonId || undefined,
         workspaceId: workspace.id,
-        text: sanitizedNarrationText.substring(0, 5000), // Limit for API
+        text: narrationText,
         provider: 'local',
+        narrationPrompt: autoPrompts.audio,
       }, token)
       audioId = audio.id
       setCompletedSteps(prev => [...prev, 'audio'])
@@ -703,78 +756,75 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
       {/* Generation Panels */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Slides - Primary Feature */}
-        {(mediaFilter === 'all' || mediaFilter === 'slide') && (
-          <div className="lg:col-span-2">
-            <SlideGenerationPanel 
-              workspace={workspace} 
-              token={token}
-              onGenerated={() => setRefreshKey(prev => prev + 1)}
-            />
-          </div>
-        )}
+        <div className="lg:col-span-2">
+          <SlideGenerationPanel 
+            workspace={workspace} 
+            token={token}
+            onGenerated={() => setRefreshKey(prev => prev + 1)}
+          />
+        </div>
 
         {/* Images */}
-        {(mediaFilter === 'all' || mediaFilter === 'image') && (
-          <div className="lg:col-span-2">
-            <ImageGenerationPanel
-              workspaceId={workspace.id}
-              workspaceData={{
-                title: sermonSummary.title,
-                theme: sermonSummary.theme,
-                mainPassage: sermonSummary.passage,
-              }}
-              token={token}
-              autoPrompt={autoPrompts.image}
-              autoPromptFields={autoPrompts.imageFields}
-              promptOptions={studyMediaPrompts.imageOptions}
-              onGenerated={() => setRefreshKey((prev) => prev + 1)}
-            />
-          </div>
-        )}
+        <div className="lg:col-span-2">
+          <ImageGenerationPanel
+            workspaceId={workspace.id}
+            workspaceData={{
+              title: sermonSummary.title,
+              theme: sermonSummary.theme,
+              mainPassage: sermonSummary.passage,
+            }}
+            token={token}
+            autoPrompt={autoPrompts.image}
+            autoPromptFields={autoPrompts.imageFields}
+            promptOptions={studyMediaPrompts.imageOptions}
+            onGenerated={() => setRefreshKey((prev) => prev + 1)}
+          />
+        </div>
 
         {/* Audio */}
-        {(mediaFilter === 'all' || mediaFilter === 'audio') && (
-          <div className="lg:col-span-2">
-            <AudioGenerationPanel
-              workspaceId={workspace.id}
-              workspace={workspace}
-              token={token}
-              autoText={sermonSummary.manuscript}
-              narrationPrompt={autoPrompts.audio}
-              narrationPromptOptions={studyMediaPrompts.audioOptions}
-            />
-          </div>
-        )}
+        <div className="lg:col-span-2">
+          <AudioGenerationPanel
+            workspaceId={workspace.id}
+            workspace={workspace}
+            token={token}
+            autoText={sermonSummary.manuscript || autoPrompts.audio}
+            narrationPrompt={autoPrompts.audio}
+            narrationPromptOptions={studyMediaPrompts.audioOptions}
+            onQueued={(payload) => {
+              setOptimisticMediaItems((prev) => {
+                const deduped = prev.filter((item) => item.id !== payload.id)
+                return [payload, ...deduped].slice(0, 8)
+              })
+              setRefreshKey((prev) => prev + 1)
+            }}
+            onGenerated={() => setRefreshKey((prev) => prev + 1)}
+          />
+        </div>
 
         {/* Sermon Theme Song Generator - New Feature */}
-        {(mediaFilter === 'all' || mediaFilter === 'music') && (
-          <div className="lg:col-span-2">
-            <SermonMusicGenerator
-              workspace={workspace}
-              sermonId={workspace.sermonId}
-              token={token}
-              suggestedPrompt={autoPrompts.music}
-              suggestedPromptOptions={studyMediaPrompts.musicOptions}
-              onGenerated={() => setRefreshKey((prev) => prev + 1)}
-            />
-          </div>
-        )}
+        <div className="lg:col-span-2">
+          <SermonMusicGenerator
+            workspace={workspace}
+            sermonId={workspace.sermonId}
+            token={token}
+            suggestedPrompt={autoPrompts.music}
+            suggestedPromptOptions={studyMediaPrompts.musicOptions}
+            onGenerated={() => setRefreshKey((prev) => prev + 1)}
+          />
+        </div>
 
         {/* Video */}
-        {(mediaFilter === 'all' || mediaFilter === 'video') && (
-          <div className="lg:col-span-2">
-            <VideoGenerationPanel
-              workspaceId={workspace.id}
-              token={token}
-              videoPrompt={autoPrompts.video}
-              promptOptions={studyMediaPrompts.videoOptions}
-            />
-          </div>
-        )}
+        <div className="lg:col-span-2">
+          <VideoGenerationPanel
+            workspaceId={workspace.id}
+            token={token}
+            videoPrompt={autoPrompts.video}
+            promptOptions={studyMediaPrompts.videoOptions}
+          />
+        </div>
 
         {/* Social Media Kit - New Feature */}
-        {mediaFilter === 'all' && (
-          <div className="lg:col-span-2 border border-white/10 rounded-xl p-6 bg-black/20 space-y-4">
+        <div className="lg:col-span-2 border border-white/10 rounded-xl p-6 bg-black/20 space-y-4">
             <div className="flex items-center gap-3 mb-4">
               <Share2 className="w-6 h-6 text-cyan-300" />
               <h3 className="text-lg font-semibold">Social Media Kit</h3>
@@ -1010,7 +1060,6 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
               </button>
             </div>
           </div>
-        )}
       </div>
 
       {/* Media Library */}
@@ -1020,8 +1069,12 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
           workspaceId={workspace.id} 
           token={token}
           key={refreshKey}
-          filter={mediaFilter}
-          onFilterChange={setMediaFilter}
+          filter={libraryFilter}
+          onFilterChange={setLibraryFilter}
+          optimisticItems={optimisticMediaItems}
+          onMediaDeleted={({ id }) => {
+            setOptimisticMediaItems((prev) => prev.filter((item) => item.id !== id))
+          }}
         />
       </div>
     </div>

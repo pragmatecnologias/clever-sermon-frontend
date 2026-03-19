@@ -41,7 +41,6 @@ import MediaProductionStudio from '@/components/MediaProductionStudio'
 import ChurchSettingsPanel from '@/components/ChurchSettingsPanel'
 import BiblicalNarrativeMap from '@/components/BiblicalNarrativeMap'
 import ManuscriptRichEditor from '@/components/ManuscriptRichEditor'
-import InterlinearView from '@/components/InterlinearView'
 import SermonCore, { SermonCoreData } from '@/components/SermonCore'
 import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut'
 import { getLoadingMessage } from '@/utils/loadingMessages'
@@ -296,6 +295,7 @@ export default function WorkspaceDetailPage() {
     Array<{ term: string; transliteration?: string; gloss?: string; reason?: string; language?: string }>
   >([])
   const [wordStudySuggestionsLoading, setWordStudySuggestionsLoading] = useState(false)
+  const [wordStudyLookupContext, setWordStudyLookupContext] = useState<string>('')
   const [crossRefVerse, setCrossRefVerse] = useState('')
   const [crossRefResults, setCrossRefResults] = useState<{
     reference: string
@@ -486,29 +486,31 @@ export default function WorkspaceDetailPage() {
 
   const buildScriptureSnapshot = (
     payload: Partial<ScriptureLookupSnapshot> & Pick<ScriptureLookupSnapshot, 'scriptureResult' | 'scriptureLastLookup' | 'scriptureQuery' | 'scriptureTranslation' | 'parallelTranslations'>,
-  ): ScriptureLookupSnapshot => ({
-    scriptureResult:
-      normalizeScriptureResult(
-        payload.scriptureResult,
-        payload.scriptureLastLookup || payload.scriptureQuery,
-        payload.scriptureTranslation,
-      ) || payload.scriptureResult,
-    scriptureLastLookup: payload.scriptureLastLookup,
-    scriptureQuery: payload.scriptureQuery,
-    scriptureTranslation: payload.scriptureTranslation,
-    parallelTranslations: payload.parallelTranslations,
-    parallelResults: payload.parallelResults || [],
-    contextData: payload.contextData || null,
-    structuralAnalysis: payload.structuralAnalysis || null,
-    interpretiveChallenges: payload.interpretiveChallenges || null,
-    perVerseContext: payload.perVerseContext || null,
-    passageSummary: payload.passageSummary || null,
-    studySynthesis: payload.studySynthesis || null,
-    canonicalThemes: payload.canonicalThemes || null,
-    verseCommentary: payload.verseCommentary || null,
-    translationComparison: payload.translationComparison || null,
-    cachedAt: payload.cachedAt || new Date().toISOString(),
-  })
+  ): ScriptureLookupSnapshot => {
+    return {
+      scriptureResult:
+        normalizeScriptureResult(
+          payload.scriptureResult,
+          payload.scriptureLastLookup || payload.scriptureQuery,
+          payload.scriptureTranslation,
+        ) || payload.scriptureResult,
+      scriptureLastLookup: payload.scriptureLastLookup,
+      scriptureQuery: payload.scriptureQuery,
+      scriptureTranslation: payload.scriptureTranslation,
+      parallelTranslations: payload.parallelTranslations,
+      parallelResults: payload.parallelResults || [],
+      contextData: payload.contextData || null,
+      structuralAnalysis: payload.structuralAnalysis || null,
+      interpretiveChallenges: payload.interpretiveChallenges || null,
+      perVerseContext: payload.perVerseContext || null,
+      passageSummary: payload.passageSummary || null,
+      studySynthesis: payload.studySynthesis || null,
+      canonicalThemes: payload.canonicalThemes || null,
+      verseCommentary: payload.verseCommentary || null,
+      translationComparison: payload.translationComparison || null,
+      cachedAt: payload.cachedAt || new Date().toISOString(),
+    }
+  }
 
   const mergeScriptureLookupHistory = (
     snapshot: ScriptureLookupSnapshot,
@@ -521,6 +523,8 @@ export default function WorkspaceDetailPage() {
     })
     return [snapshot, ...deduped].slice(0, 12)
   }
+
+  const compactSnapshotForPersistence = (snapshot: ScriptureLookupSnapshot): ScriptureLookupSnapshot => snapshot
 
   const applyScriptureLookupSnapshot = (snapshot: ScriptureLookupSnapshot) => {
     const verses = extractVerses(snapshot.scriptureResult)
@@ -608,9 +612,11 @@ export default function WorkspaceDetailPage() {
       nextHistory = mergeScriptureLookupHistory(snapshot, prev)
       return nextHistory
     })
+    const compactCurrent = compactSnapshotForPersistence(snapshot)
+    const compactHistory = nextHistory.map((entry) => compactSnapshotForPersistence(entry))
     await saveScriptureLookupCache({
-      ...snapshot,
-      lookupHistory: nextHistory,
+      ...compactCurrent,
+      lookupHistory: compactHistory,
     })
   }
 
@@ -654,7 +660,7 @@ export default function WorkspaceDetailPage() {
   // STUDY = "What does the text mean?" (analysis tools)
   const phaseContentMap: Record<Phase, WorkspaceSection[]> = {
     THEME: ['workspace'],
-    PASSAGE: ['scripture'],  // Text-focused: scripture display, translations, interlinear, audio
+    PASSAGE: ['scripture'],  // Text-focused: scripture display, translations, audio
     STUDY: ['study-report', 'word-study', 'cross-references', 'visualizations'],  // Analysis: word studies, cross-refs, themes, visualizations
     OUTLINE: ['outlines'],
     WRITE: ['manuscript', 'citations'],
@@ -876,11 +882,21 @@ export default function WorkspaceDetailPage() {
       const data = response.data
       if (data) {
         if (data.wordStudy) {
+          const workspaceLanguage = String((workspaceData || workspace)?.language || '').toLowerCase()
+          const currentResponseLanguage =
+            workspaceLanguage.startsWith('es') ||
+            workspaceLanguage.includes('spanish') ||
+            workspaceLanguage.includes('espanol') ||
+            workspaceLanguage.includes('español')
+              ? 'es'
+              : 'en'
+          const cachedResponseLanguage = String(data.wordStudy.responseLanguage || 'en').toLowerCase()
+          const canReuseWordStudyPayload = cachedResponseLanguage === currentResponseLanguage
           setWordStudyWord(String(data.wordStudy.word || ''))
           setWordStudyLastLookup(String(data.wordStudy.word || ''))
           setWordStudyLanguage(String(data.wordStudy.language || 'greek'))
-          setWordStudyResult(data.wordStudy.result || null)
-          setWordStudyInsights(data.wordStudy.insights || null)
+          setWordStudyResult(canReuseWordStudyPayload ? data.wordStudy.result || null : null)
+          setWordStudyInsights(canReuseWordStudyPayload ? data.wordStudy.insights || null : null)
         }
         if (data.crossReferences) {
           setCrossRefVerse(String(data.crossReferences.verse || ''))
@@ -2370,12 +2386,27 @@ export default function WorkspaceDetailPage() {
   const normalizeReferenceList = (items: any[]) =>
     (Array.isArray(items) ? items : [])
       .map((item: any) => {
+        const normalizeConnection = (value: string) => {
+          const text = String(value || '').trim()
+          if (!text) return ''
+          if (/^Pasaje adicional seleccionado en el workspace para apoyar la exégesis\.?$/i.test(text)) {
+            return workspace?.mainPassage
+              ? `Conecta con ${workspace.mainPassage} y amplía el tema central del estudio.`
+              : 'Conecta con el pasaje principal y amplía el tema central del estudio.'
+          }
+          if (/^Additional passage selected in workspace to support exegesis\.?$/i.test(text)) {
+            return workspace?.mainPassage
+              ? `Connects with ${workspace.mainPassage} and expands the study's central theme.`
+              : 'Connects with the main passage and expands the study’s central theme.'
+          }
+          return text
+        }
         if (typeof item === 'string') {
           return { reference: item.trim(), context: '' }
         }
         return {
           reference: String(item?.reference || '').trim(),
-          context: String(item?.context || item?.connection || '').trim(),
+          context: normalizeConnection(String(item?.context || item?.connection || '')),
         }
       })
       .filter((item: any) => item.reference)
@@ -2389,12 +2420,25 @@ export default function WorkspaceDetailPage() {
     const flattenMovement = (key: string) =>
       movementAssets.flatMap((item: any) => (Array.isArray(item?.[key]) ? item[key] : []))
 
+    const sanitizeStudyAssetText = (value: any) => {
+      const text = String(value || '').trim()
+      if (!text) return ''
+      const extracted = text.match(
+        /(?:^|[\s,{])(?:content|text|prompt|question)\s*[:=]\s*["“]?([^"”\n]+?)["”]?(?:\s*[,}]|$)/i,
+      )
+      if (extracted?.[1]) return extracted[1].trim()
+      return text
+        .replace(/^\s*(title|content|text|prompt|question|verseReference|source)\s*[:=]\s*/i, '')
+        .replace(/^[`"'“”]+|[`"'“”]+$/g, '')
+        .trim()
+    }
+
     const mergeLists = (...lists: any[][]) =>
       Array.from(
         new Set(
           lists
             .flatMap((list) => (Array.isArray(list) ? list : []))
-            .map((item) => String(item || '').trim())
+            .map((item) => sanitizeStudyAssetText(item))
             .filter(Boolean),
         ),
       )
@@ -2484,7 +2528,15 @@ export default function WorkspaceDetailPage() {
     if (Array.isArray(studyAssets.mediaSuggestionCards) && studyAssets.mediaSuggestionCards.length) {
       return studyAssets.mediaSuggestionCards
     }
-    return []
+    const language = workspace?.language === 'es' ? 'es' : 'en'
+    return (Array.isArray(studyAssets.mediaSuggestions) ? studyAssets.mediaSuggestions : [])
+      .map((item: any) => String(item || '').trim())
+      .filter(Boolean)
+      .map((prompt: string) => ({
+        type: language === 'es' ? 'Medio' : 'Media',
+        intent: language === 'es' ? 'Sugerencia de estudio' : 'Study suggestion',
+        prompt,
+      }))
   }
 
   const parsePassageForEgwPanel = (reference: string) => {
@@ -2677,6 +2729,11 @@ export default function WorkspaceDetailPage() {
     if (asset === 'media') return actionLoading.includes('media')
     return false
   }
+
+  const hasGeneratedStudyReport = () =>
+    Array.isArray(workspace?.studyReports) &&
+    workspace.studyReports.length > 0 &&
+    !!workspace.studyReports[0]?.sections
 
   const getStudyAssetLoadingLabel = (asset: StudyAssetType) => {
     const labels: Record<StudyAssetType, string> = {
@@ -3397,12 +3454,9 @@ export default function WorkspaceDetailPage() {
     try {
       let generatedResponse: any = null
       if (isStudyAssetType(type)) {
-        if (type === 'media') {
-          const hasStudyReport = Array.isArray(workspace?.studyReports) && workspace.studyReports.length > 0
-          if (!hasStudyReport) {
-            setError('Generate the Study Report first before creating media suggestions.')
-            return
-          }
+        if (!hasGeneratedStudyReport()) {
+          setError('Generate the Study Report first before creating applications, questions, illustrations, or media suggestions.')
+          return
         }
         try {
           if (type === 'applications') {
@@ -4024,11 +4078,38 @@ export default function WorkspaceDetailPage() {
     }
   }
 
-  const handleWordStudyLookup = async (override?: { word?: string; language?: string }) => {
+  const handleWordStudyLookup = async (override?: {
+    word?: string
+    language?: string
+    context?: string
+    metadata?: {
+      strongs?: string
+      verseReference?: string
+      translatedWord?: string
+      original?: string
+      reference?: string
+    }
+  }) => {
     const config = withToken()
     if (!config) return
     const normalizedWord = (override?.word || wordStudyWord).trim()
     const normalizedLang = (override?.language || wordStudyLanguage).trim().toLowerCase() || 'greek'
+    const contextualReference = String(
+      override?.metadata?.verseReference || override?.metadata?.reference || scriptureLastLookup || '',
+    ).trim()
+    const contextualTranslation = String(override?.metadata?.translatedWord || '').trim()
+    const contextualOriginal = String(override?.metadata?.original || '').trim()
+    const contextualStrongs = String(override?.metadata?.strongs || '').trim().toUpperCase()
+    const contextualHint =
+      String(override?.context || '').trim() ||
+      [
+        contextualReference ? `Reference: ${contextualReference}` : '',
+        contextualStrongs ? `Strong's: ${contextualStrongs}` : '',
+        contextualOriginal ? `Original token: ${contextualOriginal}` : '',
+        contextualTranslation ? `Translated token: ${contextualTranslation}` : '',
+      ]
+        .filter(Boolean)
+        .join(' | ')
     const workspaceLanguage = String(workspace?.language || '').toLowerCase()
     const responseLanguage =
       workspaceLanguage.startsWith('es') ||
@@ -4045,6 +4126,7 @@ export default function WorkspaceDetailPage() {
     setWordStudyError(null)
     setWordStudyWord(normalizedWord)
     setWordStudyLanguage(normalizedLang)
+    setWordStudyLookupContext(contextualHint)
     setWordStudyLastLookup(normalizedWord)
     setActionLoading((prev) => (prev.includes('word-study') ? prev : [...prev, 'word-study']))
     try {
@@ -4064,6 +4146,7 @@ export default function WorkspaceDetailPage() {
           params: {
             word: normalizedWord,
             language: normalizedLang,
+            context: contextualHint || undefined,
             responseLanguage,
           },
         }),
@@ -4086,6 +4169,9 @@ export default function WorkspaceDetailPage() {
           wordStudy: {
             word: normalizedWord,
             language: normalizedLang,
+            responseLanguage,
+            context: contextualHint || null,
+            metadata: override?.metadata || null,
             result: nextWordStudyResult,
             insights: nextWordStudyInsights,
             cachedAt: new Date().toISOString(),
@@ -6336,34 +6422,6 @@ export default function WorkspaceDetailPage() {
                       />
                     )}
                     
-                    {/* Interlinear View - Greek/Hebrew */}
-                    <InterlinearView
-                      reference={scriptureLastLookup}
-                      verses={extractVerses(scriptureResult).map((verse: any) => ({
-                        reference: verse.reference || '',
-                        text: verse.text || ''
-                      }))}
-                      language={workspace?.language || 'en'}
-                      onWordClick={(word) => {
-                        const hasHebrew = /[\u0590-\u05FF]/.test(String(word?.original || ''))
-                        const inferredLanguage = hasHebrew ? 'hebrew' : 'greek'
-                        const lookupWord = String(
-                          word?.transliteration || word?.original || word?.english || '',
-                        ).trim()
-
-                        if (!lookupWord) {
-                          return
-                        }
-
-                        // Open Word Study and trigger lookup with the clicked word.
-                        setActiveSection('word-study')
-                        setActivePhase('STUDY')
-                        setWordStudyWord(lookupWord)
-                        setWordStudyLanguage(inferredLanguage)
-                        handleWordStudyLookup({ word: lookupWord, language: inferredLanguage })
-                      }}
-                    />
-                    
                     {/* Passage Summary - Interpretive Framing */}
                     <div className="relative">
                       <button
@@ -6451,7 +6509,7 @@ export default function WorkspaceDetailPage() {
                         <div className="cyber-panel rounded-2xl p-6">
                           <div className="flex items-center gap-2 mb-1">
                             <Rows className="w-5 h-5 text-cyan-400" />
-                            <h3 className="text-lg font-semibold">Verse-by-Verse Comparison</h3>
+                            <h3 className="text-lg font-semibold">Translation Comparison</h3>
                           </div>
                         </div>
                       )}
@@ -6701,13 +6759,15 @@ export default function WorkspaceDetailPage() {
           {activeSection === 'word-study' && (
             <div className="space-y-4 relative min-h-full">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold">Word Study</h3>
+                <h3 className="text-xl font-semibold">{isSpanishWorkspace ? 'Estudio de palabras' : 'Word Study'}</h3>
                 <button
                   onClick={() => handleWordStudyLookup()}
                   disabled={actionLoading.includes('word-study')}
                   className="cyber-outline text-xs px-3 py-2 rounded-full disabled:opacity-60"
                 >
-                  {actionLoading.includes('word-study') ? 'Looking up...' : 'Lookup'}
+                  {actionLoading.includes('word-study')
+                    ? (isSpanishWorkspace ? 'Buscando...' : 'Looking up...')
+                    : (isSpanishWorkspace ? 'Buscar' : 'Lookup')}
                 </button>
               </div>
               <div className="cyber-panel rounded-2xl p-6 space-y-4">
@@ -6736,11 +6796,11 @@ export default function WorkspaceDetailPage() {
                 </div>
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs uppercase tracking-widest text-cyan-200/80">
-                      Suggested From {scriptureLastLookup || workspace?.mainPassage || 'Passage'}
+                    <p className="text-[11px] uppercase tracking-widest text-cyan-200/70">
+                      {isSpanishWorkspace ? 'Sugerido desde' : 'Suggested From'} {scriptureLastLookup || workspace?.mainPassage || (isSpanishWorkspace ? 'Pasaje' : 'Passage')}
                     </p>
                     {wordStudySuggestionsLoading ? (
-                      <span className="text-[11px] text-gray-400">Loading...</span>
+                      <span className="text-[11px] text-gray-400">{isSpanishWorkspace ? 'Cargando...' : 'Loading...'}</span>
                     ) : null}
                   </div>
                   {wordStudySuggestions.length ? (
@@ -6767,8 +6827,10 @@ export default function WorkspaceDetailPage() {
                   ) : (
                     <p className="text-xs text-gray-300 mt-2">
                       {wordStudySuggestionsLoading
-                        ? 'Analyzing passage terms...'
-                        : 'No suggested terms yet. Open Scripture first, then return here.'}
+                        ? (isSpanishWorkspace ? 'Analizando términos del pasaje...' : 'Analyzing passage terms...')
+                        : (isSpanishWorkspace
+                          ? 'Aún no hay términos sugeridos. Abre primero Escritura y luego vuelve aquí.'
+                          : 'No suggested terms yet. Open Scripture first, then return here.')}
                     </p>
                   )}
                 </div>
@@ -6778,7 +6840,7 @@ export default function WorkspaceDetailPage() {
                   </div>
                 ) : wordStudyLastLookup ? (
                   <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-widest text-cyan-200/80">
-                    <span>Last lookup: {wordStudyLastLookup}</span>
+                    <span>{isSpanishWorkspace ? 'Última búsqueda' : 'Last lookup'}: {wordStudyLastLookup}</span>
                     <span className="text-cyan-200/40">•</span>
                     <span>{wordStudyLanguage}</span>
                   </div>
@@ -6787,16 +6849,16 @@ export default function WorkspaceDetailPage() {
                   <div className="text-sm text-gray-100/90 space-y-2">
                     <p><span className="text-cyan-200">Lemma:</span> {wordStudyResult.lemma}</p>
                     {wordStudyResult.originalScript && (
-                      <p><span className="text-cyan-200">Original Script:</span> {wordStudyResult.originalScript}</p>
+                      <p><span className="text-cyan-200">{isSpanishWorkspace ? 'Escritura original' : 'Original Script'}:</span> {wordStudyResult.originalScript}</p>
                     )}
-                    <p><span className="text-cyan-200">Transliteration:</span> {wordStudyResult.transliteration}</p>
+                    <p><span className="text-cyan-200">{isSpanishWorkspace ? 'Transliteración' : 'Transliteration'}:</span> {wordStudyResult.transliteration}</p>
                     <div>
-                      <span className="text-cyan-200">Definition:</span>
+                      <span className="text-cyan-200">{isSpanishWorkspace ? 'Definición' : 'Definition'}:</span>
                       <div className="mt-1">{renderSmartValue(wordStudyResult.definition || 'N/A')}</div>
                     </div>
                     <p><span className="text-cyan-200">Strong's:</span> {wordStudyResult.strongs || 'N/A'}</p>
-                    <p><span className="text-cyan-200">Part of Speech:</span> {wordStudyResult.partOfSpeech || 'N/A'}</p>
-                    <p><span className="text-cyan-200">Occurrences:</span> {wordStudyResult.usageCount || 'N/A'}</p>
+                    <p><span className="text-cyan-200">{isSpanishWorkspace ? 'Categoría gramatical' : 'Part of Speech'}:</span> {wordStudyResult.partOfSpeech || 'N/A'}</p>
+                    <p><span className="text-cyan-200">{isSpanishWorkspace ? 'Ocurrencias' : 'Occurrences'}:</span> {wordStudyResult.usageCount || 'N/A'}</p>
                     {wordStudyResult.examples?.length ? (
                       <ul className="list-disc list-inside space-y-1">
                         {wordStudyResult.examples.map((example: string, index: number) => (
@@ -6804,11 +6866,11 @@ export default function WorkspaceDetailPage() {
                         ))}
                       </ul>
                     ) : (
-                      <p className="text-gray-200/80">No examples loaded.</p>
+                      <p className="text-gray-200/80">{isSpanishWorkspace ? 'No hay ejemplos cargados.' : 'No examples loaded.'}</p>
                     )}
                     {wordStudyResult.verseOccurrences?.length ? (
                       <div>
-                        <p className="text-xs uppercase tracking-widest cyber-muted">Other occurrences</p>
+                        <p className="text-xs uppercase tracking-widest cyber-muted">{isSpanishWorkspace ? 'Otras ocurrencias' : 'Other occurrences'}</p>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {wordStudyResult.verseOccurrences.slice(0, 12).map((verse: string) => (
                             <span key={verse} className="px-2 py-1 rounded-full text-xs border border-white/10 text-gray-100/90">
@@ -6820,7 +6882,7 @@ export default function WorkspaceDetailPage() {
                     ) : null}
                     {wordStudyResult.distributionByBook?.length ? (
                       <div>
-                        <p className="text-xs uppercase tracking-widest cyber-muted">Distribution by book</p>
+                        <p className="text-xs uppercase tracking-widest cyber-muted">{isSpanishWorkspace ? 'Distribución por libro' : 'Distribution by book'}</p>
                         <div className="mt-2 grid md:grid-cols-2 gap-2 text-xs">
                           {wordStudyResult.distributionByBook.slice(0, 10).map((entry: any) => (
                             <div key={entry.book} className="flex items-center justify-between border border-white/10 rounded-lg px-2 py-1">
@@ -6833,18 +6895,18 @@ export default function WorkspaceDetailPage() {
                     ) : null}
                     {wordStudyInsights ? (
                       <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                        <p className="text-xs uppercase tracking-widest cyber-muted">Advanced Insights</p>
+                        <p className="text-xs uppercase tracking-widest cyber-muted">{isSpanishWorkspace ? 'Perspectivas avanzadas' : 'Advanced Insights'}</p>
                         <div className="mt-2 space-y-2">
                           <div>
-                            <p className="text-xs cyber-muted uppercase tracking-widest">Root</p>
+                            <p className="text-xs cyber-muted uppercase tracking-widest">{isSpanishWorkspace ? 'Raíz' : 'Root'}</p>
                             {renderSmartValue(wordStudyInsights.rootWord || 'N/A')}
                           </div>
                           <div>
-                            <p className="text-xs cyber-muted uppercase tracking-widest">Semantic Range</p>
+                            <p className="text-xs cyber-muted uppercase tracking-widest">{isSpanishWorkspace ? 'Rango semántico' : 'Semantic Range'}</p>
                             {renderSmartValue(wordStudyInsights.semanticRange || [])}
                           </div>
                           <div>
-                            <p className="text-xs cyber-muted uppercase tracking-widest">Nuance</p>
+                            <p className="text-xs cyber-muted uppercase tracking-widest">{isSpanishWorkspace ? 'Matices' : 'Nuance'}</p>
                             {renderSmartValue(wordStudyInsights.nuanceNotes || [])}
                           </div>
                           {wordStudyInsights.grammarInsights ? (
@@ -6865,7 +6927,7 @@ export default function WorkspaceDetailPage() {
                     ) : null}
                   </div>
                 ) : (
-                  <p className="text-gray-200/80">No word study loaded yet.</p>
+                  <p className="text-gray-200/80">{isSpanishWorkspace ? 'Aún no se ha cargado ningún estudio de palabras.' : 'No word study loaded yet.'}</p>
                 )}
               </div>
             </div>
@@ -7177,8 +7239,12 @@ export default function WorkspaceDetailPage() {
               )}
               <div className="space-y-4">
                 <p className="text-xs text-cyan-100/80">
-                  Media Suggestions require a generated Study Report. Other assets can run independently.
+                  Applications, Discussion Questions, Illustration Ideas, and Media Suggestions require a generated Study Report.
                 </p>
+                {(() => {
+                  const requireStudyReport = !hasGeneratedStudyReport()
+                  return (
+                    <>
         {renderStudyAssetCard(
           'study-applications',
           'Applications',
@@ -7193,7 +7259,7 @@ export default function WorkspaceDetailPage() {
           () => setStudyAssetEditor('applications'),
           isStudyAssetLoading('applications'),
           getStudyAssetLoadingLabel('applications'),
-          isStudyAssetLoading('applications'),
+          isStudyAssetLoading('applications') || requireStudyReport,
         )}
                 {renderStudyAssetCard(
                   'study-questions',
@@ -7209,7 +7275,7 @@ export default function WorkspaceDetailPage() {
           () => setStudyAssetEditor('questions'),
           isStudyAssetLoading('questions'),
           getStudyAssetLoadingLabel('questions'),
-          isStudyAssetLoading('questions'),
+          isStudyAssetLoading('questions') || requireStudyReport,
         )}
                 {renderStudyAssetCard(
                   'study-illustrations',
@@ -7225,7 +7291,7 @@ export default function WorkspaceDetailPage() {
           () => setStudyAssetEditor('illustrations'),
           isStudyAssetLoading('illustrations'),
           getStudyAssetLoadingLabel('illustrations'),
-          isStudyAssetLoading('illustrations'),
+          isStudyAssetLoading('illustrations') || requireStudyReport,
         )}
                 {renderStudyAssetCard(
                   'study-media',
@@ -7252,8 +7318,11 @@ export default function WorkspaceDetailPage() {
                   undefined,
                   isStudyAssetLoading('media'),
                   getStudyAssetLoadingLabel('media'),
-                  isStudyAssetLoading('media'),
+                  isStudyAssetLoading('media') || requireStudyReport,
                 )}
+                    </>
+                  )
+                })()}
               </div>
               <div className="cyber-panel rounded-2xl p-6 space-y-6">
                 <div className="flex items-center justify-between gap-3">
@@ -7282,7 +7351,6 @@ export default function WorkspaceDetailPage() {
                   </div>
                   {workspace.mainPassage && (
                     <div className="cyber-panel rounded-2xl p-5">
-                      <h5 className="text-base font-semibold mb-3">Sanctuary & Prophecy Connections</h5>
                       <SanctuaryProphecyMapper
                         passage={workspace.mainPassage}
                         mode={/Daniel|Revelation/.test(workspace.mainPassage) ? 'prophecy' : 'sanctuary'}

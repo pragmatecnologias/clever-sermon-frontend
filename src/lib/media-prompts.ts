@@ -19,6 +19,8 @@ export interface MediaPromptEntry {
   fields?: Record<string, string>
 }
 
+export const MAX_NARRATION_CHARACTERS = 5000
+
 export function buildFallbackImagePrompt(input: {
   theme?: string
   scripture: string
@@ -281,4 +283,57 @@ export function buildStructuredMediaPrompts(params: BuildParams): MediaPromptEnt
           ].filter(Boolean).join('\n'),
         },
       ]
+}
+
+export function sanitizeNarrationText(value: string): string {
+  return String(value || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<\/?[^>]+>/g, ' ')
+    .replace(/\*\*/g, '')
+    .replace(/\*/g, '')
+    .replace(/#{1,6}\s/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function splitSentences(value: string): string[] {
+  return sanitizeNarrationText(value)
+    .split(/(?<=[.!?])\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+export function clampNarrationText(value: string, maxChars = MAX_NARRATION_CHARACTERS): string {
+  const normalizedMax = Number.isFinite(maxChars) ? Math.max(200, Math.floor(maxChars)) : MAX_NARRATION_CHARACTERS
+  const sanitized = sanitizeNarrationText(value)
+  if (!sanitized) return ''
+  if (sanitized.length <= normalizedMax) return sanitized
+
+  const sentences = splitSentences(sanitized)
+  if (!sentences.length) {
+    return sanitized.slice(0, normalizedMax).trim()
+  }
+
+  const chunks: string[] = []
+  let used = 0
+  for (const sentence of sentences) {
+    const next = sentence.length + (chunks.length ? 1 : 0)
+    if (used + next > normalizedMax) break
+    chunks.push(sentence)
+    used += next
+  }
+
+  if (chunks.length) {
+    return chunks.join(' ').trim()
+  }
+
+  return sanitized.slice(0, normalizedMax).trim()
 }

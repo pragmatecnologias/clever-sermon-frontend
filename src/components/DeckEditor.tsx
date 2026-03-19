@@ -3,6 +3,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { slidesApi } from '@/lib/slides-api'
 
+const SLIDES_BACKEND_BASE_URL = (process.env.NEXT_PUBLIC_SLIDES_API_URL || 'http://localhost:3001/api/v1').replace(
+  /\/api\/v1\/?$/,
+  '',
+)
+
+const resolveSlidesAssetUrl = (value?: string | null): string => {
+  const normalized = String(value || '').trim()
+  if (!normalized) return ''
+  if (/^(blob:|data:|https?:\/\/)/i.test(normalized)) return normalized
+  return `${SLIDES_BACKEND_BASE_URL}${normalized.startsWith('/') ? '' : '/'}${normalized}`
+}
+
 const hexToRgba = (hex: string, opacity: number) => {
   const safeHex = hex.replace('#', '')
   const normalized =
@@ -684,6 +696,7 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
         {slides.map((slide, idx) => {
           const layout = getLayoutForTemplate(slide.layoutKey)
           const fieldKeys = layout?.boxes?.map((box) => box.field) || Object.keys(slide.content || {})
+          const resolvedSlideImageUrl = imagePreviews[slide.id] || resolveSlidesAssetUrl(slide.imageUrl)
 
           return (
             <div key={slide.id} className="border border-white/10 rounded-xl p-4 bg-black/30 hover:bg-black/40">
@@ -695,16 +708,16 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
                 className="relative w-full rounded-md border border-white/10 overflow-hidden"
                 style={{
                   aspectRatio: '16 / 9',
-                  background: imagePreviews[slide.id] || slide.imageUrl
+                  background: resolvedSlideImageUrl
                     ? undefined
                     : `linear-gradient(140deg, ${hexToRgba(deck?.theme?.primaryColor || '#1D4ED8', 0.14)} 0%, ${hexToRgba(deck?.theme?.secondaryColor || '#0f172a', 0.18)} 55%, rgba(248,250,252,0.96) 100%)`,
                 }}
               >
-                {(imagePreviews[slide.id] || slide.imageUrl) && (
+                {resolvedSlideImageUrl && (
                   <>
                     <div
                       className="absolute inset-0 bg-cover bg-center"
-                      style={{ backgroundImage: `url(${imagePreviews[slide.id] || slide.imageUrl})` }}
+                      style={{ backgroundImage: `url(${resolvedSlideImageUrl})` }}
                     />
                     <div className="absolute inset-0 bg-slate-900/20" />
                   </>

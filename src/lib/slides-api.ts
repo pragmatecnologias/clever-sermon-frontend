@@ -37,6 +37,18 @@ export interface GenerateAudioRequest {
   narrationPrompt?: string;
 }
 
+export interface GenerateNarrationRequest {
+  language?: string;
+  title?: string;
+  passage?: string;
+  theme?: string;
+  manuscript?: string;
+  keyPoints?: string[];
+  applications?: string[];
+  narrationPrompt?: string;
+  maxChars?: number;
+}
+
 export interface GenerateMusicRequest {
   sermonId?: string;
   workspaceId?: string;
@@ -157,6 +169,13 @@ export const slidesApi = {
     return response.data;
   },
 
+  deleteDeck: async (deckId: string, token: string) => {
+    const response = await axios.delete(`${SLIDES_API_URL}/decks/${deckId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data;
+  },
+
   getSermons: async (token: string) => {
     const response = await axios.get(
       `${SLIDES_API_URL}/sermons`,
@@ -257,6 +276,17 @@ export const slidesApi = {
   },
 
   // Audio
+  generateNarrationScript: async (request: GenerateNarrationRequest, token: string) => {
+    const response = await axios.post(
+      `${SLIDES_API_URL}/audio/narration-script`,
+      request,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
+  },
+
   generateAudio: async (request: GenerateAudioRequest, token: string) => {
     const response = await axios.post(
       `${SLIDES_API_URL}/audio/generate`,

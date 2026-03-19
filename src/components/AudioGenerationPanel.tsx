@@ -3,6 +3,11 @@
 import { useState, useEffect } from 'react'
 import { Mic, Loader2 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
+import {
+  clampNarrationText,
+  MAX_NARRATION_CHARACTERS,
+  sanitizeNarrationText,
+} from '@/lib/media-prompts'
 
 interface AudioGenerationPanelProps {
   workspaceId: string
@@ -12,6 +17,7 @@ interface AudioGenerationPanelProps {
   autoText?: string
   narrationPrompt?: string
   narrationPromptOptions?: Array<{ id: string; label: string; description?: string; prompt: string }>
+  onQueued?: (payload: { id: string; type: 'audio'; status: 'pending'; createdAt: string }) => void
   onGenerated?: () => void
 }
 
@@ -20,8 +26,10 @@ export default function AudioGenerationPanel({
   sermonId, 
   workspace,
   token,
+  autoText,
   narrationPrompt,
   narrationPromptOptions = [],
+  onQueued,
   onGenerated 
 }: AudioGenerationPanelProps) {
   const [provider, setProvider] = useState<'local' | 'elevenlabs'>('local')
@@ -32,41 +40,101 @@ export default function AudioGenerationPanel({
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedPromptOption, setSelectedPromptOption] = useState<string>('')
+  const [voiceManuallySelected, setVoiceManuallySelected] = useState(false)
 
-  const stripNarrationMarkup = (value: string) =>
-    String(value || '')
-      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<\/?[^>]+>/g, ' ')
-      .replace(/\*\*/g, '')
-      .replace(/\*/g, '')
-      .replace(/#{1,6}\s/g, '')
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/&amp;/gi, '&')
-      .replace(/&lt;/gi, '<')
-      .replace(/&gt;/gi, '>')
-      .replace(/&quot;/gi, '"')
-      .replace(/&#39;/gi, "'")
-      .replace(/\s+/g, ' ')
-      .trim()
+  const narrationKeyPoints = (
+    Array.isArray(workspace?.outlines?.[0]?.structure?.pointNodes)
+      ? workspace.outlines[0].structure.pointNodes
+      : Array.isArray(workspace?.outlines?.[0]?.structure?.points)
+      ? workspace.outlines[0].structure.points
+      : []
+  )
+    .map((item: any) => item?.title || item?.pointTitle || item?.summary || item?.content || item?.text || item)
+    .map((item: any) => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, 6)
+
+  const narrationApplications = (Array.isArray(workspace?.applications) ? workspace.applications : [])
+    .map((item: any) => item?.content || item?.text || item?.application || item)
+    .map((item: any) => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, 4)
 
   const getVoiceValue = (voice: any) => String(voice?.voice_id || voice?.id || voice?.name || '')
   const getVoiceName = (voice: any) => String(voice?.name || voice?.id || voice?.voice_id || 'Voice')
 
+  const isLikelySpanishText = (value: string) => {
+    const normalized = String(value || '').toLowerCase()
+    if (!normalized.trim()) return false
+    return (
+      /[áéíóúñü¿¡]/i.test(normalized) ||
+      /\b(el|la|los|las|de|que|para|con|por|una|uno|este|esta|cristo|dios|gracia|salvación|iglesia)\b/i.test(normalized)
+    )
+  }
+
   useEffect(() => {
+    if (source === 'custom') return
+
+    let active = true
+    const hydrateNarration = async () => {
+      const generated = await requestGeneratedNarration({
+        sourceType: source,
+      })
+      if (!active) return
+      setText(generated)
+    }
+
+    hydrateNarration()
+    return () => {
+      active = false
+    }
+  }, [
+    source,
+    workspace,
+    narrationPrompt,
+    narrationKeyPoints,
+    narrationApplications,
+    autoText,
+    token,
+  ])
+
+  const isSpanishVoice = (voice: any) => {
+    const language = String(voice?.language || voice?.lang || '').toLowerCase()
+    const locale = String(voice?.locale || '').toLowerCase()
+    const id = getVoiceValue(voice).toLowerCase()
+    const name = getVoiceName(voice).toLowerCase()
+    if (language === 'es' || language.startsWith('es-') || language.startsWith('es_')) return true
+    if (locale.startsWith('es')) return true
+    return /(^|[^a-z])es([_-]|$)|spanish|español/.test(`${id} ${name}`)
+  }
+
+  const pickPreferredVoiceId = (voicesData: any[], sampleText: string, nextProvider: 'local' | 'elevenlabs') => {
+    if (!Array.isArray(voicesData) || voicesData.length === 0) return ''
+    const spanishText = isLikelySpanishText(sampleText)
+    if (nextProvider === 'local' && spanishText) {
+      const spanishVoice = voicesData.find((voice) => isSpanishVoice(voice))
+      if (spanishVoice) return getVoiceValue(spanishVoice)
+    }
+    return getVoiceValue(voicesData[0])
+  }
+
+  useEffect(() => {
+    setVoiceManuallySelected(false)
     loadVoices(provider)
   }, [provider])
 
   useEffect(() => {
-    if (source === 'manuscript') {
-      const manuscriptText = workspace.manuscripts?.[0]?.content?.text || ''
-      setText(stripNarrationMarkup(manuscriptText))
-    } else if (source === 'scripture') {
-      const scriptureText = workspace.mainPassage || ''
-      setText(stripNarrationMarkup(scriptureText))
+    if (voiceManuallySelected) return
+    if (provider !== 'local') return
+    if (!voices.length) return
+    if (!isLikelySpanishText(text)) return
+    if (voices.some((voice) => getVoiceValue(voice) === voiceId && isSpanishVoice(voice))) return
+
+    const preferredSpanishId = pickPreferredVoiceId(voices, text, provider)
+    if (preferredSpanishId) {
+      setVoiceId(preferredSpanishId)
     }
-  }, [source, workspace])
+  }, [voiceManuallySelected, provider, voices, text, voiceId])
 
   useEffect(() => {
     if (!narrationPromptOptions.length) return
@@ -79,12 +147,59 @@ export default function AudioGenerationPanel({
       const voicesData = await slidesApi.getVoices(token, nextProvider)
       setVoices(voicesData)
       if (voicesData.length > 0) {
-        setVoiceId(getVoiceValue(voicesData[0]))
+        setVoiceId(pickPreferredVoiceId(voicesData, text, nextProvider))
       }
     } catch (err) {
       console.error('Failed to load voices:', err)
       setVoices([])
       setVoiceId('')
+    }
+  }
+
+  const getSourceText = (nextSource: 'manuscript' | 'scripture' | 'custom') => {
+    if (nextSource === 'scripture') {
+      return String(workspace.mainPassage || '').trim()
+    }
+    if (nextSource === 'manuscript') {
+      return String(workspace.manuscripts?.[0]?.content?.text || autoText || '').trim()
+    }
+    return String(text || '').trim()
+  }
+
+  const requestGeneratedNarration = async (options: {
+    sourceType: 'manuscript' | 'scripture'
+    sourceText?: string
+    promptOverride?: string
+  }) => {
+    const sourceText = sanitizeNarrationText(options.sourceText ?? getSourceText(options.sourceType))
+    if (!sourceText) return ''
+
+    try {
+      const response = await slidesApi.generateNarrationScript(
+        {
+          language: workspace.language || workspace.metadata?.language || 'en',
+          title: workspace.title || 'Untitled Sermon',
+          passage: options.sourceType === 'scripture' ? sourceText : workspace.mainPassage || '',
+          theme: workspace.theme || workspace.sermonGoals || '',
+          manuscript: sourceText,
+          keyPoints: narrationKeyPoints,
+          applications: narrationApplications,
+          narrationPrompt: options.promptOverride || narrationPrompt,
+          maxChars: MAX_NARRATION_CHARACTERS,
+        },
+        token,
+      )
+
+      const generated = clampNarrationText(
+        sanitizeNarrationText(String(response?.text || '')),
+        MAX_NARRATION_CHARACTERS,
+      )
+
+      if (generated) return generated
+      return clampNarrationText(sourceText, MAX_NARRATION_CHARACTERS)
+    } catch (err) {
+      console.error('Failed to generate narration script:', err)
+      return clampNarrationText(sourceText, MAX_NARRATION_CHARACTERS)
     }
   }
 
@@ -101,12 +216,31 @@ export default function AudioGenerationPanel({
       narrationPromptOptions.find((item) => item.id === selectedPromptOption)?.prompt ||
       narrationPrompt ||
       ''
+    const finalNarrationText =
+      source === 'custom'
+        ? clampNarrationText(text, MAX_NARRATION_CHARACTERS)
+        : await requestGeneratedNarration({
+            sourceType: source,
+            sourceText: getSourceText(source),
+            promptOverride: selectedPromptText || narrationPrompt,
+          })
+
+    if (!finalNarrationText.trim()) {
+      setError('Please enter text to narrate')
+      setGenerating(false)
+      return
+    }
+
+    if (finalNarrationText !== sanitizeNarrationText(text)) {
+      setText(finalNarrationText)
+    }
+
     try {
-      await slidesApi.generateAudio(
+      const response = await slidesApi.generateAudio(
         {
           workspaceId,
           sermonId,
-          text: stripNarrationMarkup(text),
+          text: finalNarrationText,
           voiceId,
           provider,
           narrationPrompt: selectedPromptText.trim() || undefined,
@@ -114,6 +248,14 @@ export default function AudioGenerationPanel({
         token
       )
 
+      if (response?.id) {
+        onQueued?.({
+          id: String(response.id),
+          type: 'audio',
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+        })
+      }
       onGenerated?.()
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to generate audio')
@@ -122,8 +264,22 @@ export default function AudioGenerationPanel({
     }
   }
 
-  const wordCount = text.trim().split(/\s+/).length
+  const normalizedText = sanitizeNarrationText(text)
+  const wordCount = normalizedText ? normalizedText.split(/\s+/).length : 0
+  const characterCount = normalizedText.length
   const estimatedMinutes = Math.ceil(wordCount / 150)
+  const selectedVoice = voices.find((voice) => getVoiceValue(voice) === voiceId)
+  const detectedLanguageLabel = !text.trim()
+    ? 'Unknown'
+    : isLikelySpanishText(text)
+    ? 'Spanish'
+    : 'English/Other'
+  const selectedVoiceLanguageLabel = selectedVoice
+    ? isSpanishVoice(selectedVoice)
+      ? 'Spanish'
+      : 'English/Other'
+    : 'Unknown'
+  const selectionModeLabel = voiceManuallySelected ? 'Manual' : 'Auto'
 
   return (
     <div className="border border-white/10 rounded-xl p-6 bg-black/20 space-y-4">
@@ -190,7 +346,10 @@ export default function AudioGenerationPanel({
           </label>
           <select
             value={voiceId}
-            onChange={(e) => setVoiceId(e.target.value)}
+            onChange={(e) => {
+              setVoiceManuallySelected(true)
+              setVoiceId(e.target.value)
+            }}
             className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
           >
             {voices.map((voice) => (
@@ -199,6 +358,11 @@ export default function AudioGenerationPanel({
               </option>
             ))}
           </select>
+          <p className="mt-2 text-[11px] text-gray-400">
+            Detected language: <span className="text-gray-200">{detectedLanguageLabel}</span> • Voice language:{' '}
+            <span className="text-gray-200">{selectedVoiceLanguageLabel}</span> • Selection:{' '}
+            <span className="text-gray-200">{selectionModeLabel}</span>
+          </p>
         </div>
       )}
 
@@ -248,7 +412,7 @@ export default function AudioGenerationPanel({
         />
         <div className="flex justify-between mt-2 text-xs text-gray-500">
           <span>{wordCount} words</span>
-          <span>~{estimatedMinutes} min audio</span>
+          <span>{characterCount}/{MAX_NARRATION_CHARACTERS} chars · ~{estimatedMinutes} min audio</span>
         </div>
       </div>
 

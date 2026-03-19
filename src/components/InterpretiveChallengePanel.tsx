@@ -37,6 +37,27 @@ export default function InterpretiveChallengePanel({ passage, token, language = 
   const [error, setError] = useState<string | null>(null)
   const [expandedViews, setExpandedViews] = useState<Set<string>>(new Set())
   const [showSDA, setShowSDA] = useState(false)
+  const isSpanish = String(language || '').toLowerCase().startsWith('es')
+  const t = {
+    title: isSpanish ? 'Desafíos interpretativos' : 'Interpretive Challenges',
+    loading: isSpanish ? 'Cargando desafíos interpretativos...' : 'Loading interpretive challenges...',
+    unavailable: isSpanish ? 'No hay desafíos interpretativos documentados para este pasaje' : 'No interpretive challenges documented for this passage',
+    loadError: isSpanish ? 'No se pudieron cargar los desafíos interpretativos' : 'Unable to load interpretive challenges',
+    fetchError: isSpanish ? 'Error al obtener desafíos interpretativos' : 'Failed to fetch interpretive challenges',
+    noChallenges: isSpanish ? 'No hay desafíos interpretativos documentados.' : 'No interpretive challenges documented.',
+    challenge: isSpanish ? 'Desafío' : 'Challenge',
+    views: isSpanish ? 'Diferentes perspectivas interpretativas' : 'Different Interpretive Views',
+    summary: isSpanish ? 'Resumen' : 'Summary',
+    keyArguments: isSpanish ? 'Argumentos clave' : 'Key Arguments',
+    sdaPerspective: isSpanish ? 'Perspectiva adventista' : 'SDA Perspective',
+    position: isSpanish ? 'Posición' : 'Position',
+    reasoning: isSpanish ? 'Razonamiento' : 'Reasoning',
+    supportingTexts: isSpanish ? 'Textos de apoyo' : 'Supporting Texts',
+    dataSource: isSpanish ? 'Fuente de datos' : 'Data source',
+    footer: isSpanish
+      ? 'Comprender diferentes perspectivas interpretativas ayuda a desarrollar sermones equilibrados y bien fundamentados.'
+      : 'Understanding different interpretive views helps develop balanced, well-informed sermons.',
+  }
 
   useEffect(() => {
     if (cachedData) {
@@ -61,25 +82,33 @@ export default function InterpretiveChallengePanel({ passage, token, language = 
       if (response.ok) {
         const data = await response.json()
         if (!data || typeof data !== 'object') {
-          setError('No interpretive challenges documented for this passage')
+          setError(t.unavailable)
           setChallenge(null)
           return
         }
         if (data.dataSource === 'unavailable') {
-          setError('No interpretive challenges documented for this passage')
+          setError(t.unavailable)
           setChallenge(null)
         } else {
           setChallenge(data)
           onDataLoad?.(data)
         }
       } else {
-        setError('Unable to load interpretive challenges')
+        setError(t.loadError)
       }
     } catch (err) {
-      setError('Failed to fetch interpretive challenges')
+      setError(t.fetchError)
     } finally {
       setLoading(false)
     }
+  }
+
+  const sanitizeKeyArguments = (args: unknown): string[] => {
+    if (!Array.isArray(args)) return []
+    return args
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+      .filter((item) => !/^(argument|argumento)s?:?$/i.test(item))
   }
 
   const toggleView = (viewName: string) => {
@@ -97,12 +126,12 @@ export default function InterpretiveChallengePanel({ passage, token, language = 
       <div className="cyber-panel rounded-2xl p-6">
         <div className="flex items-center gap-2 mb-4">
           <AlertCircle className="w-5 h-5 text-amber-400 animate-pulse" />
-          <h3 className="text-lg font-semibold">Interpretive Challenges</h3>
+          <h3 className="text-lg font-semibold">{t.title}</h3>
         </div>
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-gray-300">
             <span className="h-2 w-2 rounded-full bg-amber-300 animate-pulse" />
-            Loading interpretive challenges...
+            {t.loading}
           </div>
           <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
             <div className="h-full w-full animate-[progress_loop_1.1s_linear_infinite] bg-gradient-to-r from-transparent via-amber-300 to-transparent" />
@@ -117,7 +146,7 @@ export default function InterpretiveChallengePanel({ passage, token, language = 
       <div className="cyber-panel rounded-2xl p-6">
         <div className="flex items-center gap-2 mb-4">
           <AlertCircle className="w-5 h-5 text-amber-400" />
-          <h3 className="text-lg font-semibold">Interpretive Challenges</h3>
+          <h3 className="text-lg font-semibold">{t.title}</h3>
         </div>
         <div className="border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm rounded-xl px-4 py-3">
           {error}
@@ -131,9 +160,9 @@ export default function InterpretiveChallengePanel({ passage, token, language = 
       <div className="cyber-panel rounded-2xl p-6">
         <div className="flex items-center gap-2 mb-4">
           <AlertCircle className="w-5 h-5 text-cyan-400" />
-          <h3 className="text-lg font-semibold">Interpretive Challenges</h3>
+          <h3 className="text-lg font-semibold">{t.title}</h3>
         </div>
-        <p className="text-sm text-gray-400">No interpretive challenges documented.</p>
+        <p className="text-sm text-gray-400">{t.noChallenges}</p>
       </div>
     )
   }
@@ -142,18 +171,18 @@ export default function InterpretiveChallengePanel({ passage, token, language = 
     <div className="cyber-panel rounded-2xl p-6 space-y-4">
       <div className="flex items-center gap-2 mb-4">
         <AlertCircle className="w-5 h-5 text-amber-400" />
-        <h3 className="text-lg font-semibold">Interpretive Challenges</h3>
+        <h3 className="text-lg font-semibold">{t.title}</h3>
       </div>
 
       {/* Challenge Statement */}
       <div className="border border-amber-400/40 bg-amber-500/10 rounded-xl p-4">
-        <p className="text-xs uppercase tracking-widest text-amber-300 mb-2">Challenge</p>
+        <p className="text-xs uppercase tracking-widest text-amber-300 mb-2">{t.challenge}</p>
         <p className="text-sm text-amber-100 leading-relaxed">{challenge.challenge}</p>
       </div>
 
       {/* Different Views */}
       <div>
-        <p className="text-xs uppercase tracking-widest cyber-muted mb-3">Different Interpretive Views</p>
+        <p className="text-xs uppercase tracking-widest cyber-muted mb-3">{t.views}</p>
         <div className="space-y-2">
           {challenge.views.map((view, index) => (
             <div key={index} className="border border-white/10 rounded-xl bg-black/30">
@@ -174,14 +203,14 @@ export default function InterpretiveChallengePanel({ passage, token, language = 
               {expandedViews.has(view.viewName) && (
                 <div className="px-4 pb-4 space-y-3">
                   <div className="border-t border-white/10 pt-3">
-                    <p className="text-xs uppercase tracking-widest cyber-muted mb-2">Summary</p>
+                    <p className="text-xs uppercase tracking-widest cyber-muted mb-2">{t.summary}</p>
                     <p className="text-sm text-gray-300 leading-relaxed mb-3">{view.summary}</p>
                     
-                    {view.keyArguments && Array.isArray(view.keyArguments) && view.keyArguments.length > 0 && (
+                    {sanitizeKeyArguments(view.keyArguments).length > 0 && (
                       <>
-                        <p className="text-xs uppercase tracking-widest cyber-muted mb-2">Key Arguments</p>
+                        <p className="text-xs uppercase tracking-widest cyber-muted mb-2">{t.keyArguments}</p>
                         <ul className="space-y-1">
-                          {view.keyArguments.map((arg, argIndex) => (
+                          {sanitizeKeyArguments(view.keyArguments).map((arg, argIndex) => (
                             <li key={argIndex} className="text-sm text-gray-300 flex items-start gap-2">
                               <span className="text-cyan-400 mt-1">•</span>
                               <span>{arg}</span>
@@ -207,7 +236,7 @@ export default function InterpretiveChallengePanel({ passage, token, language = 
           >
             <div className="flex items-center gap-2">
               <Book className="w-4 h-4 text-blue-400" />
-              <span className="text-sm font-semibold text-blue-300">SDA Perspective</span>
+              <span className="text-sm font-semibold text-blue-300">{t.sdaPerspective}</span>
             </div>
             {showSDA ? (
               <ChevronUp className="w-4 h-4 text-blue-400" />
@@ -219,15 +248,15 @@ export default function InterpretiveChallengePanel({ passage, token, language = 
           {showSDA && (
             <div className="px-4 pb-4 space-y-3">
               <div className="border-t border-blue-400/20 pt-3">
-                <p className="text-xs uppercase tracking-widest text-blue-300 mb-2">Position</p>
+                <p className="text-xs uppercase tracking-widest text-blue-300 mb-2">{t.position}</p>
                 <p className="text-sm text-blue-100 leading-relaxed mb-3">{challenge.sdaPerspective.position}</p>
                 
-                <p className="text-xs uppercase tracking-widest text-blue-300 mb-2">Reasoning</p>
+                <p className="text-xs uppercase tracking-widest text-blue-300 mb-2">{t.reasoning}</p>
                 <p className="text-sm text-blue-100 leading-relaxed mb-3">{challenge.sdaPerspective.reasoning}</p>
                 
                 {challenge.sdaPerspective?.supportingTexts && Array.isArray(challenge.sdaPerspective.supportingTexts) && challenge.sdaPerspective.supportingTexts.length > 0 && (
                   <>
-                    <p className="text-xs uppercase tracking-widest text-blue-300 mb-2">Supporting Texts</p>
+                    <p className="text-xs uppercase tracking-widest text-blue-300 mb-2">{t.supportingTexts}</p>
                     <div className="flex flex-wrap gap-2">
                       {challenge.sdaPerspective.supportingTexts.map((text, index) => (
                         <span
@@ -249,9 +278,9 @@ export default function InterpretiveChallengePanel({ passage, token, language = 
       {/* Footer */}
       <div className="mt-4 pt-4 border-t border-white/10">
         <p className="text-xs text-gray-400">
-          <span className="italic">Data source: {challenge.dataSource}</span>
+          <span className="italic">{t.dataSource}: {challenge.dataSource}</span>
           {' • '}
-          Understanding different interpretive views helps develop balanced, well-informed sermons.
+          {t.footer}
         </p>
       </div>
     </div>

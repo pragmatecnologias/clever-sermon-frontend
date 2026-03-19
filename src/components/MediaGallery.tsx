@@ -21,6 +21,145 @@ interface MediaItem {
   progressLabel?: string
 }
 
+function InlineAudioPlayer({ audioId, token }: { audioId: string; token: string }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [audioSrc, setAudioSrc] = useState<string>('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [hasError, setHasError] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    let objectUrl: string | null = null
+
+    const load = async () => {
+      try {
+        setIsLoading(true)
+        setHasError(false)
+        const blob = await slidesApi.getAudioBlob(audioId, token)
+        if (!mounted) return
+        objectUrl = URL.createObjectURL(blob)
+        setAudioSrc(objectUrl)
+      } catch (error) {
+        if (!mounted) return
+        console.error('Failed to load audio preview:', error)
+        setAudioSrc('')
+        setHasError(true)
+      } finally {
+        if (mounted) setIsLoading(false)
+      }
+    }
+
+    void load()
+    return () => {
+      mounted = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [audioId, token])
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio || !audioSrc) return
+
+    const handleLoaded = () => {
+      setDuration(Number.isFinite(audio.duration) ? audio.duration : 0)
+      setHasError(false)
+    }
+    const handleTime = () => setCurrentTime(audio.currentTime || 0)
+    const handleEnded = () => setIsPlaying(false)
+    const handleError = () => {
+      setIsPlaying(false)
+      setHasError(true)
+    }
+
+    audio.addEventListener('loadedmetadata', handleLoaded)
+    audio.addEventListener('timeupdate', handleTime)
+    audio.addEventListener('ended', handleEnded)
+    audio.addEventListener('error', handleError)
+
+    return () => {
+      audio.removeEventListener('loadedmetadata', handleLoaded)
+      audio.removeEventListener('timeupdate', handleTime)
+      audio.removeEventListener('ended', handleEnded)
+      audio.removeEventListener('error', handleError)
+    }
+  }, [audioSrc])
+
+  const togglePlayback = async () => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    if (isPlaying) {
+      audio.pause()
+      setIsPlaying(false)
+      return
+    }
+
+    try {
+      setHasError(false)
+      await audio.play()
+      setIsPlaying(true)
+    } catch (error) {
+      console.error('Failed to play audio preview:', error)
+      setIsPlaying(false)
+      setHasError(true)
+    }
+  }
+
+  const handleSeek = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const audio = audioRef.current
+    if (!audio) return
+    const nextTime = Number(event.target.value || 0)
+    audio.currentTime = nextTime
+    setCurrentTime(nextTime)
+  }
+
+  const formatTime = (seconds: number) => {
+    if (!Number.isFinite(seconds) || seconds <= 0) return '0:00'
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${String(secs).padStart(2, '0')}`
+  }
+
+  return (
+    <div className="mb-3 rounded-lg border border-white/10 bg-black/30 p-3">
+      <audio ref={audioRef} src={audioSrc || undefined} preload="metadata" />
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            void togglePlayback()
+          }}
+          disabled={!audioSrc || isLoading}
+          className="rounded-md border border-white/15 px-2.5 py-1.5 text-xs text-gray-100 hover:bg-white/10 flex items-center gap-1"
+        >
+          {isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+          {isPlaying ? 'Pause' : 'Play'}
+        </button>
+        <div className="text-[11px] text-gray-300 min-w-[74px] text-right">
+          {formatTime(currentTime)} / {formatTime(duration)}
+        </div>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={Math.max(0, duration)}
+        step={0.1}
+        value={Math.min(currentTime, duration || 0)}
+        onClick={(event) => event.stopPropagation()}
+        onChange={handleSeek}
+        disabled={!audioSrc || isLoading}
+        className="mt-2 w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+      />
+      {isLoading ? <p className="mt-1 text-[11px] text-gray-400">Loading audio preview…</p> : null}
+      {hasError ? <p className="mt-1 text-[11px] text-red-300">Could not load audio preview.</p> : null}
+    </div>
+  )
+}
+
 interface MusicTrackOption {
   trackId: string
   title?: string
@@ -92,9 +231,11 @@ interface MediaGalleryProps {
   token: string
   filter?: 'all' | 'image' | 'slide' | 'audio' | 'music' | 'video' | 'social'
   onFilterChange?: (filter: 'all' | 'image' | 'slide' | 'audio' | 'music' | 'video' | 'social') => void
+  optimisticItems?: Array<Pick<MediaItem, 'id' | 'type' | 'status' | 'createdAt'>>
+  onMediaDeleted?: (payload: { id: string; type: MediaItem['type'] }) => void
 }
 
-export default function MediaGallery({ workspaceId, token, filter, onFilterChange }: MediaGalleryProps) {
+export default function MediaGallery({ workspaceId, token, filter, onFilterChange, optimisticItems = [], onMediaDeleted }: MediaGalleryProps) {
   const [internalFilter, setInternalFilter] = useState<'all' | 'image' | 'slide' | 'audio' | 'music' | 'video' | 'social'>('all')
   const [media, setMedia] = useState<MediaItem[]>([])
   const [decks, setDecks] = useState<any[]>([])
@@ -110,6 +251,20 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
     setInternalFilter(next)
   }
 
+  const mergedMedia = useMemo(() => {
+    const byId = new Map(media.map((item) => [item.id, item]))
+    for (const item of optimisticItems) {
+      if (!byId.has(item.id)) {
+        byId.set(item.id, {
+          ...item,
+          status: item.status as MediaItem['status'],
+          createdAt: item.createdAt,
+        } as MediaItem)
+      }
+    }
+    return Array.from(byId.values()).sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+  }, [media, optimisticItems])
+
   // Combine decks and media into single filtered list
   const allItems = [
     ...decks.map(deck => ({
@@ -119,7 +274,7 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
       createdAt: deck.createdAt,
       deck: deck,
     })),
-    ...media,
+    ...mergedMedia,
   ]
 
   const filteredItems = activeFilter === 'all' 
@@ -278,11 +433,11 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
     const hasPendingDeck = decks.some((deck) =>
       ['pending', 'processing', 'generating'].includes(String(deck?.status || '').toLowerCase()),
     )
-    const hasPendingMedia = media.some((item) =>
+    const hasPendingMedia = mergedMedia.some((item) =>
       ['pending', 'processing', 'generating'].includes(String(item?.status || '').toLowerCase()),
     )
     return hasPendingDeck || hasPendingMedia
-  }, [decks, media])
+  }, [decks, mergedMedia])
 
   useEffect(() => {
     if (!hasInFlightItems) return
@@ -392,6 +547,8 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
       } else {
         return
       }
+      setMedia((prev) => prev.filter((entry) => entry.id !== item.id))
+      onMediaDeleted?.({ id: item.id, type: item.type })
       await loadMediaLibrary()
     } catch (error) {
       console.error('Failed to delete media item:', error)
@@ -399,6 +556,24 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
       setDeletingIds((prev) => {
         const next = { ...prev }
         delete next[item.id]
+        return next
+      })
+    }
+  }
+
+  const deleteDeckItem = async (deckId: string) => {
+    try {
+      setDeletingIds((prev) => ({ ...prev, [deckId]: true }))
+      await slidesApi.deleteDeck(deckId, token)
+      setDecks((prev) => prev.filter((entry) => entry.id !== deckId))
+      onMediaDeleted?.({ id: deckId, type: 'slide' })
+      await loadMediaLibrary()
+    } catch (error) {
+      console.error('Failed to delete deck:', error)
+    } finally {
+      setDeletingIds((prev) => {
+        const next = { ...prev }
+        delete next[deckId]
         return next
       })
     }
@@ -444,6 +619,8 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
               const deck = item.deck
               const deckStatus = String(deck.status || '').toLowerCase()
               const canEditDeck = deckStatus === 'ready' || deckStatus === 'completed'
+              const canDeleteDeck = true
+              const isDeletingDeck = Boolean(deletingIds[deck.id])
               return (
                 <div
                   key={item.id}
@@ -465,19 +642,36 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
                   </p>
                   <DeckFirstSlidePreview deck={deck} token={token} />
 
-                  {canEditDeck ? (
+                  {canEditDeck || canDeleteDeck ? (
                     <div className="flex gap-2">
-                      <button
-                        onClick={() =>
-                          slidesApi.exportDeck(deck.id, 'pptx', token).catch((error) =>
-                            console.error('Failed to export deck:', error),
-                          )
-                        }
-                        className="w-full cyber-outline text-xs px-3 py-2 rounded-full flex items-center justify-center gap-2"
-                      >
-                        <Download className="w-3 h-3" />
-                        Export PPTX
-                      </button>
+                      {canEditDeck ? (
+                        <button
+                          onClick={() =>
+                            slidesApi.exportDeck(deck.id, 'pptx', token).catch((error) =>
+                              console.error('Failed to export deck:', error),
+                            )
+                          }
+                          className="flex-1 cyber-outline text-xs px-3 py-2 rounded-full flex items-center justify-center gap-2"
+                        >
+                          <Download className="w-3 h-3" />
+                          Export PPTX
+                        </button>
+                      ) : null}
+                      {canDeleteDeck ? (
+                        <button
+                          onClick={() => {
+                            void deleteDeckItem(deck.id)
+                          }}
+                          disabled={isDeletingDeck}
+                          className="cyber-outline text-xs px-3 py-2 rounded-full text-red-300 border-red-400/40 hover:bg-red-500/10 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {isDeletingDeck ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-3 h-3" />
+                          )}
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
 
@@ -490,6 +684,8 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
 
             // Render regular media card
             const mediaItem = item as MediaItem
+            const canDeleteMedia =
+              mediaItem.type === 'audio' || mediaItem.status === 'completed' || mediaItem.status === 'failed'
             return (
               <div
                 key={mediaItem.id}
@@ -550,15 +746,16 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
                       ) : null}
                     </div>
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                      <div
-                        className="h-full rounded-full bg-cyan-300 transition-all duration-500"
-                        style={{
-                          width: `${Math.max(
-                            6,
-                            Math.min(100, Number(mediaItem.progressPercent || 12)),
-                          )}%`,
-                        }}
-                      />
+                      {typeof mediaItem.progressPercent === 'number' ? (
+                        <div
+                          className="h-full rounded-full bg-cyan-300 transition-all duration-500"
+                          style={{
+                            width: `${Math.max(6, Math.min(100, Number(mediaItem.progressPercent)))}%`,
+                          }}
+                        />
+                      ) : (
+                        <div className="media-indeterminate-bar h-full w-1/3 rounded-full bg-cyan-300" />
+                      )}
                     </div>
                     {formatEtaFromProgress(mediaItem.progressCurrent, mediaItem.progressTotal) ? (
                       <p className="text-[11px] text-gray-400">
@@ -587,7 +784,11 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
                   />
                 ) : null}
 
-                {(mediaItem.status === 'completed' || mediaItem.status === 'failed') && (
+                {mediaItem.type === 'audio' && mediaItem.status === 'completed' ? (
+                  <InlineAudioPlayer audioId={mediaItem.id} token={token} />
+                ) : null}
+
+                {canDeleteMedia && (
                   <div className="flex gap-2 mt-3">
                     {mediaItem.status === 'completed' ? (
                       <button
@@ -639,6 +840,22 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
           })}
         </div>
       )}
+
+      <style jsx>{`
+        @keyframes media-indeterminate-slide {
+          0% {
+            transform: translateX(-120%);
+          }
+          100% {
+            transform: translateX(320%);
+          }
+        }
+
+        .media-indeterminate-bar {
+          animation: media-indeterminate-slide 1.2s ease-in-out infinite;
+          will-change: transform;
+        }
+      `}</style>
     </div>
   )
 }

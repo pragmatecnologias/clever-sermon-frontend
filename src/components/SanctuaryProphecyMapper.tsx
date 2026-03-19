@@ -79,7 +79,7 @@ export default function SanctuaryProphecyMapper({ passage, mode, language = 'en'
   };
 
   return (
-    <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+    <div>
       <div className="flex items-center gap-2 mb-4">
         <Network className="w-5 h-5 text-blue-400" />
         <h3 className="text-lg font-semibold text-white">
