@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Book } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { type Components } from 'react-markdown';
 
 interface EGWQuote {
   reference: string;
@@ -16,7 +16,7 @@ interface EGWStudySection {
   devotionalInsight?: string;
   practicalCounsel?: string;
   propheticExpansion?: string;
-  quotes: EGWQuote[];
+  quotes?: EGWQuote[];
 }
 
 interface StudyReportEGWSectionProps {
@@ -26,18 +26,18 @@ interface StudyReportEGWSectionProps {
 export default function StudyReportEGWSection({ section }: StudyReportEGWSectionProps) {
   if (!section) return null;
 
-  const markdownComponents = {
-    p: ({ children }: any) => <p className="mb-3 last:mb-0">{children}</p>,
-    strong: ({ children }: any) => <strong className="font-semibold text-white">{children}</strong>,
-    em: ({ children }: any) => <em className="italic text-gray-200">{children}</em>,
-    ul: ({ children }: any) => <ul className="list-disc list-inside space-y-1 mb-3 last:mb-0">{children}</ul>,
-    ol: ({ children }: any) => <ol className="list-decimal list-inside space-y-1 mb-3 last:mb-0">{children}</ol>,
-    li: ({ children }: any) => <li>{children}</li>,
-    h1: ({ children }: any) => <h5 className="text-base font-semibold text-blue-200 mb-2">{children}</h5>,
-    h2: ({ children }: any) => <h5 className="text-base font-semibold text-blue-200 mb-2">{children}</h5>,
-    h3: ({ children }: any) => <h6 className="text-sm font-semibold text-blue-200 mb-2">{children}</h6>,
-    h4: ({ children }: any) => <h6 className="text-sm font-semibold text-blue-200 mb-2">{children}</h6>,
-    blockquote: ({ children }: any) => (
+  const markdownComponents: Components = {
+    p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+    strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
+    em: ({ children }) => <em className="italic text-gray-200">{children}</em>,
+    ul: ({ children }) => <ul className="list-disc list-inside space-y-1 mb-3 last:mb-0">{children}</ul>,
+    ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 mb-3 last:mb-0">{children}</ol>,
+    li: ({ children }) => <li>{children}</li>,
+    h1: ({ children }) => <h5 className="text-base font-semibold text-blue-200 mb-2">{children}</h5>,
+    h2: ({ children }) => <h5 className="text-base font-semibold text-blue-200 mb-2">{children}</h5>,
+    h3: ({ children }) => <h6 className="text-sm font-semibold text-blue-200 mb-2">{children}</h6>,
+    h4: ({ children }) => <h6 className="text-sm font-semibold text-blue-200 mb-2">{children}</h6>,
+    blockquote: ({ children }) => (
       <blockquote className="border-l-2 border-blue-400/30 pl-3 italic text-gray-200 mb-3 last:mb-0">
         {children}
       </blockquote>

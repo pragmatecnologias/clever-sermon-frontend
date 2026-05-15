@@ -17,6 +17,7 @@ export default function NewWorkspacePage() {
     style: '',
     storyArc: '',
     language: 'en',
+    egwEnabled: false,
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -47,6 +48,7 @@ export default function NewWorkspacePage() {
         style: formData.style || undefined,
         storyArc: formData.storyArc || undefined,
         language: formData.language || 'en',
+        egwEnabled: formData.egwEnabled,
       }
 
       const response = await axios.post(
@@ -205,6 +207,21 @@ export default function NewWorkspacePage() {
                 Adventist (fixed)
               </div>
             </div>
+
+            <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/30 px-4 py-3">
+              <input
+                type="checkbox"
+                checked={formData.egwEnabled}
+                onChange={(e) => setFormData({ ...formData, egwEnabled: e.target.checked })}
+                className="h-4 w-4 rounded border-white/20 bg-black/40 text-cyan-400"
+              />
+              <span>
+                <span className="block text-sm text-white">Enable EGW support</span>
+                <span className="block text-xs text-gray-300">
+                  Include Ellen G. White support in study, outline, and manuscript generation.
+                </span>
+              </span>
+            </label>
 
             <div className="flex gap-4">
               <button

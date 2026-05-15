@@ -4,44 +4,73 @@ import { useState, useEffect, useRef, ReactNode } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
-import { AlertCircle, Book, BookOpen, Clock, Film, Layers, Lightbulb, MessageSquare, Network, Rows } from 'lucide-react'
+import { Book } from 'lucide-react'
 import AudioPlayer from '@/components/AudioPlayer'
 import StudyNotes from '@/components/StudyNotes'
-import InteractiveCanonicalConstellation from '@/components/InteractiveCanonicalConstellation'
-import InteractiveProphecyWeb from '@/components/InteractiveProphecyWeb'
-import InteractiveSermonFlowSculptor from '@/components/InteractiveSermonFlowSculptor'
 import EGWPassagePanel from '@/components/EGWPassagePanel'
 import SDASmartBoostBanner from '@/components/SDASmartBoostBanner'
-import WorkspaceEGWToggle from '@/components/WorkspaceEGWToggle'
 import StudyReportEGWSection from '@/components/StudyReportEGWSection'
 import { getBibleBookMatches, getBibleBookChapterCount, matchBibleBookFromInput } from '@/utils/bibleBooks'
-import PhaseNavigation, { Phase } from '@/components/PhaseNavigation'
-import ProgressIndicator from '@/components/ProgressIndicator'
-import NextStepSuggestion from '@/components/NextStepSuggestion'
+import { Phase } from '@/components/PhaseNavigation'
 import CollapsibleSection from '@/components/CollapsibleSection'
 import LoadingOverlay from '@/components/LoadingOverlay'
 import KeyboardShortcutsHelp from '@/components/KeyboardShortcutsHelp'
 import SermonMentorDashboard from '@/components/SermonMentorDashboard'
 import SermonPatternDashboard from '@/components/SermonPatternDashboard'
 import CitationValidationBadge from '@/components/CitationValidationBadge'
-import CrossReferenceRanked from '@/components/CrossReferenceRanked'
-import CrossReferenceSOPPanel from '@/components/CrossReferenceSOPPanel'
-import StoryArcSelector from '@/components/StoryArcSelector'
-import TranslationComparisonEnhanced from '@/components/TranslationComparisonEnhanced'
-import PerVerseContextPanel from '@/components/PerVerseContextPanel'
-import CanonicalThemeTracing from '@/components/CanonicalThemeTracing'
-import VerseCommentaryPanel from '@/components/VerseCommentaryPanel'
-import StructuralAnalysisPanel from '@/components/StructuralAnalysisPanel'
-import InterpretiveChallengePanel from '@/components/InterpretiveChallengePanel'
-import SanctuaryProphecyMapper from '@/components/SanctuaryProphecyMapper'
-import PassageSummary from '@/components/PassageSummary'
-import StudySynthesis from '@/components/StudySynthesis'
-import SermonIntegrityDashboard from '@/components/SermonIntegrityDashboard'
 import MediaProductionStudio from '@/components/MediaProductionStudio'
 import ChurchSettingsPanel from '@/components/ChurchSettingsPanel'
-import BiblicalNarrativeMap from '@/components/BiblicalNarrativeMap'
-import ManuscriptRichEditor from '@/components/ManuscriptRichEditor'
-import SermonCore, { SermonCoreData } from '@/components/SermonCore'
+import WorkspaceFlowShell from '@/components/WorkspaceFlowShell'
+import WorkspaceOutlinePhase from '@/components/WorkspaceOutlinePhase'
+import WorkspaceCitationReview from '@/components/WorkspaceCitationReview'
+import WorkspaceManuscriptPhase from '@/components/WorkspaceManuscriptPhase'
+import WorkspaceScripturePhase from '@/components/WorkspaceScripturePhase'
+import WorkspaceManuscriptCard from '@/components/WorkspaceManuscriptCard'
+import WorkspaceScriptureAnalysisPanels from '@/components/WorkspaceScriptureAnalysisPanels'
+import WorkspaceStudyReportSection from '@/components/WorkspaceStudyReportSection'
+import WorkspaceVisualizationsSection from '@/components/WorkspaceVisualizationsSection'
+import WorkspaceRefineSection from '@/components/WorkspaceRefineSection'
+import WorkspaceWordStudySection from '@/components/WorkspaceWordStudySection'
+import WorkspaceCrossReferencesSection from '@/components/WorkspaceCrossReferencesSection'
+import WorkspaceOverviewSection from '@/components/WorkspaceOverviewSection'
+import WorkspaceCommandRail from '@/components/WorkspaceCommandRail'
+import WorkspaceManuscriptControls from '@/components/WorkspaceManuscriptControls'
+import WorkspaceExportPanel from '@/components/WorkspaceExportPanel'
+import { createWorkspaceApiClient } from '@/lib/api/openapi-client'
+import { createAppApiClient } from '@/lib/api/app-api-client'
+import { WorkspaceSection, sectionPhaseMap } from '@/components/workspace-shell.types'
+import type {
+  WorkspaceCitationDraft,
+  WorkspaceCitationItem,
+  WorkspaceClaimLedgerEntry,
+  WorkspaceClaimReviewDecision,
+  WorkspaceOutlineDraft,
+  WorkspaceOutlineItem,
+  WorkspaceOutlinePoint,
+  WorkspaceOutlineStructure,
+  WorkspaceSourceLedgerEntry,
+} from '@/components/workspace-domain.types'
+import type {
+  CanonicalThemesData,
+  InterpretiveChallengeData,
+  PassageSummaryData,
+  StructuralAnalysisData,
+  StudySynthesisData,
+  TranslationComparisonData,
+  VerseCommentaryData,
+  VerseContextData,
+} from '@/components/workspace-scripture-analysis.types'
+import {
+  getLatestManuscriptRepairIssues,
+  getWorkspaceCoachFeedback,
+  getWorkspaceCoachSession,
+  getWorkspaceMetadata,
+  getWorkspaceSermonDnaAnalysis,
+  getWorkspaceUiState,
+  workspaceHasDeliverables,
+} from '@/components/workspace-metadata.helpers'
+import type { WorkspaceCoachFeedback } from '@/components/workspace-metadata.helpers'
+import { SermonCoreData } from '@/components/SermonCore'
 import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut'
 import { getLoadingMessage } from '@/utils/loadingMessages'
 import {
@@ -51,22 +80,25 @@ import {
 } from '@/utils/manuscriptFormatting'
 
 type ScriptureLookupSnapshot = {
-  scriptureResult: any
+  scriptureResult: WorkspaceScriptureResult | Record<string, unknown> | string | null
   scriptureLastLookup: string
   scriptureQuery: string
   scriptureTranslation: string
   parallelTranslations: string
-  parallelResults: any[]
-  contextData: any
-  structuralAnalysis: any
-  interpretiveChallenges: any
-  perVerseContext: any
-  passageSummary: any
-  studySynthesis: any
-  canonicalThemes: any
-  verseCommentary: any
-  translationComparison: any
+  parallelResults: Array<Record<string, unknown>>
+  contextData: WorkspaceSectionData
+  structuralAnalysis: StructuralAnalysisData | null
+  interpretiveChallenges: InterpretiveChallengeData | null
+  perVerseContext: VerseContextData | null
+  passageSummary: PassageSummaryData | null
+  studySynthesis: StudySynthesisData | null
+  canonicalThemes: CanonicalThemesData | null
+  verseCommentary: VerseCommentaryData | null
+  translationComparison: TranslationComparisonData | null
   cachedAt: string
+  lookupHistory?: ScriptureLookupSnapshot[]
+  wordStudy?: Record<string, unknown>
+  crossReferences?: Record<string, unknown>
 }
 
 type SermonIntegrityIssue = {
@@ -87,6 +119,12 @@ type SermonIntegrityReport = {
   citationAnalysis?: Array<{ verseReference: string; supportLevel: 'supported' | 'weak' | 'not_supported' }>
 }
 
+type WorkspaceSectionData = Record<string, unknown> | string | string[] | null
+type WorkspaceShellState = Record<string, any>
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+
 type ManuscriptCues = {
   slide: string[]
   keyLine: string[]
@@ -106,6 +144,246 @@ type CueAnchor = {
   confidence: number
 }
 
+type WorkspaceOutlineNode = {
+  id?: string
+  title?: string
+  text?: string
+  content?: string
+  summary?: string
+  movement?: string
+  supportingVerses?: string[]
+  canonicalThemes?: string[]
+  crossReferences?: string[]
+  subpoints?: string[]
+  applications?: string[]
+  discussionQuestions?: string[]
+  illustrationIdeas?: string[]
+  mediaSuggestions?: string[]
+  egwSupport?: Array<Record<string, unknown>>
+  references?: string[]
+  notes?: string
+  coachNotes?: Array<Record<string, unknown>>
+}
+
+type WorkspaceStudyReportSection = {
+  passageOverview?: string
+  overview?: string
+  summary?: string
+  literaryContext?: string
+  historicalContext?: string
+  canonicalContext?: string
+  canonicalConnections?: string
+  canonicalThemes?: string
+  mainTheologicalClaim?: string
+  theologicalInsights?: string
+  exegeticalSummary?: string
+  summaryStatement?: string
+  exegeticalFlow?: unknown[]
+  argumentFlow?: unknown[]
+  flow?: unknown[]
+  theologicalThemes?: unknown[]
+  keyThemes?: unknown[]
+  themes?: unknown[]
+  pastoralImplications?: unknown[] | Record<string, unknown>
+  practicalApplications?: unknown[]
+  applications?: unknown[]
+  structureOfPassage?: unknown[]
+  structuralAnalysis?: unknown[]
+  crossReferences?: unknown[]
+  interpretiveChallenges?: unknown[]
+  keyTerms?: Array<Record<string, unknown>>
+  egw?: unknown
+  egwSection?: unknown
+}
+
+type WorkspacePassageSummary = {
+  passage: string
+  summary: string
+  interpretiveCenter: string
+  mainTension: string
+  movement: string[]
+  dataSource: 'llm-generated' | 'curated' | 'unavailable'
+  mainIdea?: string
+}
+
+type WorkspacePassageMovement = {
+  movement?: string
+  title?: string
+  verses?: string
+  summary?: string
+  description?: string
+}
+
+type WorkspaceKeyTerm = {
+  term?: string
+  language?: string
+  transliteration?: string
+  definition?: string
+  nuance?: string
+}
+
+type WorkspaceCrossReference = {
+  reference?: string
+  verse?: string
+  connection?: string
+  explanation?: string
+}
+
+type WorkspaceInterpretiveChallenge = {
+  question?: string
+  challenge?: string
+  interpretationOptions?: string[]
+  preachingGuidance?: string
+}
+
+type WorkspaceSearchResult = {
+  workspaceId?: string
+  type?: string
+  id?: string
+  title?: string
+  snippet?: string
+}
+
+type WorkspaceCoachQuestion = {
+  id?: string
+  dimension?: string
+  question?: string
+  sourceAnchor?: string
+}
+
+type WorkspaceCoachFeedbackDetail = WorkspaceCoachFeedback & {
+  coachFeedback?: string
+  improvementSuggestion?: string
+  rewriteHint?: string
+}
+
+type WorkspaceRepairPlanItem = {
+  issueId?: string
+  questionId?: string
+  question?: string
+  sourceAnchor?: string
+  rewriteHint?: string
+  improvementSuggestion?: string
+  coachFeedback?: string
+}
+
+type WorkspaceIllustrationDraft = {
+  title?: string
+  content?: string
+  prompt?: string
+  description?: string
+  source?: string
+  references?: string[]
+  [key: string]: unknown
+}
+
+type WorkspaceCoachSessionData = {
+  repairPlan?: WorkspaceRepairPlanItem[]
+  questions?: WorkspaceCoachQuestion[]
+}
+
+type WorkspaceManuscriptRecord = {
+  id?: string
+    content?: WorkspaceManuscriptContent & {
+      metadata?: {
+        quality?: {
+          status?: string
+          repairedIssues?: unknown[]
+          remainingIssues?: unknown[]
+        }
+        repair?: {
+          lastRepairedAt?: string
+          auditTrail?: unknown[]
+        }
+    }
+  }
+}
+
+type WorkspaceManuscriptContent = {
+  text?: string
+  formatVersion?: string
+  cues?: ManuscriptCues | null
+  sections?: Array<{ heading?: string; body?: string }>
+}
+
+type WorkspacePageData = {
+  id?: string
+  title?: string
+  language?: string
+  mainPassage?: string
+  theme?: string
+  audienceProfile?: string
+  status?: string
+  egwEnabled?: boolean
+  metadata?: Record<string, unknown>
+  outlines?: WorkspaceOutlineItem[]
+  manuscripts?: WorkspaceManuscriptRecord[]
+  studyReports?: Array<{ id?: string; sections?: WorkspaceStudyReportSection }>
+  citations?: WorkspaceCitationItem[]
+  dnaAnalyses?: Array<Record<string, unknown>>
+  applications?: Array<{ id?: string; text?: string; content?: string; title?: string; audienceType?: string }>
+  discussionQuestions?: Array<{ id?: string; text?: string; question?: string }>
+  illustrations?: Array<{ id?: string; text?: string; title?: string; content?: string; prompt?: string; source?: string }>
+  manifesto?: unknown
+  wordStudy?: unknown
+  externalReferences?: unknown
+  [key: string]: unknown
+}
+
+type WorkspaceScriptureResult = {
+  reference?: string
+  error?: string
+  studyNotes?: Array<{
+    id: string
+    type: string
+    text: string
+    verseReference: string
+    category: string
+  }>
+  [key: string]: unknown
+}
+
+type WorkspaceStateSnapshot = {
+  activePhase?: Phase
+  activeSection?: WorkspaceSection
+  activeOutline?: { id?: string } | null
+  latestIntegrityReport?: {
+    overallScore?: number
+    balanced?: boolean
+    issueCount?: number
+    strengthCount?: number
+    criticalIssueCount?: number
+    warningIssueCount?: number
+    reviewedIssueCount?: number
+  } | null
+  integrityIssueLedger?: Array<{
+    id: string
+    severity?: string
+    category?: string
+    message?: string
+    affectedItem?: string
+    decision?: string
+    note?: string
+    status?: string
+    updatedAt?: string
+  }>
+  integrityIssueReviews?: Array<{
+    issueId: string
+    decision: string
+    note?: string
+    updatedAt: string
+    issueMessage?: string
+    severity?: string
+    category?: string
+    affectedItem?: string
+  }>
+  claimLedger?: WorkspaceClaimLedgerEntry[]
+  sourceLedger?: WorkspaceSourceLedgerEntry[]
+  claimReviewDecisions?: WorkspaceClaimReviewDecision[]
+  workspace?: WorkspacePageData
+  [key: string]: unknown
+}
+
 const emptyManuscriptCues = (): ManuscriptCues => ({
   slide: [],
   keyLine: [],
@@ -120,22 +398,7 @@ const formatTheologicalLens = (): string => {
   return 'Adventist'
 }
 
-type StudyAssetType = 'applications' | 'questions' | 'illustrations' | 'media'
-
-type WorkspaceSection =
-  | 'workspace'
-  | 'church-settings'
-  | 'outlines'
-  | 'manuscript'
-  | 'citations'
-  | 'scripture'
-  | 'word-study'
-  | 'cross-references'
-  | 'study-report'
-  | 'coach'
-  | 'dna'
-  | 'visualizations'
-  | 'media'
+type StudyAssetType = 'applications' | 'questions' | 'illustrations' | 'media' | 'egw' | 'references' | 'report'
 
 const VALID_PHASES: Phase[] = ['THEME', 'PASSAGE', 'STUDY', 'OUTLINE', 'WRITE', 'REFINE', 'DELIVER']
 const VALID_SECTIONS: WorkspaceSection[] = [
@@ -154,19 +417,22 @@ const VALID_SECTIONS: WorkspaceSection[] = [
   'media',
 ]
 
+const WorkspaceScriptureAnalysisPanelsBridge = WorkspaceScriptureAnalysisPanels
+
 export default function WorkspaceDetailPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const params = useParams()
   const workspaceId = params?.id as string
-  const [workspace, setWorkspace] = useState<any>(null)
+  const [workspace, setWorkspace] = useState<WorkspacePageData | null>(null)
+  const [workspaceState, setWorkspaceState] = useState<WorkspaceStateSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string[]>([])
   const [editingWorkspace, setEditingWorkspace] = useState(false)
-  const [workspaceDraft, setWorkspaceDraft] = useState<any>(null)
+  const [workspaceDraft, setWorkspaceDraft] = useState<WorkspacePageData | null>(null)
   const [editingOutlineId, setEditingOutlineId] = useState<string | null>(null)
-  const [outlineDraft, setOutlineDraft] = useState<any>(null)
+  const [outlineDraft, setOutlineDraft] = useState<WorkspaceOutlineDraft | null>(null)
   const [editingManuscriptId, setEditingManuscriptId] = useState<string | null>(null)
   const [manuscriptDraft, setManuscriptDraft] = useState<string>('')
   const [manuscriptCueDraft, setManuscriptCueDraft] = useState<ManuscriptCues>(emptyManuscriptCues())
@@ -184,9 +450,9 @@ export default function WorkspaceDetailPage() {
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null)
   const [questionDraft, setQuestionDraft] = useState<string>('')
   const [editingIllustrationId, setEditingIllustrationId] = useState<string | null>(null)
-  const [illustrationDraft, setIllustrationDraft] = useState<any>(null)
+  const [illustrationDraft, setIllustrationDraft] = useState<WorkspaceIllustrationDraft | null>(null)
   const [editingCitationId, setEditingCitationId] = useState<string | null>(null)
-  const [citationDraft, setCitationDraft] = useState<any>(null)
+  const [citationDraft, setCitationDraft] = useState<WorkspaceCitationDraft | null>(null)
   const [citationTranslation, setCitationTranslation] = useState('KJV')
   const [promptModalOpen, setPromptModalOpen] = useState(false)
   const [railOpen, setRailOpen] = useState(false)
@@ -196,21 +462,29 @@ export default function WorkspaceDetailPage() {
   const [promptText, setPromptText] = useState('')
   const [studyAssetEditor, setStudyAssetEditor] = useState<'applications' | 'questions' | 'illustrations' | null>(null)
   const [visualizationMode, setVisualizationMode] = useState<'passage' | 'refine'>('passage')
+  const [advancedMode, setAdvancedMode] = useState(false)
   const [activeSection, setActiveSection] = useState<WorkspaceSection>('workspace')
   const [activePhase, setActivePhase] = useState<Phase>('THEME')
-  const [citationValidations, setCitationValidations] = useState<Record<string, any>>({})
+  const [citationValidations, setCitationValidations] = useState<Record<string, Record<string, unknown>>>({})
   const [dnaIntegrityReport, setDnaIntegrityReport] = useState<SermonIntegrityReport | null>(null)
   const [dnaIntegrityLoading, setDnaIntegrityLoading] = useState(false)
   const [dnaIntegrityExpanded, setDnaIntegrityExpanded] = useState(false)
   const [dnaFlowExpanded, setDnaFlowExpanded] = useState(false)
   const [coachMode, setCoachMode] = useState<'refine' | 'self_reflection'>('refine')
   const [coachListenerProfile, setCoachListenerProfile] = useState('general_congregation')
-  const [socraticCoachSession, setSocraticCoachSession] = useState<any>(null)
+  const [socraticCoachSession, setSocraticCoachSession] = useState<WorkspaceCoachSessionData | null>(null)
   const [coachAnswers, setCoachAnswers] = useState<Record<string, string>>({})
-  const [coachFeedback, setCoachFeedback] = useState<Record<string, any>>({})
+  const [coachFeedback, setCoachFeedback] = useState<Record<string, WorkspaceCoachFeedbackDetail | null>>({})
   const [repairLockedAnchors, setRepairLockedAnchors] = useState<string[]>([])
   const [repairJob, setRepairJob] = useState<{
     manuscriptId: string
+    jobId: string
+    status: string
+    state?: string
+    message?: string
+  } | null>(null)
+  const [generationJob, setGenerationJob] = useState<{
+    capability: string
     jobId: string
     status: string
     state?: string
@@ -227,23 +501,23 @@ export default function WorkspaceDetailPage() {
   const [repairHistoryExpanded, setRepairHistoryExpanded] = useState<Record<string, boolean>>({})
   const [scriptureQuery, setScriptureQuery] = useState('')
   const [scriptureTranslation, setScriptureTranslation] = useState('KJV')
-  const [scriptureResult, setScriptureResult] = useState<any>(null)
+  const [scriptureResult, setScriptureResult] = useState<WorkspaceScriptureResult | Record<string, unknown> | string | null>(null)
   const [parallelTranslations, setParallelTranslations] = useState('WEB')
   
   // Filter translations based on workspace language
   const availableTranslations = workspace?.language === 'es' 
     ? ['RVR1960', 'NVI', 'NBLA'] // Spanish Bibles only
     : ['KJV', 'WEB', 'NKJV', 'ESV', 'NIV', 'NASB', 'NLT'] // English Bibles only
-  const [parallelResults, setParallelResults] = useState<any[]>([])
-  const [contextData, setContextData] = useState<any>(null)
-  const [structuralAnalysis, setStructuralAnalysis] = useState<any>(null)
-  const [interpretiveChallenges, setInterpretiveChallenges] = useState<any>(null)
-  const [perVerseContext, setPerVerseContext] = useState<any>(null)
-  const [passageSummary, setPassageSummary] = useState<any>(null)
-  const [studySynthesis, setStudySynthesis] = useState<any>(null)
-  const [canonicalThemes, setCanonicalThemes] = useState<any>(null)
-  const [verseCommentary, setVerseCommentary] = useState<any>(null)
-  const [translationComparison, setTranslationComparison] = useState<any>(null)
+  const [parallelResults, setParallelResults] = useState<Array<Record<string, unknown>>>([])
+  const [contextData, setContextData] = useState<WorkspaceSectionData>(null)
+  const [structuralAnalysis, setStructuralAnalysis] = useState<StructuralAnalysisData | null>(null)
+  const [interpretiveChallenges, setInterpretiveChallenges] = useState<InterpretiveChallengeData | null>(null)
+  const [perVerseContext, setPerVerseContext] = useState<VerseContextData | null>(null)
+  const [passageSummary, setPassageSummary] = useState<PassageSummaryData | null>(null)
+  const [studySynthesis, setStudySynthesis] = useState<StudySynthesisData | null>(null)
+  const [canonicalThemes, setCanonicalThemes] = useState<CanonicalThemesData | null>(null)
+  const [verseCommentary, setVerseCommentary] = useState<VerseCommentaryData | null>(null)
+  const [translationComparison, setTranslationComparison] = useState<TranslationComparisonData | null>(null)
   const [generatedScriptureSections, setGeneratedScriptureSections] = useState<Record<string, boolean>>({
     passageSummary: false,
     verseContext: false,
@@ -283,12 +557,12 @@ export default function WorkspaceDetailPage() {
   const [wordStudyWord, setWordStudyWord] = useState('')
   const [wordStudyLanguage, setWordStudyLanguage] = useState('greek')
   const [availableLanguages] = useState([{value: 'greek', label: 'Greek'}, {value: 'hebrew', label: 'Hebrew'}, {value: 'aramaic', label: 'Aramaic'}])
-  const [wordStudyResult, setWordStudyResult] = useState<any>(null)
+  const [wordStudyResult, setWordStudyResult] = useState<Record<string, unknown> | null>(null)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [isAudioLoading, setIsAudioLoading] = useState(false)
   const [audioError, setAudioError] = useState<string | null>(null)
   const [expandedNotes, setExpandedNotes] = useState<Set<number>>(new Set())
-  const [wordStudyInsights, setWordStudyInsights] = useState<any>(null)
+  const [wordStudyInsights, setWordStudyInsights] = useState<Record<string, unknown> | null>(null)
   const [wordStudyError, setWordStudyError] = useState<string | null>(null)
   const [wordStudyLastLookup, setWordStudyLastLookup] = useState<string>('')
   const [wordStudySuggestions, setWordStudySuggestions] = useState<
@@ -309,7 +583,7 @@ export default function WorkspaceDetailPage() {
   const [crossRefLastLookup, setCrossRefLastLookup] = useState<string>('')
   const [crossRefHasScriptureResults, setCrossRefHasScriptureResults] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [searchResults, setSearchResults] = useState<WorkspaceSearchResult[]>([])
   const [expandedOutlineId, setExpandedOutlineId] = useState<string | null>(null)
   const [expandedTextBlocks, setExpandedTextBlocks] = useState<Record<string, boolean>>({})
   const [referencePreview, setReferencePreview] = useState<{
@@ -325,13 +599,6 @@ export default function WorkspaceDetailPage() {
   const navStatePersistTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const navStatePersistHash = useRef<string>('')
   const navStateStorageKey = workspaceId ? `workspace-ui-nav:${workspaceId}` : null
-
-  const storyArcLabels: Record<string, string> = {
-    problem_truth_response: 'Problem → Truth → Response',
-    tension_turn_resolution: 'Tension → Turn → Resolution',
-    question_discovery_answer: 'Question → Discovery → Answer',
-    challenge_journey_transformation: 'Challenge → Journey → Transformation',
-  }
 
   const buildScriptureSuggestions = (value: string) => {
     const cleaned = value.trim()
@@ -383,7 +650,7 @@ export default function WorkspaceDetailPage() {
     setScriptureSuggestionIndex(suggestions.length ? 0 : -1)
   }
 
-  const getVerseValidationWarning = (reference: string, verses: any[]) => {
+  const getVerseValidationWarning = (reference: string, verses: Array<{ reference?: string }>) => {
     const match = reference.match(/^(.*?)\s+(\d+):(\d+)$/)
     if (!match) return null
     const chapter = match[2]
@@ -405,14 +672,21 @@ export default function WorkspaceDetailPage() {
   }
 
 
-  const extractVerses = (result: any): any[] => {
+  const extractVerses = (
+    result: WorkspaceScriptureResult | Record<string, unknown> | string | null,
+  ): Array<{ reference?: string; text?: string }> => {
     if (!result) return []
 
+    const recordResult = isRecord(result) ? result : null
+    const dataResult = isRecord(recordResult?.data) ? recordResult.data : null
+    const passageResult = isRecord(recordResult?.passage) ? recordResult.passage : null
+    const payloadResult = isRecord(recordResult?.payload) ? recordResult.payload : null
+
     const candidates = [
-      result?.verses,
-      result?.data?.verses,
-      result?.passage?.verses,
-      result?.payload?.verses,
+      recordResult?.['verses'],
+      dataResult?.['verses'],
+      passageResult?.['verses'],
+      payloadResult?.['verses'],
     ]
 
     for (const candidate of candidates) {
@@ -420,23 +694,26 @@ export default function WorkspaceDetailPage() {
       if (candidate && typeof candidate === 'object') {
         const asArray = Object.values(candidate)
         if (asArray.length && asArray.every((item) => typeof item === 'object')) {
-          return asArray as any[]
+          return asArray as Array<{ reference?: string; text?: string }>
         }
       }
     }
 
     const textCandidate =
-      result?.text ||
-      result?.content ||
-      result?.data?.text ||
-      result?.data?.content ||
-      result?.passage?.text ||
+      (recordResult?.['text'] as string | undefined) ||
+      (recordResult?.['content'] as string | undefined) ||
+      (dataResult?.['text'] as string | undefined) ||
+      (dataResult?.['content'] as string | undefined) ||
+      (passageResult?.['text'] as string | undefined) ||
       ''
 
     if (typeof textCandidate === 'string' && textCandidate.trim()) {
       return [
         {
-          reference: result?.reference || result?.data?.reference || '',
+          reference:
+            (recordResult?.['reference'] as string | undefined) ||
+            (dataResult?.['reference'] as string | undefined) ||
+            '',
           text: textCandidate.trim(),
         },
       ]
@@ -453,23 +730,26 @@ export default function WorkspaceDetailPage() {
   }
 
   const normalizeScriptureResult = (
-    raw: any,
+    raw: WorkspaceScriptureResult | Record<string, unknown> | string | null,
     reference: string,
     translation: string,
   ) => {
-    if (raw?.verses && Array.isArray(raw.verses)) {
+    const recordRaw = isRecord(raw) ? raw : null
+    const dataRaw = isRecord(recordRaw?.data) ? recordRaw.data : null
+
+    if (Array.isArray(recordRaw?.['verses'])) {
       return {
-        ...raw,
-        reference: raw.reference || reference,
-        translation: raw.translation || translation,
+        ...recordRaw,
+        reference: (recordRaw?.['reference'] as string | undefined) || reference,
+        translation: (recordRaw?.['translation'] as string | undefined) || translation,
       }
     }
 
-    if (raw?.data?.verses && Array.isArray(raw.data.verses)) {
+    if (Array.isArray(dataRaw?.['verses'])) {
       return {
-        ...raw.data,
-        reference: raw.data.reference || reference,
-        translation: raw.data.translation || translation,
+        ...dataRaw,
+        reference: (dataRaw?.['reference'] as string | undefined) || reference,
+        translation: (dataRaw?.['translation'] as string | undefined) || translation,
       }
     }
 
@@ -630,9 +910,47 @@ export default function WorkspaceDetailPage() {
       | 'interpretiveChallenges'
       | 'canonicalThemes'
       | 'studySynthesis',
-    data: any,
+    data: unknown,
   ) => {
     if (!scriptureResult || !scriptureLastLookup) return
+
+    let nextPassageSummary = passageSummary
+    let nextPerVerseContext = perVerseContext
+    let nextTranslationComparison = translationComparison
+    let nextVerseCommentary = verseCommentary
+    let nextStructuralAnalysis = structuralAnalysis
+    let nextInterpretiveChallenges = interpretiveChallenges
+    let nextCanonicalThemes = canonicalThemes
+    let nextStudySynthesis = studySynthesis
+
+    switch (section) {
+      case 'passageSummary':
+        nextPassageSummary = data as PassageSummaryData
+        break
+      case 'verseContext':
+        nextPerVerseContext = data as VerseContextData
+        break
+      case 'translationComparison':
+        nextTranslationComparison = data as TranslationComparisonData
+        break
+      case 'verseCommentary':
+        nextVerseCommentary = data as VerseCommentaryData
+        break
+      case 'structuralAnalysis':
+        nextStructuralAnalysis = data as StructuralAnalysisData
+        break
+      case 'interpretiveChallenges':
+        nextInterpretiveChallenges = data as InterpretiveChallengeData
+        break
+      case 'canonicalThemes':
+        nextCanonicalThemes = data as CanonicalThemesData
+        break
+      case 'studySynthesis':
+        nextStudySynthesis = data as StudySynthesisData
+        break
+      default:
+        break
+    }
 
     const snapshot = buildScriptureSnapshot({
       scriptureResult,
@@ -642,17 +960,52 @@ export default function WorkspaceDetailPage() {
       parallelTranslations,
       parallelResults,
       contextData,
-      structuralAnalysis: section === 'structuralAnalysis' ? data : structuralAnalysis,
-      interpretiveChallenges: section === 'interpretiveChallenges' ? data : interpretiveChallenges,
-      perVerseContext: section === 'verseContext' ? data : perVerseContext,
-      passageSummary: section === 'passageSummary' ? data : passageSummary,
-      studySynthesis: section === 'studySynthesis' ? data : studySynthesis,
-      canonicalThemes: section === 'canonicalThemes' ? data : canonicalThemes,
-      verseCommentary: section === 'verseCommentary' ? data : verseCommentary,
-      translationComparison: section === 'translationComparison' ? data : translationComparison,
+      structuralAnalysis: nextStructuralAnalysis,
+      interpretiveChallenges: nextInterpretiveChallenges,
+      perVerseContext: nextPerVerseContext,
+      passageSummary: nextPassageSummary,
+      studySynthesis: nextStudySynthesis,
+      canonicalThemes: nextCanonicalThemes,
+      verseCommentary: nextVerseCommentary,
+      translationComparison: nextTranslationComparison,
     })
 
     persistScriptureSnapshot(snapshot)
+  }
+
+  const handleAddCanonicalThemeToOutline = async (theme: string, verses: string[]) => {
+    const selectedOutline = workspace?.outlines?.find((o) => o.isSelected) || workspace?.outlines?.[0]
+    if (!selectedOutline) return
+
+    const newPoint = {
+      id: Date.now().toString(),
+      text: theme,
+      level: 1,
+      supportingVerses: verses,
+      notes: `Canonical theme: ${verses.join(', ')}`,
+    }
+
+    const updatedPoints = [...(selectedOutline.structure?.points || []), newPoint]
+    const updatedOutline = {
+      ...selectedOutline,
+      structure: {
+        ...selectedOutline.structure,
+        points: updatedPoints,
+      },
+    }
+
+    const updatedOutlines = (workspace?.outlines || []).map((o) =>
+      o.id === selectedOutline.id ? updatedOutline : o,
+    )
+    setWorkspace(workspace ? ({ ...workspace, outlines: updatedOutlines } as WorkspacePageData) : workspace)
+
+    try {
+      const client = getWorkspaceApiClient()
+      if (!client) return
+      await client.updateOutline(selectedOutline.id, updatedOutline as Record<string, unknown>)
+    } catch (error) {
+      console.error('Failed to save outline:', error)
+    }
   }
 
   // Map sections to phases
@@ -666,22 +1019,6 @@ export default function WorkspaceDetailPage() {
     WRITE: ['manuscript', 'citations'],
     REFINE: ['coach', 'dna'],
     DELIVER: ['media', 'church-settings']
-  }
-
-  const sectionPhaseMap: Partial<Record<WorkspaceSection, Phase>> = {
-    scripture: 'PASSAGE',
-    'word-study': 'STUDY',
-    'cross-references': 'STUDY',
-    visualizations: 'STUDY',
-    'study-report': 'STUDY',
-    workspace: 'THEME',
-    outlines: 'OUTLINE',
-    manuscript: 'WRITE',
-    citations: 'WRITE',
-    coach: 'REFINE',
-    dna: 'REFINE',
-    media: 'DELIVER',
-    'church-settings': 'DELIVER',
   }
 
   const resolvePhaseForSection = (section: WorkspaceSection, preferredPhase?: Phase): Phase => {
@@ -707,31 +1044,24 @@ export default function WorkspaceDetailPage() {
   // Calculate progress
   const latestStudyReport = workspace?.studyReports?.[0]
   const latestManuscript = workspace?.manuscripts?.[0]
-  const repairedIssueIds = new Set(
-    (Array.isArray(latestManuscript?.content?.metadata?.quality?.repairedIssues)
-      ? latestManuscript.content.metadata.quality.repairedIssues
-      : []
-    ).map((item: any) => String(item || '').trim()),
-  )
+  const workspaceMetadata = getWorkspaceMetadata(workspace)
+  const repairedIssueIds = new Set<string>(getLatestManuscriptRepairIssues(workspace))
   const coachRepairPlan = Array.isArray(socraticCoachSession?.repairPlan) ? socraticCoachSession.repairPlan : []
-  const pendingCoachRepairPlan = coachRepairPlan.filter((item: any) => {
+  const pendingCoachRepairPlan = coachRepairPlan.filter((item: WorkspaceRepairPlanItem) => {
     const issueId = String(item?.issueId || '').trim()
     return issueId && !repairedIssueIds.has(issueId)
   })
   const themeConfigured =
     Boolean(String(workspace?.title || '').trim()) &&
     Boolean(String(workspace?.mainPassage || '').trim()) &&
-    Boolean(String(workspace?.language || workspace?.metadata?.language || '').trim())
+    Boolean(String(workspace?.language || workspaceMetadata.language || '').trim())
   const refineCompleted =
     Boolean(dnaIntegrityReport) ||
     Boolean(socraticCoachSession) ||
-    Boolean(workspace?.metadata?.sermonDnaLastAnalysis) ||
-    Boolean(workspace?.metadata?.socraticCoachLastSession)
+    Boolean(getWorkspaceSermonDnaAnalysis(workspace)) ||
+    Boolean(getWorkspaceCoachSession(workspace))
   const deliverPrepared =
-    Boolean(workspace?.metadata?.deliverables?.hasSlides) ||
-    Boolean(workspace?.metadata?.deliverables?.hasMedia) ||
-    Boolean(workspace?.metadata?.deliverables?.hasSocial) ||
-    Boolean(workspace?.metadata?.deliverables?.hasMusic)
+    workspaceHasDeliverables(workspace, ['hasSlides', 'hasMedia', 'hasSocial', 'hasMusic'])
 
   const progress = {
     themeConfigured,
@@ -767,7 +1097,7 @@ export default function WorkspaceDetailPage() {
     applyScriptureLookupSnapshot(normalizedSnapshot)
   }
 
-  const handleSearchResultSelect = (item: any) => {
+  const handleSearchResultSelect = (item: WorkspaceSearchResult) => {
     if (item?.workspaceId && item.workspaceId !== workspaceId) {
       router.push(`/workspace/${item.workspaceId}`)
       return
@@ -833,21 +1163,16 @@ export default function WorkspaceDetailPage() {
   // Validate citation
   const validateCitation = async (statement: string, verseRef: string) => {
     try {
-      const config = withToken()
-      if (!config) return { supportLevel: 'pending' }
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/scripture/validate-citation`,
-        { statement, verseReference: verseRef, translation: scriptureTranslation || 'KJV' },
-        config
-      )
-      return response.data
+      const client = getAppApiClient()
+      if (!client) return { supportLevel: 'pending' }
+      return await client.scriptureValidateCitation(statement, verseRef, scriptureTranslation || 'KJV')
     } catch (error) {
       console.error('Citation validation failed:', error)
       return { supportLevel: 'pending' }
     }
   }
 
-  const scheduleAutosave = (key: string, payload: any, endpoint: string) => {
+  const scheduleAutosave = (key: string, payload: unknown, endpoint: string) => {
     const serialized = JSON.stringify(payload)
     if (autosaveHashes.current[key] === serialized) return
     autosaveHashes.current[key] = serialized
@@ -858,30 +1183,26 @@ export default function WorkspaceDetailPage() {
       const config = withToken()
       if (!config) return
       try {
-        await axios.patch(endpoint, payload, config)
-        const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
-        setWorkspace(refreshed.data)
+        const client = getAppApiClient()
+        if (!client) return
+        const relativePath = endpoint.replace(process.env.NEXT_PUBLIC_API_URL || '', '').replace(/^\/api\/v1/, '')
+        await client.patch(relativePath, payload as Record<string, unknown>)
+        const refreshed = await client.get<WorkspacePageData>(`/workspaces/${workspaceId}`)
+        setWorkspace(refreshed)
       } catch (err) {
         console.error('Autosave failed', err)
       }
     }, 1200)
   }
 
-  const restoreScriptureLookupCache = async (workspaceData?: any): Promise<boolean> => {
+  const restoreScriptureLookupCache = async (workspaceData?: WorkspacePageData | null): Promise<boolean> => {
     try {
-      const token = localStorage.getItem('token')
-      if (!token) return false
-
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/scripture-cache`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      )
-
-      const data = response.data
+      const client = getAppApiClient()
+      if (!client) return false
+      const data = await client.get<Record<string, unknown>>(`/workspaces/${workspaceId}/scripture-cache`)
       if (data) {
         if (data.wordStudy) {
+          const cachedWordStudy = data.wordStudy as Record<string, unknown>
           const workspaceLanguage = String((workspaceData || workspace)?.language || '').toLowerCase()
           const currentResponseLanguage =
             workspaceLanguage.startsWith('es') ||
@@ -890,26 +1211,31 @@ export default function WorkspaceDetailPage() {
             workspaceLanguage.includes('español')
               ? 'es'
               : 'en'
-          const cachedResponseLanguage = String(data.wordStudy.responseLanguage || 'en').toLowerCase()
+          const cachedResponseLanguage = String(cachedWordStudy.responseLanguage || 'en').toLowerCase()
           const canReuseWordStudyPayload = cachedResponseLanguage === currentResponseLanguage
-          setWordStudyWord(String(data.wordStudy.word || ''))
-          setWordStudyLastLookup(String(data.wordStudy.word || ''))
-          setWordStudyLanguage(String(data.wordStudy.language || 'greek'))
-          setWordStudyResult(canReuseWordStudyPayload ? data.wordStudy.result || null : null)
-          setWordStudyInsights(canReuseWordStudyPayload ? data.wordStudy.insights || null : null)
+          setWordStudyWord(String(cachedWordStudy.word || ''))
+          setWordStudyLastLookup(String(cachedWordStudy.word || ''))
+          setWordStudyLanguage(String(cachedWordStudy.language || 'greek'))
+          setWordStudyResult(
+            canReuseWordStudyPayload ? ((cachedWordStudy.result as Record<string, unknown>) || null) : null,
+          )
+          setWordStudyInsights(
+            canReuseWordStudyPayload ? ((cachedWordStudy.insights as Record<string, unknown>) || null) : null,
+          )
         }
         if (data.crossReferences) {
-          setCrossRefVerse(String(data.crossReferences.verse || ''))
-          setCrossRefLastLookup(String(data.crossReferences.verse || ''))
-          const ranked = Array.isArray(data.crossReferences.ranked) ? data.crossReferences.ranked : []
+          const cachedCrossReferences = data.crossReferences as Record<string, unknown>
+          setCrossRefVerse(String(cachedCrossReferences.verse || ''))
+          setCrossRefLastLookup(String(cachedCrossReferences.verse || ''))
+          const ranked = Array.isArray(cachedCrossReferences.ranked) ? cachedCrossReferences.ranked : []
           setCrossRefResults(ranked)
           setCrossRefHasScriptureResults(ranked.length > 0)
         }
 
-        const history = Array.isArray(data.lookupHistory) ? data.lookupHistory : []
+        const history: ScriptureLookupSnapshot[] = Array.isArray(data.lookupHistory) ? data.lookupHistory : []
         const normalizedHistory = history
-          .filter((entry: any) => entry?.scriptureLastLookup && entry?.scriptureResult)
-          .map((entry: any) => buildScriptureSnapshot(entry))
+          .filter((entry) => entry?.scriptureLastLookup && entry?.scriptureResult)
+          .map((entry) => buildScriptureSnapshot(entry))
           .sort((a: ScriptureLookupSnapshot, b: ScriptureLookupSnapshot) => {
             const aDate = new Date(a.cachedAt).getTime() || 0
             const bDate = new Date(b.cachedAt).getTime() || 0
@@ -947,23 +1273,24 @@ export default function WorkspaceDetailPage() {
 
         if (data.scriptureResult && data.scriptureLastLookup) {
           const fallbackTranslation = workspaceData?.language === 'es' ? 'RVR1960' : 'KJV'
+          const cachedScripture = data as Record<string, unknown>
           const legacySnapshot = buildScriptureSnapshot({
-            scriptureResult: data.scriptureResult,
-            scriptureLastLookup: data.scriptureLastLookup,
-            scriptureQuery: data.scriptureQuery || data.scriptureLastLookup,
-            scriptureTranslation: data.scriptureTranslation || fallbackTranslation,
-            parallelTranslations: data.parallelTranslations || data.scriptureTranslation || fallbackTranslation,
-            parallelResults: data.parallelResults || [],
-            contextData: data.contextData || null,
-            structuralAnalysis: data.structuralAnalysis || null,
-            interpretiveChallenges: data.interpretiveChallenges || null,
-            perVerseContext: data.perVerseContext || null,
-            passageSummary: data.passageSummary || null,
-            studySynthesis: data.studySynthesis || null,
-            canonicalThemes: data.canonicalThemes || null,
-            verseCommentary: data.verseCommentary || null,
-            translationComparison: data.translationComparison || null,
-            cachedAt: data.cachedAt,
+            scriptureResult: cachedScripture.scriptureResult as WorkspaceScriptureResult | Record<string, unknown> | string | null,
+            scriptureLastLookup: String(cachedScripture.scriptureLastLookup || ''),
+            scriptureQuery: String(cachedScripture.scriptureQuery || cachedScripture.scriptureLastLookup || ''),
+            scriptureTranslation: String(cachedScripture.scriptureTranslation || fallbackTranslation),
+            parallelTranslations: String(cachedScripture.parallelTranslations || cachedScripture.scriptureTranslation || fallbackTranslation),
+            parallelResults: Array.isArray(cachedScripture.parallelResults) ? cachedScripture.parallelResults : [],
+            contextData: (cachedScripture.contextData as WorkspaceSectionData) || null,
+            structuralAnalysis: (cachedScripture.structuralAnalysis as StructuralAnalysisData | null) || null,
+            interpretiveChallenges: (cachedScripture.interpretiveChallenges as InterpretiveChallengeData | null) || null,
+            perVerseContext: (cachedScripture.perVerseContext as VerseContextData | null) || null,
+            passageSummary: (cachedScripture.passageSummary as PassageSummaryData | null) || null,
+            studySynthesis: (cachedScripture.studySynthesis as StudySynthesisData | null) || null,
+            canonicalThemes: (cachedScripture.canonicalThemes as CanonicalThemesData | null) || null,
+            verseCommentary: (cachedScripture.verseCommentary as VerseCommentaryData | null) || null,
+            translationComparison: (cachedScripture.translationComparison as TranslationComparisonData | null) || null,
+            cachedAt: String(cachedScripture.cachedAt || ''),
           })
           setScriptureLookupHistory([legacySnapshot])
           if (!defaultReference || normalizeRef(legacySnapshot.scriptureLastLookup) === defaultReference) {
@@ -982,28 +1309,21 @@ export default function WorkspaceDetailPage() {
     }
   }
 
-  const saveScriptureLookupCache = async (data: any) => {
+  const saveScriptureLookupCache = async (data: Partial<ScriptureLookupSnapshot> & { cachedAt: string }) => {
     try {
-      const token = localStorage.getItem('token')
-      if (!token) return
-
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/scripture-cache`,
-        data,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      )
+      const client = getAppApiClient()
+      if (!client) return
+      await client.patch(`/workspaces/${workspaceId}/scripture-cache`, data)
     } catch (err) {
       console.error('Failed to save scripture cache:', err)
     }
   }
 
-  const persistSupplementalStudyCache = async (partial: any) => {
+  const persistSupplementalStudyCache = async (partial: Partial<ScriptureLookupSnapshot>) => {
     await saveScriptureLookupCache({
       ...partial,
       cachedAt: new Date().toISOString(),
-    })
+    } as Partial<ScriptureLookupSnapshot> & { cachedAt: string })
   }
 
   useEffect(() => {
@@ -1084,15 +1404,16 @@ export default function WorkspaceDetailPage() {
   }, [activeSection, workspaceId])
 
   useEffect(() => {
-    const metadataSession = workspace?.metadata?.socraticCoachLastSession
+    const metadataSession = getWorkspaceCoachSession(workspace)
     if (metadataSession && !socraticCoachSession) {
       setSocraticCoachSession(metadataSession)
     }
-    const metadataFeedback = workspace?.metadata?.socraticCoachLastFeedback
-    if (metadataFeedback?.questionId) {
-      setCoachFeedback((prev) => ({ ...prev, [metadataFeedback.questionId]: metadataFeedback }))
+    const metadataFeedback = getWorkspaceCoachFeedback(workspace)
+    const metadataFeedbackId = String(metadataFeedback?.questionId || '').trim()
+    if (metadataFeedbackId) {
+      setCoachFeedback((prev) => ({ ...prev, [metadataFeedbackId]: metadataFeedback }))
     }
-  }, [workspace?.metadata, socraticCoachSession])
+  }, [workspace, socraticCoachSession])
 
   useEffect(() => {
     if (!repairJob?.jobId || !repairJob?.manuscriptId) return
@@ -1101,29 +1422,28 @@ export default function WorkspaceDetailPage() {
 
     const poll = async () => {
       try {
-        const response = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/manuscripts/${repairJob.manuscriptId}/repair/jobs/${repairJob.jobId}`,
-          config,
+        const client = getAppApiClient()
+        if (!client) return
+        const data = await client.get<Record<string, unknown>>(
+          `/workspaces/${workspaceId}/manuscripts/${repairJob.manuscriptId}/repair/jobs/${repairJob.jobId}`,
         )
-        const data = response.data || {}
         const nextStatus = String(data.status || data.state || '').toLowerCase()
         setRepairJob((prev) =>
           prev
             ? {
                 ...prev,
                 status: nextStatus || prev.status,
-                state: data.state || prev.state,
-                message: data.message || '',
+                state: String(data.state || prev.state || ''),
+                message: String(data.message || ''),
               }
             : prev,
         )
 
         if (nextStatus === 'completed') {
-          const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
-          const refreshedWorkspace = refreshed.data || {}
+          const refreshedWorkspace = await client.get<WorkspacePageData>(`/workspaces/${workspaceId}`)
           setWorkspace(refreshedWorkspace)
           const refreshedManuscript = (refreshedWorkspace?.manuscripts || []).find(
-            (item: any) => String(item?.id || '') === String(repairJob.manuscriptId || ''),
+            (item: WorkspaceManuscriptRecord) => String(item?.id || '') === String(repairJob.manuscriptId || ''),
           )
           if (refreshedManuscript?.id) {
             const repairedCount = Array.isArray(refreshedManuscript?.content?.metadata?.quality?.repairedIssues)
@@ -1143,13 +1463,13 @@ export default function WorkspaceDetailPage() {
             })
             setManuscriptQualityExpanded((prev) => ({
               ...prev,
-              [refreshedManuscript.id]: true,
+              [String(refreshedManuscript.id)]: true,
             }))
           }
           setError(null)
           setRepairJob(null)
         } else if (nextStatus === 'failed') {
-          setError(data.error || 'Repair job failed.')
+          setError(String(data.error || 'Repair job failed.'))
           setRepairJob(null)
         }
       } catch (err) {
@@ -1163,6 +1483,60 @@ export default function WorkspaceDetailPage() {
     const timer = window.setInterval(poll, 2000)
     return () => window.clearInterval(timer)
   }, [repairJob?.jobId, repairJob?.manuscriptId, workspaceId])
+
+  useEffect(() => {
+    if (!generationJob?.jobId) return
+    const config = withToken()
+    if (!config) return
+    const capability = generationJob.capability
+
+    const poll = async () => {
+      try {
+        const client = getAppApiClient()
+        if (!client) return
+        const data = await client.get<Record<string, unknown>>(`/workspaces/${workspaceId}/jobs/${generationJob.jobId}`)
+        const nextStatus = String(data.status || data.state || '').toLowerCase()
+        setGenerationJob((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: nextStatus || prev.status,
+                state: String(data.state || prev.state || ''),
+                message: String(data.message || ''),
+              }
+            : prev,
+        )
+
+        if (nextStatus === 'completed') {
+          await refreshWorkspaceState(config)
+          if (capability === 'sermon-core') {
+            setSermonCoreGenerating(false)
+          }
+          setGenerationJob(null)
+          setActionLoading((prev) => prev.filter((item) => item !== capability))
+        } else if (nextStatus === 'failed') {
+          setError(String(data.error || 'Generation job failed.'))
+          if (capability === 'sermon-core') {
+            setSermonCoreGenerating(false)
+          }
+          setGenerationJob(null)
+          setActionLoading((prev) => prev.filter((item) => item !== capability))
+        }
+      } catch (err) {
+        console.error('Failed to poll generation job status', err)
+        setError('Unable to track generation progress.')
+        if (capability === 'sermon-core') {
+          setSermonCoreGenerating(false)
+        }
+        setGenerationJob(null)
+        setActionLoading((prev) => prev.filter((item) => item !== capability))
+      }
+    }
+
+    poll()
+    const timer = window.setInterval(poll, 2000)
+    return () => window.clearInterval(timer)
+  }, [generationJob?.jobId, generationJob?.capability, workspaceId])
 
   useEffect(() => {
     if (!editingIllustrationId || !illustrationDraft) return
@@ -1229,7 +1603,7 @@ export default function WorkspaceDetailPage() {
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/(^|[\s>])\*(.*?)\*/g, '$1<em>$2</em>')
 
-  const normalizeManuscriptCues = (raw: any): ManuscriptCues => {
+  const normalizeManuscriptCues = (raw: Record<string, unknown> | null | undefined): ManuscriptCues => {
     const cues = emptyManuscriptCues()
     if (!raw || typeof raw !== 'object') return cues
     const mapping: Record<string, keyof ManuscriptCues> = {
@@ -1253,13 +1627,13 @@ export default function WorkspaceDetailPage() {
     return cues
   }
 
-  const isManuscriptV2 = (manuscript: any) =>
+  const isManuscriptV2 = (manuscript: WorkspaceManuscriptRecord | null | undefined) =>
     String(manuscript?.content?.formatVersion || '').toLowerCase() === 'v2'
 
   const hasCueContent = (cues: ManuscriptCues) =>
     Object.values(cues).some((list) => Array.isArray(list) && list.length > 0)
 
-  const manuscriptOptionsDrifted = (options: any) => {
+  const manuscriptOptionsDrifted = (options: Record<string, unknown> | null | undefined) => {
     if (!options || typeof options !== 'object') return false
     const generatedTone = String(options.tone || 'teaching').toLowerCase()
     const generatedFormat = String(options.format || 'full').toLowerCase() === 'notes' ? 'notes' : 'full'
@@ -1282,7 +1656,7 @@ export default function WorkspaceDetailPage() {
     )
   }
 
-  const getManuscriptQualityUi = (manuscript: any) => {
+  const getManuscriptQualityUi = (manuscript: WorkspaceManuscriptRecord | null | undefined) => {
     const quality = manuscript?.content?.metadata?.quality || {}
     const status = String(quality?.status || '').toLowerCase()
     const repairedIssues = Array.isArray(quality?.repairedIssues) ? quality.repairedIssues : []
@@ -1295,7 +1669,7 @@ export default function WorkspaceDetailPage() {
     return { label: 'Needs Review', className: 'bg-amber-500/15 text-amber-200 border-amber-400/40' }
   }
 
-  const getRepairAuditTrail = (manuscript: any) => {
+  const getRepairAuditTrail = (manuscript: WorkspaceManuscriptRecord | null | undefined) => {
     const entries = manuscript?.content?.metadata?.repair?.auditTrail
     return Array.isArray(entries) ? entries : []
   }
@@ -1315,10 +1689,18 @@ export default function WorkspaceDetailPage() {
       .replace(/\s+/g, ' ')
       .trim()
 
-  const getRepairedAuditItems = (manuscript: any) =>
-    getRepairAuditTrail(manuscript).filter((item: any) => String(item?.result || '').toLowerCase() === 'repaired')
+  const getRepairedAuditItems = (manuscript: WorkspaceManuscriptRecord | null | undefined) =>
+    getRepairAuditTrail(manuscript).filter(
+      (item) => isRecord(item) && String(item['result'] || '').toLowerCase() === 'repaired',
+    ) as Array<{
+      issueId?: string
+      afterSnippet?: string
+      beforeSnippet?: string
+      anchor?: string
+      result?: string
+    }>
 
-  const getRepairItemMatchQuery = (entry: any) => {
+  const getRepairItemMatchQuery = (entry: { afterSnippet?: string; beforeSnippet?: string; anchor?: string } | null | undefined) => {
     const primary = String(entry?.afterSnippet || entry?.beforeSnippet || '').trim()
     const clean = primary
       .replace(/<[^>]+>/g, ' ')
@@ -1660,7 +2042,7 @@ export default function WorkspaceDetailPage() {
     return htmlBlocks.join('\n')
   }
 
-  const toV2ManuscriptDraft = (manuscript: any) => {
+  const toV2ManuscriptDraft = (manuscript: WorkspaceManuscriptRecord | null | undefined) => {
     if (isManuscriptV2(manuscript)) {
       return {
         html: ensureManuscriptRichHtml(String(manuscript?.content?.text || ''), markdownLikeToHtml),
@@ -1936,7 +2318,10 @@ export default function WorkspaceDetailPage() {
     return false
   }
 
-  const focusRepairAuditChange = (manuscriptId: string, auditItem: any) => {
+  const focusRepairAuditChange = (
+    manuscriptId: string,
+    auditItem: { afterSnippet?: string; beforeSnippet?: string; anchor?: string } | null | undefined,
+  ) => {
     const query = getRepairItemMatchQuery(auditItem)
     if (!query) {
       setError('No searchable content found for this repair action.')
@@ -1963,7 +2348,7 @@ export default function WorkspaceDetailPage() {
     })
   }
 
-  const applyRepairMarkers = (manuscriptId: string, manuscript: any) => {
+  const applyRepairMarkers = (manuscriptId: string, manuscript: WorkspaceManuscriptRecord | null | undefined) => {
     const container = manuscriptContentRefs.current[manuscriptId]
     if (!container) return
     clearRepairMarkers(manuscriptId)
@@ -1971,7 +2356,7 @@ export default function WorkspaceDetailPage() {
     if (!repairedItems.length) return
 
     const candidates = Array.from(container.querySelectorAll<HTMLElement>('h1,h2,h3,h4,p,li,blockquote'))
-    repairedItems.forEach((entry: any) => {
+    repairedItems.forEach((entry: { issueId?: string; afterSnippet?: string; beforeSnippet?: string; anchor?: string }) => {
       const query = getRepairItemMatchQuery(entry)
       if (!query) return
       const normalizedQuery = normalizeCueSearchText(query)
@@ -2019,7 +2404,7 @@ export default function WorkspaceDetailPage() {
     if (activeSection !== 'manuscript') return
     const timer = window.setTimeout(() => {
       const manuscripts = workspace?.manuscripts || []
-      manuscripts.forEach((manuscript: any) => {
+      manuscripts.forEach((manuscript) => {
         const manuscriptId = String(manuscript?.id || '')
         if (!manuscriptId) return
         if (!showRepairMarkers) {
@@ -2174,12 +2559,9 @@ export default function WorkspaceDetailPage() {
     
     try {
       // First, get available audio Bibles
-      const audioBiblesRes = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/audio-bibles`, {
-        params: { language: translation === 'NBLA' ? 'es' : 'en' },
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      
-      const audioBibles = audioBiblesRes.data
+      const client = getAppApiClient()
+      if (!client) return
+      const audioBibles = (await client.scriptureAudioBibles()) as unknown as Array<{ id?: string }>
       if (!audioBibles || audioBibles.length === 0) {
         setAudioError('No audio Bibles available')
         setIsAudioLoading(false)
@@ -2223,19 +2605,19 @@ export default function WorkspaceDetailPage() {
       const chapterId = `${bookId}.${chapter}`
       
       // Get audio chapter
-      const audioRes = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/scripture/audio-bibles/${audioBibleId}/chapters/${chapterId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+      const audioRes = await client.get<Record<string, unknown>>(
+        `/scripture/audio-bibles/${audioBibleId}/chapters/${chapterId}`,
       )
       
-      if (audioRes.data && audioRes.data.resourceUrl) {
-        setAudioUrl(audioRes.data.resourceUrl)
+      const audioPayload = audioRes as { resourceUrl?: string }
+      if (audioPayload.resourceUrl) {
+        setAudioUrl(audioPayload.resourceUrl)
       } else {
         setAudioError('Audio URL not available')
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Audio load error:', error)
-      setAudioError(error.response?.data?.message || 'Failed to load audio')
+      setAudioError((error as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Failed to load audio')
     } finally {
       setIsAudioLoading(false)
     }
@@ -2250,7 +2632,7 @@ export default function WorkspaceDetailPage() {
     </button>
   )
 
-  const renderSmartValue = (value: any) => {
+  const renderSmartValue = (value: unknown) => {
     if (value === null || value === undefined || value === '') {
       return <span className="text-gray-100/80">—</span>
     }
@@ -2278,15 +2660,16 @@ export default function WorkspaceDetailPage() {
     return <pre className="text-xs text-gray-100/90 whitespace-pre-wrap">{JSON.stringify(value, null, 2)}</pre>
   }
 
-  const getOutlinePointLabel = (point: any) => {
+  const getOutlinePointLabel = (point: WorkspaceOutlineNode | string | null | undefined) => {
     if (typeof point === 'string') return point
     return point?.title || point?.content || point?.text || ''
   }
 
-  const getOutlinePointNodes = (structure: any) => {
+  const getOutlinePointNodes = (structure: WorkspaceOutlineStructure | Record<string, unknown> | null | undefined) => {
     if (!structure || typeof structure !== 'object') return []
-    if (Array.isArray(structure.pointNodes) && structure.pointNodes.length > 0) {
-      return structure.pointNodes.map((point: any, index: number) => ({
+    const typedStructure = structure as WorkspaceOutlineStructure
+    if (Array.isArray(typedStructure.pointNodes) && typedStructure.pointNodes.length > 0) {
+      return typedStructure.pointNodes.map((point, index: number) => ({
         id: point?.id || `point-${index + 1}`,
         title: getOutlinePointLabel(point),
         summary: typeof point?.summary === 'string' ? point.summary : '',
@@ -2304,23 +2687,26 @@ export default function WorkspaceDetailPage() {
       }))
     }
 
-    const fallbackPoints = Array.isArray(structure.points) ? structure.points : []
-    return fallbackPoints.map((point: any, index: number) => ({
-      id: `point-${index + 1}`,
-      title: getOutlinePointLabel(point),
-      summary: '',
-      movement: '',
-      supportingVerses: Array.isArray(point?.supportingVerses) ? point.supportingVerses : [],
-      canonicalThemes: Array.isArray(point?.canonicalThemes) ? point.canonicalThemes : [],
-      crossReferences: Array.isArray(point?.crossReferences) ? point.crossReferences : [],
-      subpoints: Array.isArray(point?.subpoints) ? point.subpoints : [],
-      applications: Array.isArray(point?.applications) ? point.applications : [],
-      discussionQuestions: Array.isArray(point?.discussionQuestions) ? point.discussionQuestions : [],
-      illustrationIdeas: Array.isArray(point?.illustrationIdeas) ? point.illustrationIdeas : [],
-      mediaSuggestions: Array.isArray(point?.mediaSuggestions) ? point.mediaSuggestions : [],
-      egwSupport: Array.isArray(point?.egwSupport) ? point.egwSupport : [],
-      references: Array.isArray(point?.references) ? point.references : [],
-    }))
+    const fallbackPoints = Array.isArray(typedStructure.points) ? typedStructure.points : []
+    return fallbackPoints.map((point, index: number) => {
+      const pointObj = typeof point === 'string' ? { title: point } : (point as WorkspaceOutlineNode)
+      return {
+        id: `point-${index + 1}`,
+        title: getOutlinePointLabel(pointObj),
+        summary: '',
+        movement: '',
+        supportingVerses: Array.isArray(pointObj?.supportingVerses) ? pointObj.supportingVerses : [],
+        canonicalThemes: Array.isArray(pointObj?.canonicalThemes) ? pointObj.canonicalThemes : [],
+        crossReferences: Array.isArray(pointObj?.crossReferences) ? pointObj.crossReferences : [],
+        subpoints: Array.isArray(pointObj?.subpoints) ? pointObj.subpoints : [],
+        applications: Array.isArray(pointObj?.applications) ? pointObj.applications : [],
+        discussionQuestions: Array.isArray(pointObj?.discussionQuestions) ? pointObj.discussionQuestions : [],
+        illustrationIdeas: Array.isArray(pointObj?.illustrationIdeas) ? pointObj.illustrationIdeas : [],
+        mediaSuggestions: Array.isArray(pointObj?.mediaSuggestions) ? pointObj.mediaSuggestions : [],
+        egwSupport: Array.isArray(pointObj?.egwSupport) ? pointObj.egwSupport : [],
+        references: Array.isArray(pointObj?.references) ? pointObj.references : [],
+      }
+    })
   }
 
   const toggleTextBlock = (key: string) => {
@@ -2351,7 +2737,7 @@ export default function WorkspaceDetailPage() {
   }
 
   const renderCompactList = (
-    items: any[],
+    items: string[],
     key: string,
     emptyText: string,
     colorClass = 'text-gray-100'
@@ -2383,9 +2769,9 @@ export default function WorkspaceDetailPage() {
     )
   }
 
-  const normalizeReferenceList = (items: any[]) =>
+  const normalizeReferenceList = (items: unknown[]) =>
     (Array.isArray(items) ? items : [])
-      .map((item: any) => {
+      .map((item) => {
         const normalizeConnection = (value: string) => {
           const text = String(value || '').trim()
           if (!text) return ''
@@ -2404,140 +2790,13 @@ export default function WorkspaceDetailPage() {
         if (typeof item === 'string') {
           return { reference: item.trim(), context: '' }
         }
+        const itemObj = item as Record<string, unknown>
         return {
-          reference: String(item?.reference || '').trim(),
-          context: normalizeConnection(String(item?.context || item?.connection || '')),
+          reference: String(itemObj.reference || '').trim(),
+          context: normalizeConnection(String(itemObj.context || itemObj.connection || '')),
         }
       })
-      .filter((item: any) => item.reference)
-
-  const getStudyAssetsSource = () => {
-    const sections = workspace?.studyReports?.[0]?.sections || {}
-    const studyAssets = sections?.studyAssets || {}
-    const categoryAssets = studyAssets?.categoryAssets || {}
-    const movementAssets = Array.isArray(studyAssets?.movementAssets) ? studyAssets.movementAssets : []
-
-    const flattenMovement = (key: string) =>
-      movementAssets.flatMap((item: any) => (Array.isArray(item?.[key]) ? item[key] : []))
-
-    const sanitizeStudyAssetText = (value: any) => {
-      const text = String(value || '').trim()
-      if (!text) return ''
-      const extracted = text.match(
-        /(?:^|[\s,{])(?:content|text|prompt|question)\s*[:=]\s*["“]?([^"”\n]+?)["”]?(?:\s*[,}]|$)/i,
-      )
-      if (extracted?.[1]) return extracted[1].trim()
-      return text
-        .replace(/^\s*(title|content|text|prompt|question|verseReference|source)\s*[:=]\s*/i, '')
-        .replace(/^[`"'“”]+|[`"'“”]+$/g, '')
-        .trim()
-    }
-
-    const mergeLists = (...lists: any[][]) =>
-      Array.from(
-        new Set(
-          lists
-            .flatMap((list) => (Array.isArray(list) ? list : []))
-            .map((item) => sanitizeStudyAssetText(item))
-            .filter(Boolean),
-        ),
-      )
-
-    const mergeReferenceLists = (...lists: any[][]) =>
-      normalizeReferenceList(
-        lists.flatMap((list) => (Array.isArray(list) ? list : [])),
-      )
-
-    const normalizeMediaSuggestionCards = (items: any[]) =>
-      (Array.isArray(items) ? items : [])
-        .map((item: any) => {
-          const isLikelyJsonNoise = (text: string) => {
-            const trimmed = String(text || '').trim()
-            if (!trimmed) return true
-            if (/^[\{\}\[\],]+$/.test(trimmed)) return true
-            if (trimmed.startsWith('"') && trimmed.includes('":')) return true
-            if (/^[A-Za-z0-9_]+\s*:\s*[\[{]?\s*$/.test(trimmed)) return true
-            if (/^["']?mediaSuggestions["']?\s*:/.test(trimmed)) return true
-            return false
-          }
-
-          if (!item) return null
-          if (typeof item === 'string') {
-            const prompt = String(item).trim()
-            if (!prompt || isLikelyJsonNoise(prompt)) return null
-            return {
-              type: workspace?.language === 'es' ? 'Medio' : 'Media',
-              intent: workspace?.language === 'es' ? 'Sugerencia de estudio' : 'Study suggestion',
-              prompt,
-            }
-          }
-          const type = String(item?.type || item?.label || item?.name || '').trim()
-          const lowerType = type.toLowerCase()
-          if (
-            lowerType.includes('presentación') ||
-            lowerType.includes('presentation') ||
-            lowerType.includes('slide') ||
-            lowerType.includes('deck')
-          ) {
-            return null
-          }
-          const intent = String(item?.intent || item?.category || item?.purpose || '').trim()
-          const useCase = String(item?.useCase || item?.usage || item?.howToUse || '').trim()
-          const prompt = String(item?.prompt || item?.text || item?.content || '').trim()
-          if (!prompt || isLikelyJsonNoise(prompt)) return null
-          return {
-            type: type || (workspace?.language === 'es' ? 'Medio' : 'Media'),
-            intent: intent || (workspace?.language === 'es' ? 'Sugerencia de estudio' : 'Study suggestion'),
-            ...(useCase ? { useCase } : {}),
-            prompt,
-          }
-        })
-        .filter(Boolean)
-
-    return {
-      applications: mergeLists(
-        categoryAssets?.applications,
-        (workspace?.applications || []).map((item: any) => item?.content).filter(Boolean),
-        flattenMovement('applications'),
-        sections?.pastoralImplications?.personalLife || [],
-        sections?.pastoralImplications?.churchLife || [],
-        sections?.pastoralImplications?.mission || [],
-      ),
-      discussionQuestions: mergeLists(
-        categoryAssets?.discussionQuestions,
-        (workspace?.discussionQuestions || []).map((item: any) => item?.question).filter(Boolean),
-        flattenMovement('discussionQuestions'),
-      ),
-      illustrationIdeas: mergeLists(
-        categoryAssets?.illustrationIdeas,
-        (workspace?.illustrations || []).map((item: any) => item?.content || item?.title).filter(Boolean),
-        flattenMovement('illustrationIdeas'),
-      ),
-      mediaSuggestions: mergeLists(categoryAssets?.mediaSuggestions, flattenMovement('mediaSuggestions')),
-      mediaSuggestionCards: normalizeMediaSuggestionCards(
-        categoryAssets?.mediaSuggestionCards ||
-          (workspace?.studyReports?.[0]?.sections?.studyAssets?.categoryAssets?.mediaSuggestionCards || []),
-      ),
-      egwSupport: [...(Array.isArray(categoryAssets?.egwSupport) ? categoryAssets.egwSupport : []), ...(Array.isArray(sections?.egw?.quotes) ? sections.egw.quotes : [])].filter(Boolean),
-      references: mergeReferenceLists(categoryAssets?.references, flattenMovement('references'), workspace?.references || [], sections?.crossReferences || []),
-    }
-  }
-
-  const getStudyMediaPrompts = () => {
-    const studyAssets = getStudyAssetsSource()
-    if (Array.isArray(studyAssets.mediaSuggestionCards) && studyAssets.mediaSuggestionCards.length) {
-      return studyAssets.mediaSuggestionCards
-    }
-    const language = workspace?.language === 'es' ? 'es' : 'en'
-    return (Array.isArray(studyAssets.mediaSuggestions) ? studyAssets.mediaSuggestions : [])
-      .map((item: any) => String(item || '').trim())
-      .filter(Boolean)
-      .map((prompt: string) => ({
-        type: language === 'es' ? 'Medio' : 'Media',
-        intent: language === 'es' ? 'Sugerencia de estudio' : 'Study suggestion',
-        prompt,
-      }))
-  }
+      .filter((item): item is { reference: string; context: string } => Boolean((item as { reference?: string }).reference))
 
   const parsePassageForEgwPanel = (reference: string) => {
     const match = String(reference || '').trim().match(/^(.+?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/)
@@ -2566,17 +2825,13 @@ export default function WorkspaceDetailPage() {
 
     try {
       const translation = workspace?.language === 'es' ? 'RVR1960' : 'KJV'
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/scripture/passage-with-context`,
-        {
-          ...config,
-          params: { reference: normalized, translation, _ts: Date.now() },
-        },
-      )
-      const normalizedResult = normalizeScriptureResult(response.data, normalized, translation)
-      const verses = extractVerses(normalizedResult || response.data)
+      const client = getAppApiClient()
+      if (!client) return
+      const response = await client.scripturalPassageWithContext(normalized, translation)
+      const normalizedResult = normalizeScriptureResult(response, normalized, translation)
+      const verses = extractVerses(normalizedResult || response)
       const text = verses
-        .map((item: any) => item?.text || item?.content || '')
+        .map((item) => item?.text || '')
         .filter(Boolean)
         .join(' ')
       setReferencePreview({ reference: normalized, text: text || 'Passage text not available.', context, loading: false })
@@ -2588,12 +2843,12 @@ export default function WorkspaceDetailPage() {
 
   const renderOutlinePointSection = (
     label: string,
-    items: any[],
+    items: string[] | undefined,
     key: string,
     colorClass = 'text-gray-200',
     onItemClick?: (value: string) => void,
   ) => {
-    const values = (Array.isArray(items) ? items : []).map((item: any) => String(item).trim()).filter(Boolean)
+    const values = (Array.isArray(items) ? items : []).map((item: string) => String(item).trim()).filter(Boolean)
     if (!values.length) return null
 
     return (
@@ -2618,109 +2873,6 @@ export default function WorkspaceDetailPage() {
     )
   }
 
-  const renderStudyAssetCard = (
-    key: string,
-    title: string,
-    icon: ReactNode,
-    primaryActionLabel: string,
-    onPrimaryAction: () => void,
-    body: ReactNode,
-    secondaryActionLabel?: string,
-    onSecondaryAction?: () => void,
-    isLoading = false,
-    loadingLabel = 'Generating...',
-    disableActions = false,
-  ) => (
-    <div key={key} className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="text-cyan-200">{icon}</div>
-          <p className="text-sm font-semibold text-white">{title}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {secondaryActionLabel && onSecondaryAction ? (
-            <button
-              onClick={onSecondaryAction}
-              disabled={disableActions}
-              className="cyber-outline text-xs px-3 py-2 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {secondaryActionLabel}
-            </button>
-          ) : null}
-          <button
-            onClick={onPrimaryAction}
-            disabled={disableActions}
-            className="cyber-outline text-xs px-3 py-2 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {primaryActionLabel}
-          </button>
-        </div>
-      </div>
-      {isLoading ? (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-cyan-200/80">
-            <span>{loadingLabel}</span>
-            <span>In progress</span>
-          </div>
-          <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-            <div className="h-full w-2/3 bg-gradient-to-r from-cyan-400 via-sky-300 to-cyan-500 animate-pulse rounded-full" />
-          </div>
-          <div className="space-y-2">
-            <div className="h-3 rounded bg-white/10 animate-pulse w-5/6" />
-            <div className="h-3 rounded bg-white/10 animate-pulse w-3/4" />
-            <div className="h-3 rounded bg-white/10 animate-pulse w-2/3" />
-          </div>
-        </div>
-      ) : (
-        <div>{body}</div>
-      )}
-    </div>
-  )
-
-  const renderStudyAssetBoxes = (
-    items: any[],
-    key: string,
-    emptyText: string,
-    options?: {
-      accentClass?: string
-      itemClassName?: string
-      renderItem?: (item: any, index: number) => ReactNode
-    },
-  ) => {
-    const values = Array.isArray(items) ? items.filter(Boolean) : []
-    if (!values.length) {
-      return <p className="text-xs text-gray-300">{emptyText}</p>
-    }
-
-    const expanded = !!expandedTextBlocks[key]
-    const visible = expanded ? values : values.slice(0, 3)
-
-    return (
-      <div className="space-y-2">
-        {visible.map((item, index) => (
-          <div
-            key={`${key}-${index}`}
-            className={options?.itemClassName || 'border border-white/10 rounded-lg p-3 bg-black/30'}
-          >
-            {options?.renderItem ? (
-              options.renderItem(item, index)
-            ) : (
-              <p className={`text-sm leading-relaxed ${options?.accentClass || 'text-gray-100/90'}`}>{String(item)}</p>
-            )}
-          </div>
-        ))}
-        {values.length > 3 && (
-          <button
-            onClick={() => toggleTextBlock(key)}
-            className="cyber-outline text-[10px] px-2 py-1 rounded-full"
-          >
-            {expanded ? 'Show fewer' : `Show ${values.length - 3} more`}
-          </button>
-        )}
-      </div>
-    )
-  }
-
   const isStudyAssetLoading = (asset: 'report' | 'applications' | 'questions' | 'illustrations' | 'media' | 'egw' | 'references') => {
     if (asset === 'report') return actionLoading.includes('study-report')
     if (asset === 'applications') return actionLoading.includes('applications')
@@ -2735,22 +2887,25 @@ export default function WorkspaceDetailPage() {
     workspace.studyReports.length > 0 &&
     !!workspace.studyReports[0]?.sections
 
-  const getStudyAssetLoadingLabel = (asset: StudyAssetType) => {
-    const labels: Record<StudyAssetType, string> = {
+  const getStudyAssetLoadingLabel = (asset: 'applications' | 'questions' | 'illustrations' | 'media' | 'references' | 'report' | 'egw') => {
+    const labels: Record<'applications' | 'questions' | 'illustrations' | 'media' | 'references' | 'report' | 'egw', string> = {
       applications: 'Generating Applications...',
       questions: 'Generating Discussion Questions...',
       illustrations: 'Generating Illustration Ideas...',
       media: 'Generating Media Suggestions...',
+      references: 'Generating References...',
+      report: 'Generating Study Report...',
+      egw: 'Generating EGW Support...',
     }
     return labels[asset]
   }
 
   const getPassageFocusText = () => {
     const primaryReport = workspace?.studyReports?.[0]?.sections
-    if (typeof passageSummary === 'string' && passageSummary.trim()) return passageSummary.trim()
-    if (passageSummary?.summary) return String(passageSummary.summary)
-    if (passageSummary?.mainIdea) return String(passageSummary.mainIdea)
-    if (passageSummary?.interpretiveCenter) return String(passageSummary.interpretiveCenter)
+    const passageSummaryObject = typeof passageSummary === 'object' && passageSummary ? passageSummary : null
+    if (passageSummaryObject?.summary) return String(passageSummaryObject.summary)
+    if (passageSummaryObject?.mainIdea) return String(passageSummaryObject.mainIdea)
+    if (passageSummaryObject?.interpretiveCenter) return String(passageSummaryObject.interpretiveCenter)
     if (primaryReport?.mainTheologicalClaim) return String(primaryReport.mainTheologicalClaim).slice(0, 320)
     if (primaryReport?.passageOverview) return String(primaryReport.passageOverview).slice(0, 320)
     if (primaryReport?.theologicalInsights) return String(primaryReport.theologicalInsights).slice(0, 320)
@@ -2758,7 +2913,7 @@ export default function WorkspaceDetailPage() {
     return ''
   }
 
-  const getOutlineBigIdea = (outline: any) => {
+  const getOutlineBigIdea = (outline: WorkspaceOutlineItem | null | undefined) => {
     const movement = outline?.structure?.sermonMovement
     if (typeof movement === 'string' && movement.trim()) return movement.trim()
     const focus = getPassageFocusText()
@@ -2773,10 +2928,10 @@ export default function WorkspaceDetailPage() {
     return `${normalized.slice(0, limit - 1).trimEnd()}…`
   }
 
-  const getFlowNarrativeEntries = (outline: any, pointNodes: any[]) => {
+  const getFlowNarrativeEntries = (outline: WorkspaceOutlineItem | null | undefined, pointNodes: WorkspaceOutlinePoint[]) => {
     const introText = outline?.structure?.introduction || getPassageFocusText() || 'Opening movement for the sermon.'
     const conclusionText = outline?.structure?.conclusion || outline?.structure?.callToAction || 'Closing response and invitation.'
-    const pointEntries = (Array.isArray(pointNodes) ? pointNodes : []).map((point: any, index: number) => {
+    const pointEntries = (Array.isArray(pointNodes) ? pointNodes : []).map((point, index: number) => {
       const detailParts = [
         point?.title || '',
         point?.summary || point?.movement || '',
@@ -2798,7 +2953,7 @@ export default function WorkspaceDetailPage() {
     ]
   }
 
-  const estimatePointMinutes = (point: any) => {
+  const estimatePointMinutes = (point: WorkspaceOutlinePoint) => {
     const composite = [
       point?.title || '',
       point?.summary || '',
@@ -2811,53 +2966,54 @@ export default function WorkspaceDetailPage() {
   const getVerseEvidenceText = (verseRef: string) => {
     const verses = extractVerses(scriptureResult)
     const normalizedTarget = verseRef.replace(/\s+/g, ' ').toLowerCase()
-    const match = verses.find((verse: any) => {
+    const match = verses.find((verse) => {
       const ref = String(verse?.reference || '').replace(/\s+/g, ' ').toLowerCase()
       return ref.includes(normalizedTarget) || normalizedTarget.includes(ref)
     })
     return match?.text || ''
   }
 
-  const renderOutline = (structure: any) => {
+  const renderOutline = (structure: WorkspaceOutlineStructure | Record<string, unknown> | null | undefined) => {
     if (!structure || typeof structure !== 'object') {
       return <p className="cyber-muted text-sm">Outline unavailable.</p>
     }
-    const points = getOutlinePointNodes(structure)
+    const typedStructure = structure as WorkspaceOutlineStructure
+    const points = getOutlinePointNodes(typedStructure)
     return (
       <div className="space-y-3 text-sm">
-        {structure.introduction && (
+        {typeof typedStructure.introduction === 'string' && typedStructure.introduction.trim() && (
           <div>
             <p className="text-xs uppercase tracking-widest cyber-muted">Introduction</p>
-            <div className="mt-1">{renderMarkdown(structure.introduction)}</div>
+            <div className="mt-1">{renderMarkdown(typedStructure.introduction)}</div>
           </div>
         )}
         {points.length > 0 && (
           <div>
             <p className="text-xs uppercase tracking-widest cyber-muted">Main Points</p>
             <ol className="mt-2 list-decimal list-inside space-y-1 text-gray-100/90">
-              {points.map((point: any, index: number) => (
+              {points.map((point, index: number) => (
                 <li key={`${point.id}-${index}`}>{renderMarkdown(point.title)}</li>
               ))}
             </ol>
           </div>
         )}
-        {structure.conclusion && (
+        {typeof typedStructure.conclusion === 'string' && typedStructure.conclusion.trim() && (
           <div>
             <p className="text-xs uppercase tracking-widest cyber-muted">Conclusion</p>
-            <div className="mt-1">{renderMarkdown(structure.conclusion)}</div>
+            <div className="mt-1">{renderMarkdown(typedStructure.conclusion)}</div>
           </div>
         )}
-        {structure.callToAction && (
+        {typeof typedStructure.callToAction === 'string' && typedStructure.callToAction.trim() && (
           <div>
             <p className="text-xs uppercase tracking-widest cyber-muted">Call To Action</p>
-            <div className="mt-1">{renderMarkdown(structure.callToAction)}</div>
+            <div className="mt-1">{renderMarkdown(typedStructure.callToAction)}</div>
           </div>
         )}
       </div>
     )
   }
 
-  const getOutlineTitle = (outline: any) => {
+  const getOutlineTitle = (outline: WorkspaceOutlineItem | null | undefined) => {
     const points = getOutlinePointNodes(outline?.structure)
     const rawTitle = points[0]?.title || outline?.structure?.introduction || outline?.title || 'Outline'
     const firstSentence = rawTitle.split(/\.|\?|\!/).slice(0, 1).join('').trim()
@@ -2868,7 +3024,7 @@ export default function WorkspaceDetailPage() {
     return trimmed
   }
 
-  const renderManuscript = (content: any) => {
+  const renderManuscript = (content: WorkspaceManuscriptContent | string | null | undefined) => {
     if (!content) {
       return <p className="cyber-muted text-sm">No manuscript text yet.</p>
     }
@@ -2889,7 +3045,7 @@ export default function WorkspaceDetailPage() {
     }
 
     if (content.sections) {
-      return content.sections.map((section: any, index: number) => (
+      return content.sections.map((section, index: number) => (
         <div key={`${section.heading}-${index}`} className="space-y-2">
           <p className="text-xs uppercase tracking-widest cyber-muted">{section.heading}</p>
           <p className="text-gray-100/90 leading-relaxed">{section.body}</p>
@@ -2900,21 +3056,21 @@ export default function WorkspaceDetailPage() {
     return <p className="cyber-muted text-sm">Manuscript format not recognized.</p>
   }
 
-  const renderStudyReport = (report: any) => {
+  const renderStudyReport = (report: { sections?: WorkspaceStudyReportSection } | null | undefined) => {
     const sections = report?.sections || {}
     if (!report) {
       return <p className="cyber-muted text-sm">No study report generated yet.</p>
     }
 
-    const str = (value: any) => (typeof value === 'string' ? value.trim() : '')
-    const arr = (value: any): any[] => (Array.isArray(value) ? value : [])
+    const str = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
+    const arr = (value: unknown): unknown[] => (Array.isArray(value) ? value : [])
     const thematicClaim = str(sections.mainTheologicalClaim || sections.theologicalInsights || '')
     const legacyThemes = arr(sections.theologicalThemes || sections.keyThemes || sections.themes)
     const legacyImplications = arr(sections.pastoralImplications || sections.practicalApplications || sections.applications)
-    const legacyStructure = arr(sections.structureOfPassage || sections.structuralAnalysis || [])
-    const legacyCrossRefs = arr(sections.crossReferences || [])
-    const legacyChallenges = arr(sections.interpretiveChallenges || [])
-    const exegeticalFlow = arr(sections.exegeticalFlow || sections.argumentFlow || sections.flow)
+    const legacyStructure = arr(sections.structureOfPassage || sections.structuralAnalysis || []) as WorkspacePassageMovement[]
+    const legacyCrossRefs = arr(sections.crossReferences || []) as WorkspaceCrossReference[]
+    const legacyChallenges = arr(sections.interpretiveChallenges || []) as WorkspaceInterpretiveChallenge[]
+    const exegeticalFlow = arr(sections.exegeticalFlow || sections.argumentFlow || sections.flow) as unknown[]
     const exegeticalSummary = str(sections.exegeticalSummary || sections.summaryStatement)
 
     const normalizedImplications = (() => {
@@ -2922,9 +3078,9 @@ export default function WorkspaceDetailPage() {
         ? sections.pastoralImplications
         : null
 
-      const toCleanList = (value: any): string[] =>
+      const toCleanList = (value: unknown): string[] =>
         arr(value)
-          .map((item: any) => String(item || '').trim())
+          .map((item) => String(item || '').trim())
           .filter(Boolean)
 
       if (!source) {
@@ -2935,7 +3091,7 @@ export default function WorkspaceDetailPage() {
         }
       }
 
-      const pickFirst = (...candidates: any[]): string[] => {
+      const pickFirst = (...candidates: unknown[]): string[] => {
         for (const candidate of candidates) {
           const values = toCleanList(candidate)
           if (values.length) return values
@@ -3060,7 +3216,7 @@ export default function WorkspaceDetailPage() {
           <details open className="rounded-xl border border-white/10 bg-black/20 p-4">
             <summary className="cursor-pointer text-xs uppercase tracking-widest text-cyan-200/80">Exegetical Flow</summary>
             <ol className="mt-3 list-decimal list-inside text-sm text-gray-100/90 space-y-1">
-              {exegeticalFlow.map((step: any, idx: number) => (
+              {exegeticalFlow.map((step, idx: number) => (
                 <li key={`flow-${idx}`}>{String(step)}</li>
               ))}
             </ol>
@@ -3078,7 +3234,7 @@ export default function WorkspaceDetailPage() {
           <details open className="rounded-xl border border-white/10 bg-black/20 p-4">
             <summary className="cursor-pointer text-xs uppercase tracking-widest text-cyan-200/80">Structure of the Passage</summary>
             <div className="mt-3 space-y-2">
-              {legacyStructure.map((item: any, idx: number) => (
+              {legacyStructure.map((item, idx: number) => (
                 <div key={`movement-${idx}`} className="border border-white/10 rounded-lg p-3">
                   <p className="text-sm text-cyan-100 font-medium">
                     {item?.movement || item?.title || `Movement ${idx + 1}`}
@@ -3095,7 +3251,7 @@ export default function WorkspaceDetailPage() {
           <details open className="rounded-xl border border-white/10 bg-black/20 p-4">
             <summary className="cursor-pointer text-xs uppercase tracking-widest text-cyan-200/80">Key Terms</summary>
             <div className="mt-3 grid md:grid-cols-2 gap-2">
-              {arr(sections.keyTerms).map((term: any, idx: number) => (
+              {((arr(sections.keyTerms) as WorkspaceKeyTerm[])).map((term, idx: number) => (
                 <button
                   type="button"
                   key={`term-${idx}`}
@@ -3119,7 +3275,7 @@ export default function WorkspaceDetailPage() {
           <details open className="rounded-xl border border-white/10 bg-black/20 p-4">
             <summary className="cursor-pointer text-xs uppercase tracking-widest text-cyan-200/80">Cross References</summary>
             <div className="mt-3 space-y-2">
-              {legacyCrossRefs.map((item: any, idx: number) => (
+              {legacyCrossRefs.map((item, idx: number) => (
                 <button
                   type="button"
                   key={`xref-${idx}`}
@@ -3140,7 +3296,7 @@ export default function WorkspaceDetailPage() {
           <details open className="rounded-xl border border-white/10 bg-black/20 p-4">
             <summary className="cursor-pointer text-xs uppercase tracking-widest text-cyan-200/80">Interpretive Challenges</summary>
             <div className="mt-3 space-y-2">
-              {legacyChallenges.map((item: any, idx: number) => (
+              {legacyChallenges.map((item, idx: number) => (
                 <div key={`challenge-${idx}`} className="border border-white/10 rounded-lg p-3">
                   <p className="text-sm text-cyan-100 font-medium">{item?.question || item?.challenge || `Challenge ${idx + 1}`}</p>
                   {Array.isArray(item?.interpretationOptions) && item.interpretationOptions.length ? (
@@ -3161,7 +3317,7 @@ export default function WorkspaceDetailPage() {
           <div className="rounded-xl border border-white/10 bg-black/20 p-4">
             <p className="text-xs uppercase tracking-widest text-cyan-200/80">Theological Themes</p>
             <ul className="mt-2 list-disc list-inside text-sm text-gray-300 space-y-1">
-              {legacyThemes.map((theme: any, idx: number) => (
+              {legacyThemes.map((theme: unknown, idx: number) => (
                 <li key={`theme-${idx}`}>{String(theme)}</li>
               ))}
             </ul>
@@ -3175,7 +3331,7 @@ export default function WorkspaceDetailPage() {
               <div className="border border-white/10 rounded-lg p-3">
                 <p className="text-xs uppercase tracking-widest text-cyan-200/80">Personal Life</p>
                 <ul className="mt-2 list-disc list-inside text-sm text-gray-300 space-y-1">
-                  {normalizedImplications.personalLife.map((item: any, idx: number) => (
+                  {normalizedImplications.personalLife.map((item: unknown, idx: number) => (
                     <li key={`implication-personal-${idx}`}>{String(item)}</li>
                   ))}
                 </ul>
@@ -3183,7 +3339,7 @@ export default function WorkspaceDetailPage() {
               <div className="border border-white/10 rounded-lg p-3">
                 <p className="text-xs uppercase tracking-widest text-cyan-200/80">Church Life</p>
                 <ul className="mt-2 list-disc list-inside text-sm text-gray-300 space-y-1">
-                  {normalizedImplications.churchLife.map((item: any, idx: number) => (
+                  {normalizedImplications.churchLife.map((item: unknown, idx: number) => (
                     <li key={`implication-church-${idx}`}>{String(item)}</li>
                   ))}
                 </ul>
@@ -3191,7 +3347,7 @@ export default function WorkspaceDetailPage() {
               <div className="border border-white/10 rounded-lg p-3">
                 <p className="text-xs uppercase tracking-widest text-cyan-200/80">Mission</p>
                 <ul className="mt-2 list-disc list-inside text-sm text-gray-300 space-y-1">
-                  {normalizedImplications.mission.map((item: any, idx: number) => (
+                  {normalizedImplications.mission.map((item: unknown, idx: number) => (
                     <li key={`implication-mission-${idx}`}>{String(item)}</li>
                   ))}
                 </ul>
@@ -3224,15 +3380,31 @@ export default function WorkspaceDetailPage() {
 
     const fetchWorkspace = async () => {
       try {
-        const response = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          },
-        )
-        const workspaceData = response.data
+        const client = getAppApiClient()
+        if (!client) return
+        const stateData = await client.get<WorkspaceShellState>(`/workspaces/${workspaceId}/state`)
+        setWorkspaceState(stateData)
+        const workspaceData = stateData?.workspace
+          ? {
+              ...(stateData.workspace as WorkspacePageData),
+              metadata: {
+                ...(((stateData.workspace as WorkspacePageData)?.metadata || {}) as Record<string, unknown>),
+                uiState: {
+                  phase: stateData.activePhase,
+                  section: stateData.activeSection,
+                },
+              },
+            }
+          : null
         setWorkspace(workspaceData)
         setWorkspaceDraft(workspaceData)
+
+        if (stateData?.activePhase) {
+          setActivePhase(stateData.activePhase)
+        }
+        if (stateData?.activeSection) {
+          setActiveSection(stateData.activeSection)
+        }
 
         const defaultReference = workspaceData?.mainPassage?.trim() || ''
         const defaultTranslation = workspaceData?.language === 'es' ? 'RVR1960' : 'KJV'
@@ -3280,8 +3452,8 @@ export default function WorkspaceDetailPage() {
       ? ((querySectionRaw || '') as WorkspaceSection)
       : null
 
-    const metadataUiState = workspace?.metadata?.uiState || {}
-    let localUiState: Record<string, any> = {}
+    const metadataUiState = getWorkspaceUiState(workspace)
+    let localUiState: Record<string, unknown> = {}
     if (typeof window !== 'undefined' && navStateStorageKey) {
       try {
         localUiState = JSON.parse(localStorage.getItem(navStateStorageKey) || '{}') || {}
@@ -3355,12 +3527,10 @@ export default function WorkspaceDetailPage() {
             updatedAt: new Date().toISOString(),
           },
         }
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`,
-          { metadata: nextMetadata },
-          { headers: { Authorization: `Bearer ${token}` } },
-        )
-        setWorkspace((prev: any) => (prev ? { ...prev, metadata: nextMetadata } : prev))
+        const client = getWorkspaceApiClient()
+        if (!client) return
+        await client.updateWorkspace(workspaceId, { metadata: nextMetadata })
+        setWorkspace((prev) => (prev ? { ...prev, metadata: nextMetadata } : prev))
       } catch (err) {
         console.error('Failed to persist workspace navigation state', err)
       }
@@ -3384,6 +3554,81 @@ export default function WorkspaceDetailPage() {
     return { headers: { Authorization: `Bearer ${token}` } }
   }
 
+  const getWorkspaceApiClient = () => {
+    const token = localStorage.getItem('token')
+    if (!token) {
+      router.push('/login')
+      return null
+    }
+    return createWorkspaceApiClient({ token })
+  }
+
+  const getAppApiClient = () => {
+    const token = localStorage.getItem('token')
+    if (!token) {
+      router.push('/login')
+      return null
+    }
+    return createAppApiClient({ token })
+  }
+
+  const refreshWorkspaceState = async (config: Record<string, unknown>) => {
+    const client = getWorkspaceApiClient()
+    if (!client) return null
+    const stateData = await client.getWorkspaceState(workspaceId)
+    setWorkspaceState(stateData)
+    const workspaceData = stateData?.workspace
+      ? {
+          ...(stateData.workspace as WorkspacePageData),
+          metadata: {
+            ...(((stateData.workspace as WorkspacePageData)?.metadata || {}) as Record<string, unknown>),
+            uiState: {
+              phase: stateData.activePhase,
+              section: stateData.activeSection,
+            },
+          },
+        }
+      : null
+    if (workspaceData) {
+      setWorkspace(workspaceData)
+      setWorkspaceDraft(workspaceData)
+    }
+    return stateData
+  }
+
+  const saveWorkspaceMetadata = async (
+    config: Record<string, unknown>,
+    updater: (metadata: Record<string, unknown>) => Record<string, unknown>,
+  ) => {
+    const client = getWorkspaceApiClient()
+    if (!client) return
+    const currentMetadata = (workspace?.metadata || {}) as Record<string, unknown>
+    await client.updateWorkspace(workspaceId, { metadata: updater(currentMetadata) })
+    await refreshWorkspaceState(config)
+  }
+
+  useEffect(() => {
+    const nextAdvancedMode = Boolean(getWorkspaceUiState(workspace)?.advancedMode)
+    setAdvancedMode(nextAdvancedMode)
+  }, [workspace?.metadata])
+
+  const handleToggleAdvancedMode = async (enabled: boolean) => {
+    const config = withToken()
+    if (!config) return
+    setAdvancedMode(enabled)
+    await saveWorkspaceMetadata(config, (metadata) => ({
+      ...metadata,
+      uiState: {
+        ...((metadata.uiState as Record<string, unknown>) || {}),
+        advancedMode: enabled,
+      },
+    }))
+    if (!enabled && activeSection === 'visualizations') {
+      setActiveSection('study-report')
+      setActivePhase('STUDY')
+    }
+  }
+
   // Keyboard shortcuts
   useKeyboardShortcut('1', () => handlePhaseChange('THEME'), { cmd: true })
   useKeyboardShortcut('2', () => handlePhaseChange('PASSAGE'), { cmd: true })
@@ -3396,38 +3641,50 @@ export default function WorkspaceDetailPage() {
   const handleGenerateSermonCore = async (): Promise<SermonCoreData | null> => {
     const config = withToken()
     if (!config) return null
+    const client = getWorkspaceApiClient()
+    if (!client) return null
     
     setSermonCoreGenerating(true)
+    let queuedGeneration = false
     try {
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/sermon-core`,
-        {},
-        config
-      )
+      const response = await client.generateSermonCore(workspaceId, {}, true)
+      const responseData = response?.data as { jobId?: string; status?: string; state?: string; message?: string } | undefined
+      if (responseData?.jobId) {
+        queuedGeneration = true
+        setGenerationJob({
+          capability: 'sermon-core',
+          jobId: String(responseData.jobId),
+          status: String(responseData.status || 'queued'),
+          state: String(responseData.state || 'queued'),
+          message: String(responseData.message || ''),
+        })
+        return null
+      }
       if (response?.data) {
-        setWorkspace((prev: any) => prev ? { ...prev, sermonCore: response.data } : prev)
-        return response.data
+        const sermonCoreData = response.data as SermonCoreData
+        setWorkspace((prev) => (prev ? { ...prev, sermonCore: sermonCoreData } : prev))
+        return sermonCoreData
       }
       return null
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Failed to generate sermon core')
+    } catch (err) {
+      setError((err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Failed to generate sermon core')
       return null
     } finally {
-      setSermonCoreGenerating(false)
+      if (!queuedGeneration) {
+        setSermonCoreGenerating(false)
+      }
     }
   }
 
   const handleSermonCoreChange = async (data: SermonCoreData) => {
     const config = withToken()
     if (!config) return
+    const client = getWorkspaceApiClient()
+    if (!client) return
     
-    setWorkspace((prev: any) => prev ? { ...prev, sermonCore: data } : prev)
+    setWorkspace((prev) => (prev ? { ...prev, sermonCore: data } : prev))
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`,
-        { sermonCore: data },
-        config
-      )
+      await client.updateWorkspace(workspaceId, { sermonCore: data })
     } catch (err) {
       console.error('Failed to save sermon core:', err)
     }
@@ -3436,8 +3693,11 @@ export default function WorkspaceDetailPage() {
   const handleGenerate = async (type: string, override?: string) => {
     const config = withToken()
     if (!config) return
+    const client = getWorkspaceApiClient()
+    if (!client) return
+    let queuedGenerationType: string | null = null
 
-    const studyAssetLabels: Record<StudyAssetType, string> = {
+    const studyAssetLabels: Record<'applications' | 'questions' | 'illustrations' | 'media', string> = {
       applications: 'Applications',
       questions: 'Discussion Questions',
       illustrations: 'Illustrations',
@@ -3452,126 +3712,219 @@ export default function WorkspaceDetailPage() {
 
     setActionLoading((prev) => (prev.includes(type) ? prev : [...prev, type]))
     try {
-      let generatedResponse: any = null
+      let generatedResponse: { data?: { id?: string; jobId?: string; status?: string; state?: string; message?: string } } | null = null
       if (isStudyAssetType(type)) {
         if (!hasGeneratedStudyReport()) {
           setError('Generate the Study Report first before creating applications, questions, illustrations, or media suggestions.')
           return
         }
-        try {
+      try {
           if (type === 'applications') {
-            generatedResponse = await axios.post(
-              `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/applications`,
+            generatedResponse = await client.generateApplications(
+              workspaceId,
               {
                 promptOverride: override,
                 includeEGW: workspace?.egwEnabled || false,
-              },
-              config,
+              } as Record<string, unknown>,
+              true,
             )
+            if (generatedResponse?.data?.jobId) {
+              queuedGenerationType = type
+              setGenerationJob({
+                capability: type,
+                jobId: String(generatedResponse.data.jobId),
+                status: String(generatedResponse.data.status || 'queued'),
+                state: String(generatedResponse.data.state || 'queued'),
+                message: String(generatedResponse.data.message || ''),
+              })
+            }
           }
           if (type === 'questions') {
-            generatedResponse = await axios.post(
-              `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/discussion-questions`,
-              { promptOverride: override },
-              config,
+            generatedResponse = await client.generateDiscussionQuestions(
+              workspaceId,
+              { promptOverride: override } as Record<string, unknown>,
+              true,
             )
+            if (generatedResponse?.data?.jobId) {
+              queuedGenerationType = type
+              setGenerationJob({
+                capability: type,
+                jobId: String(generatedResponse.data.jobId),
+                status: String(generatedResponse.data.status || 'queued'),
+                state: String(generatedResponse.data.state || 'queued'),
+                message: String(generatedResponse.data.message || ''),
+              })
+            }
           }
           if (type === 'illustrations') {
-            generatedResponse = await axios.post(
-              `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/illustrations`,
-              { promptOverride: override },
-              config,
+            generatedResponse = await client.generateIllustrations(
+              workspaceId,
+              { promptOverride: override } as Record<string, unknown>,
+              true,
             )
+            if (generatedResponse?.data?.jobId) {
+              queuedGenerationType = type
+              setGenerationJob({
+                capability: type,
+                jobId: String(generatedResponse.data.jobId),
+                status: String(generatedResponse.data.status || 'queued'),
+                state: String(generatedResponse.data.state || 'queued'),
+                message: String(generatedResponse.data.message || ''),
+              })
+            }
           }
           if (type === 'media') {
-            generatedResponse = await axios.post(
-              `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/media-suggestions`,
-              { promptOverride: override },
-              config,
+            generatedResponse = await client.generateMediaSuggestions(
+              workspaceId,
+              { promptOverride: override } as Record<string, unknown>,
+              true,
             )
-            if (generatedResponse?.data) {
-              setWorkspace((prev: any) =>
-                prev
-                  ? {
-                      ...prev,
-                      studyReports: [
-                        generatedResponse.data,
-                        ...(prev.studyReports || []).filter((item: any) => item.id !== generatedResponse.data.id),
-                      ],
-                    }
-                  : prev,
-              )
+            if (generatedResponse?.data?.jobId) {
+              queuedGenerationType = type
+              setGenerationJob({
+                capability: type,
+                jobId: String(generatedResponse.data.jobId),
+                status: String(generatedResponse.data.status || 'queued'),
+                state: String(generatedResponse.data.state || 'queued'),
+                message: String(generatedResponse.data.message || ''),
+              })
             }
           }
         } catch (assetError) {
           console.error(`${type} generation failed`, assetError)
-          setError(`${studyAssetLabels[type]} generation failed. Please retry.`)
+          const assetLabel = isStudyAssetType(type)
+            ? studyAssetLabels[type as keyof typeof studyAssetLabels]
+            : type
+          setError(`${assetLabel} generation failed. Please retry.`)
           return
         }
       } else if (type === 'outlines') {
-        generatedResponse = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/outlines`,
-          { 
+        generatedResponse = await client.generateOutlines(
+          workspaceId,
+          {
             promptOverride: override,
-            includeEGW: workspace?.egwEnabled || false
-          },
-          config,
+            includeEGW: workspace?.egwEnabled || false,
+          } as Record<string, unknown>,
+          true,
         )
+        if (generatedResponse?.data?.jobId) {
+          queuedGenerationType = type
+          setGenerationJob({
+            capability: type,
+            jobId: String(generatedResponse.data.jobId),
+            status: String(generatedResponse.data.status || 'queued'),
+            state: String(generatedResponse.data.state || 'queued'),
+            message: String(generatedResponse.data.message || ''),
+          })
+        }
       } else if (type === 'manuscript') {
-        const selectedOutline = workspace?.outlines?.find((o: any) => o.isSelected) || workspace?.outlines?.[0]
+        const selectedOutline = workspace?.outlines?.find((o) => o.isSelected) || workspace?.outlines?.[0]
         if (!selectedOutline) {
           setError('Create or generate an outline first.')
           return
         }
-        generatedResponse = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/manuscript`,
-          { 
-            outlineId: selectedOutline.id, 
+        const client = getAppApiClient()
+        if (!client) return
+        generatedResponse = await client.post(`/workspaces/${workspaceId}/manuscript`, {
+          outlineId: selectedOutline.id,
+          promptOverride: override,
+          includeEGW: workspace?.egwEnabled || false,
+          manuscriptOptions: {
+            tone: manuscriptTone,
+            targetMinutes: manuscriptTargetMinutes,
+            format: manuscriptFormat,
+            audienceMode: manuscriptAudienceMode === 'default'
+              ? (workspace?.audienceProfile || 'general congregation')
+              : manuscriptAudienceMode,
+            includeSlideCues: manuscriptIncludeSlideCues,
+            includeKeyLines: manuscriptIncludeKeyLines,
+          },
+        })
+      } else if (type === 'citations') {
+        generatedResponse = await client.generateCitations(
+          workspaceId,
+          { promptOverride: override } as Record<string, unknown>,
+          true,
+        )
+        if (generatedResponse?.data?.jobId) {
+          queuedGenerationType = type
+          setGenerationJob({
+            capability: type,
+            jobId: String(generatedResponse.data.jobId),
+            status: String(generatedResponse.data.status || 'queued'),
+            state: String(generatedResponse.data.state || 'queued'),
+            message: String(generatedResponse.data.message || ''),
+          })
+        }
+      } else if (type === 'study-report') {
+        generatedResponse = await client.generateStudyReport(
+          workspaceId,
+          {
             promptOverride: override,
             includeEGW: workspace?.egwEnabled || false,
-            manuscriptOptions: {
-              tone: manuscriptTone,
-              targetMinutes: manuscriptTargetMinutes,
-              format: manuscriptFormat,
-              audienceMode: manuscriptAudienceMode === 'default'
-                ? (workspace?.audienceProfile || 'general congregation')
-                : manuscriptAudienceMode,
-              includeSlideCues: manuscriptIncludeSlideCues,
-              includeKeyLines: manuscriptIncludeKeyLines,
-            },
-          },
-          config,
+          } as Record<string, unknown>,
+          true,
         )
-      } else if (type === 'citations') {
-        generatedResponse = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/citations`,
-          { promptOverride: override },
-          config,
+        if (generatedResponse?.data?.jobId) {
+          queuedGenerationType = type
+          setGenerationJob({
+            capability: type,
+            jobId: String(generatedResponse.data.jobId),
+            status: String(generatedResponse.data.status || 'queued'),
+            state: String(generatedResponse.data.state || 'queued'),
+            message: String(generatedResponse.data.message || ''),
+          })
+        } else if (generatedResponse?.data) {
+          const generatedStudyReport = generatedResponse.data as { id?: string; sections?: WorkspaceStudyReportSection }
+          setWorkspace((prev) =>
+            prev
+              ? ({
+                  ...prev,
+                  studyReports: [
+                    generatedStudyReport,
+                    ...(prev.studyReports || []).filter((item) => item.id !== generatedStudyReport.id),
+                  ],
+                } as WorkspacePageData)
+              : prev,
+          )
+        }
+      } else if (type === 'integrity-check') {
+        generatedResponse = await client.runIntegrityCheck(workspaceId, true)
+        if (generatedResponse?.data?.jobId) {
+          queuedGenerationType = type
+          setGenerationJob({
+            capability: type,
+            jobId: String(generatedResponse.data.jobId),
+            status: String(generatedResponse.data.status || 'queued'),
+            state: String(generatedResponse.data.state || 'queued'),
+            message: String(generatedResponse.data.message || ''),
+          })
+        }
+      } else if (type === 'sermon-core') {
+        generatedResponse = await client.generateSermonCore(
+          workspaceId,
+          { promptOverride: override } as Record<string, unknown>,
+          true,
         )
-      } else if (type === 'study-report') {
-        generatedResponse = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/study-report`,
-          { 
-            promptOverride: override,
-            includeEGW: workspace?.egwEnabled || false
-          },
-          config,
-        )
-        if (generatedResponse?.data) {
-          setWorkspace((prev: any) => prev ? {
-            ...prev,
-            studyReports: [generatedResponse.data, ...(prev.studyReports || []).filter((item: any) => item.id !== generatedResponse.data.id)],
-          } : prev)
+        if (generatedResponse?.data?.jobId) {
+          queuedGenerationType = type
+          setGenerationJob({
+            capability: type,
+            jobId: String(generatedResponse.data.jobId),
+            status: String(generatedResponse.data.status || 'queued'),
+            state: String(generatedResponse.data.state || 'queued'),
+            message: String(generatedResponse.data.message || ''),
+          })
         }
       } else if (type === 'dna') {
-        generatedResponse = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/sermon-dna/analyze`, { workspaceId }, config)
+        const client = getAppApiClient()
+        if (!client) return
+        generatedResponse = await client.sermonDnaAnalyze(workspaceId)
       }
 
-      const refreshed = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`,
-        config,
-      )
-      setWorkspace(refreshed.data)
+      if (!queuedGenerationType) {
+        await refreshWorkspaceState(config)
+      }
       if (type === 'dna') {
         await fetchDnaIntegrityReport()
         setDnaIntegrityExpanded(true)
@@ -3580,21 +3933,21 @@ export default function WorkspaceDetailPage() {
       console.error('Generation failed', err)
       setError('Action failed. Check backend logs.')
     } finally {
-      setActionLoading((prev) => prev.filter((item) => item !== type && item !== 'study-report'))
+      if (!queuedGenerationType) {
+        setActionLoading((prev) => prev.filter((item) => item !== type && item !== 'study-report'))
+      }
     }
   }
 
   const fetchDnaIntegrityReport = async () => {
     const config = withToken()
     if (!config) return
+    const client = getWorkspaceApiClient()
+    if (!client) return
     setDnaIntegrityLoading(true)
     try {
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/integrity-check`,
-        {},
-        config,
-      )
-      setDnaIntegrityReport(response.data || null)
+      const response = await client.runIntegrityCheck(workspaceId, false)
+      setDnaIntegrityReport((response as SermonIntegrityReport) || null)
     } catch (err) {
       console.error('Failed to load DNA integrity report', err)
       setDnaIntegrityReport(null)
@@ -3606,24 +3959,21 @@ export default function WorkspaceDetailPage() {
   const handleSocraticCoachGenerate = async () => {
     const config = withToken()
     if (!config) return
+    const client = getAppApiClient()
+    if (!client) return
     const actionKey = 'coach'
     setActionLoading((prev) => (prev.includes(actionKey) ? prev : [...prev, actionKey]))
     try {
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/socratic-coach`,
-        {
-          mode: coachMode,
-          listenerProfile: coachListenerProfile,
-        },
-        config,
-      )
-      setSocraticCoachSession(response.data || null)
+      const response = await client.post(`/workspaces/${workspaceId}/socratic-coach`, {
+        mode: coachMode,
+        listenerProfile: coachListenerProfile,
+      })
+      setSocraticCoachSession(response || null)
       setCoachFeedback({})
       setCoachAnswers({})
       setRepairLockedAnchors([])
       setRepairJob(null)
-      const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
-      setWorkspace(refreshed.data)
+      await refreshWorkspaceState(config)
     } catch (err) {
       console.error('Failed to generate socratic coach session', err)
       setError('Unable to generate Socratic Coach questions.')
@@ -3637,20 +3987,18 @@ export default function WorkspaceDetailPage() {
     if (!answer) return
     const config = withToken()
     if (!config) return
+    const client = getAppApiClient()
+    if (!client) return
     const actionKey = `coach-answer-${questionId}`
     setActionLoading((prev) => (prev.includes(actionKey) ? prev : [...prev, actionKey]))
     try {
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/socratic-coach`,
-        {
-          mode: coachMode,
-          listenerProfile: coachListenerProfile,
-          questionId,
-          answer,
-        },
-        config,
-      )
-      setCoachFeedback((prev) => ({ ...prev, [questionId]: response.data || null }))
+      const response = await client.post(`/workspaces/${workspaceId}/socratic-coach`, {
+        mode: coachMode,
+        listenerProfile: coachListenerProfile,
+        questionId,
+        answer,
+      })
+      setCoachFeedback((prev) => ({ ...prev, [questionId]: response as WorkspaceCoachFeedbackDetail | null }))
     } catch (err) {
       console.error('Failed to submit socratic coach answer', err)
       setError('Unable to process coach answer.')
@@ -3662,6 +4010,8 @@ export default function WorkspaceDetailPage() {
   const queueCoachRepairJob = async (issueIds: string[], conversationSummary: string) => {
     const config = withToken()
     if (!config) return
+    const client = getAppApiClient()
+    if (!client) return
     if (!Array.isArray(issueIds) || issueIds.length === 0) {
       setError('No mapped repair action was found.')
       return
@@ -3674,17 +4024,15 @@ export default function WorkspaceDetailPage() {
     const actionKey = 'coach-repair-apply'
     setActionLoading((prev) => (prev.includes(actionKey) ? prev : [...prev, actionKey]))
     try {
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/manuscripts/${selectedManuscript.id}/repair/apply`,
+      const data = await client.post<Record<string, unknown>>(
+        `/workspaces/${workspaceId}/manuscripts/${selectedManuscript.id}/repair/apply`,
         {
           selectedIssueIds: issueIds,
           doNotTouchAnchors: repairLockedAnchors,
           conversationSummary: String(conversationSummary || '').trim(),
           mode: 'targeted',
         },
-        config,
       )
-      const data = response.data || {}
       setRepairJob({
         manuscriptId: selectedManuscript.id,
         jobId: String(data.jobId || ''),
@@ -3719,7 +4067,7 @@ export default function WorkspaceDetailPage() {
     const issueIds: string[] = Array.from(
       new Set(
         pendingCoachRepairPlan
-          .map((item: any) => String(item?.issueId || '').trim())
+          .map((item) => String(item?.issueId || '').trim())
           .filter((value: string) => value.length > 0),
       ),
     )
@@ -3728,7 +4076,7 @@ export default function WorkspaceDetailPage() {
       return
     }
     const combinedSummary = (socraticCoachSession?.questions || [])
-      .map((question: any) => {
+      .map((question) => {
         const questionId = String(question?.id || '').trim()
         if (!questionId) return ''
         const answer = String(coachAnswers?.[questionId] || '').trim()
@@ -3741,10 +4089,14 @@ export default function WorkspaceDetailPage() {
 
   const getRepairIssueByQuestionId = (questionId: string) => {
     const plan = Array.isArray(socraticCoachSession?.repairPlan) ? socraticCoachSession.repairPlan : []
-    return plan.find((item: any) => String(item?.questionId || '').trim() === String(questionId || '').trim())
+    return plan.find((item) => String(item?.questionId || '').trim() === String(questionId || '').trim())
   }
 
-  const buildCoachApplyText = (question: any, feedback: any, answerText: string) => {
+  const buildCoachApplyText = (
+    question: WorkspaceCoachQuestion | null | undefined,
+    feedback: WorkspaceCoachFeedbackDetail | null | undefined,
+    answerText: string,
+  ) => {
     const parts = [
       `[Coach] ${question?.id || 'Q'} · ${question?.dimension || 'refinement'}`,
       question?.question ? `Question: ${question.question}` : '',
@@ -3765,7 +4117,10 @@ export default function WorkspaceDetailPage() {
     return `<h3>${title}</h3>${paragraphs}`
   }
 
-  const handleApplyCoachToManuscript = async (question: any, feedback: any) => {
+  const handleApplyCoachToManuscript = async (
+    question: WorkspaceCoachQuestion | null | undefined,
+    feedback: WorkspaceCoachFeedbackDetail | null | undefined,
+  ) => {
     const config = withToken()
     if (!config) return
     const selectedManuscript = workspace?.manuscripts?.[0]
@@ -3791,13 +4146,12 @@ export default function WorkspaceDetailPage() {
             cues: normalizeManuscriptCues(selectedManuscript?.content?.cues),
           }
         : { text: updatedText }
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/manuscripts/${selectedManuscript.id}`,
-        { content: payloadContent },
-        config,
-      )
-      const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
-      setWorkspace(refreshed.data)
+      const client = getWorkspaceApiClient()
+      const reader = getAppApiClient()
+      if (!client || !reader) return
+      await client.updateManuscript(selectedManuscript.id, { content: payloadContent })
+      const refreshed = await reader.get<WorkspacePageData>(`/workspaces/${workspaceId}`)
+      setWorkspace(refreshed)
       setError(null)
     } catch (err) {
       console.error('Failed to apply coach suggestion to manuscript', err)
@@ -3807,10 +4161,13 @@ export default function WorkspaceDetailPage() {
     }
   }
 
-  const handleApplyCoachToOutline = async (question: any, feedback: any) => {
+  const handleApplyCoachToOutline = async (
+    question: WorkspaceCoachQuestion | null | undefined,
+    feedback: WorkspaceCoachFeedbackDetail | null | undefined,
+  ) => {
     const config = withToken()
     if (!config) return
-    const selectedOutline = workspace?.outlines?.find((o: any) => o.isSelected) || workspace?.outlines?.[0]
+    const selectedOutline = workspace?.outlines?.find((o) => o.isSelected) || workspace?.outlines?.[0]
     if (!selectedOutline?.id) {
       setError('No outline available to apply coach suggestion.')
       return
@@ -3819,10 +4176,10 @@ export default function WorkspaceDetailPage() {
     const actionKey = `coach-apply-outline-${questionId}`
     setActionLoading((prev) => (prev.includes(actionKey) ? prev : [...prev, actionKey]))
     try {
-      const structure = { ...(selectedOutline?.structure || {}) }
+      const structure: WorkspaceOutlineStructure = { ...(selectedOutline?.structure || {}) }
       const pointNodes = Array.isArray(structure.pointNodes) ? [...structure.pointNodes] : []
       const sourceAnchor = String(question?.sourceAnchor || '').toLowerCase()
-      const targetIndex = pointNodes.findIndex((node: any) => {
+      const targetIndex = pointNodes.findIndex((node) => {
         const title = String(node?.title || node?.text || node?.content || '').toLowerCase()
         return sourceAnchor && title && (title.includes(sourceAnchor) || sourceAnchor.includes(title))
       })
@@ -3840,7 +4197,7 @@ export default function WorkspaceDetailPage() {
         existingNode.notes = [String(existingNode.notes || '').trim(), coachNote].filter(Boolean).join('\n\n')
         pointNodes[targetIndex] = existingNode
       } else {
-        const coachNotes = Array.isArray((structure as any).coachNotes) ? [...(structure as any).coachNotes] : []
+        const coachNotes = Array.isArray(structure.coachNotes) ? [...structure.coachNotes] : []
         coachNotes.push({
           id: `coach-${Date.now()}-${questionId}`,
           questionId,
@@ -3852,17 +4209,16 @@ export default function WorkspaceDetailPage() {
           answer: answerText,
           createdAt: new Date().toISOString(),
         })
-        ;(structure as any).coachNotes = coachNotes.slice(-25)
+        structure.coachNotes = coachNotes.slice(-25)
       }
 
       structure.pointNodes = pointNodes
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/outlines/${selectedOutline.id}`,
-        { structure },
-        config,
-      )
-      const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
-      setWorkspace(refreshed.data)
+      const client = getWorkspaceApiClient()
+      const reader = getAppApiClient()
+      if (!client || !reader) return
+      await client.updateOutline(selectedOutline.id, { structure })
+      const refreshed = await reader.get<WorkspacePageData>(`/workspaces/${workspaceId}`)
+      setWorkspace(refreshed)
       setError(null)
     } catch (err) {
       console.error('Failed to apply coach suggestion to outline', err)
@@ -3875,18 +4231,12 @@ export default function WorkspaceDetailPage() {
   const handleCitationValidate = async () => {
     const config = withToken()
     if (!config) return
+    const client = getWorkspaceApiClient()
+    if (!client) return
     setActionLoading((prev) => (prev.includes('citations-validate') ? prev : [...prev, 'citations-validate']))
     try {
-      await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/citations/validate?translation=${citationTranslation}`,
-        {},
-        config,
-      )
-      const refreshed = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`,
-        config,
-      )
-      setWorkspace(refreshed.data)
+      await client.validateCitations(workspaceId, citationTranslation)
+      await refreshWorkspaceState(config)
     } catch (err) {
       console.error('Citation validation failed', err)
       setError('Unable to validate citations.')
@@ -3955,14 +4305,9 @@ export default function WorkspaceDetailPage() {
     
     try {
       // Load critical passage text first (fast, non-LLM)
-      const passageRes = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/passage-with-context`, {
-        ...config,
-        params: {
-          reference: normalizedReference,
-          translation: normalizedTranslation,
-          _ts: Date.now(),
-        },
-      })
+      const client = getAppApiClient()
+      if (!client) return
+      const passageRes = { data: await client.scripturalPassageWithContext(normalizedReference, normalizedTranslation) }
 
       if (requestId !== scriptureLookupRequestId.current) {
         setActionLoading((prev) => prev.filter((item) => item !== 'scripture'))
@@ -3982,10 +4327,11 @@ export default function WorkspaceDetailPage() {
       if (normalizedPassageResult) {
         const verses = extractVerses(normalizedPassageResult)
         if (!verses.length) {
-          const details =
-            typeof normalizedPassageResult?.error === 'string' && normalizedPassageResult.error.trim()
-              ? normalizedPassageResult.error.trim()
-              : 'Passage response returned no verses. Try Lookup again.'
+        const details =
+          typeof (normalizedPassageResult as { error?: unknown })?.error === 'string' &&
+            String((normalizedPassageResult as { error?: string }).error || '').trim()
+            ? String((normalizedPassageResult as { error?: string }).error || '').trim()
+            : 'Passage response returned no verses. Try Lookup again.'
           setScriptureError(details)
           setActionLoading((prev) => prev.filter((item) => item !== 'scripture'))
           return
@@ -4021,21 +4367,19 @@ export default function WorkspaceDetailPage() {
       // Load secondary data asynchronously in background (these can take longer with LLM)
       // These will populate their own component panels as they complete
       Promise.allSettled([
-        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/parallel`, {
-          ...config,
-          params: { reference: normalizedReference, translations: normalizedParallel },
-        }),
-        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/context`, {
-          ...config,
-          params: { reference: normalizedReference },
-        }),
+        client.scriptureParallel(normalizedReference, normalizedParallel),
+        client.scriptureContext(normalizedReference),
       ]).then(results => {
         if (requestId !== scriptureLookupRequestId.current) {
           return
         }
         // Extract and set all data after request-id guard
-        const parallelData = results[0].status === 'fulfilled' ? results[0].value?.data?.translations || [] : []
-        const contextDataResult = results[1].status === 'fulfilled' ? results[1].value?.data || null : null
+        const parallelData = results[0].status === 'fulfilled'
+          ? ((results[0].value?.translations || []) as Record<string, unknown>[])
+          : []
+        const contextDataResult = results[1].status === 'fulfilled'
+          ? (results[1].value as WorkspaceSectionData)
+          : null
         
         // Set all state updates together
         setParallelResults(parallelData)
@@ -4130,37 +4474,24 @@ export default function WorkspaceDetailPage() {
     setWordStudyLastLookup(normalizedWord)
     setActionLoading((prev) => (prev.includes('word-study') ? prev : [...prev, 'word-study']))
     try {
-      let nextWordStudyResult: any = null
-      let nextWordStudyInsights: any = null
+      let nextWordStudyResult: Record<string, unknown> | null = null
+      let nextWordStudyInsights: Record<string, unknown> | null = null
+      const client = getAppApiClient()
+      if (!client) return
       const [studyRes, insightsRes] = await Promise.allSettled([
-        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/word-study`, {
-          ...config,
-          params: {
-            word: normalizedWord,
-            language: normalizedLang,
-            responseLanguage,
-          },
-        }),
-        axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/word-study-insights`, {
-          ...config,
-          params: {
-            word: normalizedWord,
-            language: normalizedLang,
-            context: contextualHint || undefined,
-            responseLanguage,
-          },
-        }),
+        client.scriptureWordStudy(normalizedWord, normalizedLang, responseLanguage),
+        client.scriptureWordStudyInsights(normalizedWord, normalizedLang, contextualHint || undefined, responseLanguage),
       ])
       if (studyRes.status === 'fulfilled') {
-        setWordStudyResult(studyRes.value.data)
-        nextWordStudyResult = studyRes.value.data
+        setWordStudyResult(studyRes.value)
+        nextWordStudyResult = studyRes.value
       } else {
         setWordStudyResult(null)
         setWordStudyError('Unable to load word study results.')
       }
       if (insightsRes.status === 'fulfilled') {
-        setWordStudyInsights(insightsRes.value.data)
-        nextWordStudyInsights = insightsRes.value.data
+        setWordStudyInsights(insightsRes.value)
+        nextWordStudyInsights = insightsRes.value
       } else {
         setWordStudyInsights(null)
       }
@@ -4196,6 +4527,8 @@ export default function WorkspaceDetailPage() {
     }
     setWordStudySuggestionsLoading(true)
     try {
+      const client = getAppApiClient()
+      if (!client) return
       const workspaceLanguage = String(workspace?.language || '').toLowerCase()
       const responseLanguage =
         workspaceLanguage.startsWith('es') ||
@@ -4204,16 +4537,13 @@ export default function WorkspaceDetailPage() {
         workspaceLanguage.includes('español')
           ? 'es'
           : 'en'
-      const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/word-study-suggestions`, {
-        ...config,
-        params: {
-          reference,
-          translation: scriptureTranslation || workspace?.defaultTranslation || 'KJV',
-          language: wordStudyLanguage,
-          responseLanguage,
-        },
-      })
-      setWordStudySuggestions(Array.isArray(response.data) ? response.data : [])
+      const response = await client.scriptureWordStudySuggestions(
+        reference,
+        String(scriptureTranslation || workspace?.defaultTranslation || 'KJV'),
+        wordStudyLanguage,
+        responseLanguage,
+      )
+      setWordStudySuggestions(Array.isArray(response) ? response : [])
     } catch (error) {
       console.error('Failed to fetch word study suggestions', error)
       setWordStudySuggestions([])
@@ -4236,11 +4566,10 @@ export default function WorkspaceDetailPage() {
     setCrossRefHasScriptureResults(false)
     setActionLoading((prev) => (prev.includes('cross-references') ? prev : [...prev, 'cross-references']))
     try {
-      const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/scripture/cross-references-ranked`, {
-        ...config,
-        params: { verse: normalizedVerse },
-      })
-      const ranked = Array.isArray(response.data) ? response.data : []
+      const client = getAppApiClient()
+      if (!client) return
+      const response = await client.scriptureCrossReferencesRanked(normalizedVerse)
+      const ranked = Array.isArray(response) ? response : []
       setCrossRefResults(ranked)
       await persistSupplementalStudyCache({
         crossReferences: {
@@ -4262,11 +4591,10 @@ export default function WorkspaceDetailPage() {
     if (!config || !searchQuery) return
     setActionLoading((prev) => (prev.includes('search') ? prev : [...prev, 'search']))
     try {
-      const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/search`, {
-        ...config,
-        params: { query: searchQuery },
-      })
-      setSearchResults(response.data || [])
+      const client = getAppApiClient()
+      if (!client) return
+      const response = await client.search(searchQuery)
+      setSearchResults((response as unknown as WorkspaceSearchResult[]) || [])
     } catch (err) {
       console.error('Search failed', err)
       setError('Unable to search.')
@@ -4281,18 +4609,14 @@ export default function WorkspaceDetailPage() {
     const config = withToken()
     if (!config) return
     try {
+      const client = getAppApiClient()
+      if (!client) return
       const outlineId = type === 'manuscript'
-        ? workspace?.outlines?.find((o: any) => o.isSelected)?.id || workspace?.outlines?.[0]?.id
+        ? workspace?.outlines?.find((o) => o.isSelected)?.id || workspace?.outlines?.[0]?.id
         : undefined
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/prompts`,
-        {
-          ...config,
-          params: { type, outlineId },
-        },
-      )
+      const response = await client.workspacePromptPreview(workspaceId, type, outlineId)
       setPromptType(type)
-      setPromptText(response.data || '')
+      setPromptText(String(response || ''))
       setPromptModalOpen(true)
     } catch (err) {
       console.error('Failed to load prompt', err)
@@ -4319,36 +4643,12 @@ export default function WorkspaceDetailPage() {
     await handleGenerate(mapped, promptText)
   }
 
-  const sectionNavButton = (key: typeof activeSection, label: string) => (
-    <button
-      key={key}
-      onClick={() => {
-        setActiveSection(key)
-        const nextPhase = sectionPhaseMap[key]
-        if (nextPhase) {
-          setActivePhase(nextPhase)
-        }
-        if (key === 'visualizations') {
-          setVisualizationMode(nextPhase === 'REFINE' ? 'refine' : 'passage')
-        }
-        setRailOpen(false)
-      }}
-      className={
-        activeSection === key
-          ? 'cyber-button text-xs px-3 py-2 rounded-xl w-full text-left'
-          : 'cyber-outline text-xs px-3 py-2 rounded-xl w-full text-left'
-      }
-    >
-      {label}
-    </button>
-  )
-
   const latestDnaAnalysis = workspace?.dnaAnalyses?.[0] || null
   const isSpanishWorkspace = workspace?.language === 'es'
   const dnaText = (en: string, es: string) => (isSpanishWorkspace ? es : en)
   const latestManuscriptText = String(workspace?.manuscripts?.[0]?.content?.text || '')
-  const latestOutline = workspace?.outlines?.find((o: any) => o.isSelected) || workspace?.outlines?.[0]
-  const outlinePointsForDna = getOutlinePointNodes(latestOutline?.structure || {}).map((point: any) => String(point.title || '').trim()).filter(Boolean)
+  const latestOutline = workspace?.outlines?.find((o) => o.isSelected) || workspace?.outlines?.[0]
+  const outlinePointsForDna = getOutlinePointNodes(latestOutline?.structure || {}).map((point) => String(point.title || '').trim()).filter(Boolean)
   const manuscriptWordCount = latestManuscriptText ? latestManuscriptText.split(/\s+/).filter(Boolean).length : 0
   const estimatedMinutesDna = manuscriptWordCount ? Math.max(1, Math.ceil(manuscriptWordCount / 110)) : 0
   const scriptureReferencesInManuscript = Array.from(
@@ -4397,78 +4697,6 @@ export default function WorkspaceDetailPage() {
     return dnaText('Expository', 'Expositivo')
   })()
 
-  const renderRail = () => (
-    <div className="flex flex-col gap-4">
-      {/* Progress Indicator */}
-      <ProgressIndicator progress={progress} />
-      
-      {/* Next Step Suggestion */}
-      <NextStepSuggestion 
-        progress={progress}
-        onAction={handleNextStepAction}
-      />
-      
-      <div className="cyber-panel rounded-2xl p-4 space-y-3">
-        <p className="text-xs uppercase tracking-widest cyber-muted">Workspace</p>
-        <h2 className="text-xl font-semibold text-white">{workspace.title}</h2>
-        <p className="text-sm text-cyan-200/80">{workspace.mainPassage}</p>
-        <div className="flex items-center gap-2">
-          <span className="cyber-tag">{workspace.status}</span>
-          <button
-            onClick={() => {
-              setActivePhase('THEME')
-              setActiveSection('workspace')
-              setRailOpen(false)
-            }}
-            className="cyber-outline text-xs px-3 py-1 rounded-full"
-          >
-            Details
-          </button>
-        </div>
-        <p className="text-xs cyber-muted">Language: {workspace.language || 'en'}</p>
-      </div>
-
-      <div className="cyber-panel rounded-2xl p-4 space-y-2">
-        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70">Theme</p>
-        {sectionNavButton('workspace', 'Workspace')}
-        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70">Passage</p>
-        {sectionNavButton('scripture', 'Scripture')}
-        {sectionNavButton('word-study', 'Word Study')}
-        {sectionNavButton('cross-references', 'Cross References')}
-        {sectionNavButton('visualizations', 'Visualizations')}
-        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Study</p>
-        {sectionNavButton('study-report', 'Study Report')}
-        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Outline</p>
-        {sectionNavButton('outlines', 'Outlines')}
-        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Write</p>
-        {sectionNavButton('manuscript', 'Manuscript')}
-        {sectionNavButton('citations', 'Citations')}
-        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Refine</p>
-        {sectionNavButton('coach', 'Socratic Coach')}
-        {sectionNavButton('dna', 'Sermon DNA')}
-        <button
-          onClick={() => {
-            setActivePhase('REFINE')
-            setVisualizationMode('refine')
-            setActiveSection('visualizations')
-            setRailOpen(false)
-          }}
-          className={
-            activeSection === 'visualizations' && activePhase === 'REFINE'
-              ? 'cyber-button text-xs px-3 py-2 rounded-xl w-full text-left'
-              : 'cyber-outline text-xs px-3 py-2 rounded-xl w-full text-left'
-          }
-        >
-          Flow Tools
-        </button>
-        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Deliver</p>
-        {sectionNavButton('media', 'Media')}
-        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Settings</p>
-        {sectionNavButton('church-settings', 'Church Settings')}
-      </div>
-    </div>
-  )
-
   const renderStudyAssetEditor = () => {
     if (studyAssetEditor === 'applications') {
       return (
@@ -4502,16 +4730,16 @@ export default function WorkspaceDetailPage() {
               </button>
             </div>
           </div>
-          {workspace.applications?.length ? (
+          {workspace?.applications?.length ? (
             <ul className="space-y-3 text-gray-100/90 max-h-[60vh] overflow-y-auto pr-1">
-              {workspace.applications.map((app: any) => (
+              {workspace?.applications?.map((app) => (
                 <li key={app.id} className="border border-white/10 rounded-xl p-4 bg-black/30">
                   <div className="flex items-center justify-between">
                     <span className="cyber-tag">{app.audienceType}</span>
                     <button
                       onClick={() => {
-                        setEditingApplicationId(app.id)
-                        setApplicationDraft(app.content)
+                        setEditingApplicationId(app.id || null)
+                        setApplicationDraft(app.content || app.text || app.title || '')
                       }}
                       className="cyber-outline px-3 py-1 text-xs rounded-full"
                     >
@@ -4529,7 +4757,7 @@ export default function WorkspaceDetailPage() {
                       />
                       <div className="flex gap-2">
                         <button
-                          onClick={() => handleApplicationSave(app.id)}
+                          onClick={() => handleApplicationSave(app.id || '')}
                           className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
                           disabled={actionLoading.includes('application-edit')}
                         >
@@ -4547,7 +4775,7 @@ export default function WorkspaceDetailPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="mt-2">{renderMarkdown(app.content)}</div>
+                    <div className="mt-2">{renderMarkdown(app.content || app.text || app.title || '')}</div>
                   )}
                 </li>
               ))}
@@ -4583,16 +4811,16 @@ export default function WorkspaceDetailPage() {
               </button>
             </div>
           </div>
-          {workspace.discussionQuestions?.length ? (
+          {workspace?.discussionQuestions?.length ? (
             <ul className="space-y-3 text-gray-100/90 max-h-[60vh] overflow-y-auto pr-1">
-              {workspace.discussionQuestions.map((q: any) => (
+              {workspace?.discussionQuestions?.map((q) => (
                 <li key={q.id} className="border border-white/10 rounded-xl p-4 bg-black/30">
                   <div className="flex items-center justify-between">
-                    <div className="flex-1">{renderMarkdown(q.question)}</div>
+                    <div className="flex-1">{renderMarkdown(q.question || q.text || '')}</div>
                     <button
                       onClick={() => {
-                        setEditingQuestionId(q.id)
-                        setQuestionDraft(q.question)
+                        setEditingQuestionId(q.id || null)
+                        setQuestionDraft(q.question || q.text || '')
                       }}
                       className="cyber-outline px-3 py-1 text-xs rounded-full"
                     >
@@ -4610,7 +4838,7 @@ export default function WorkspaceDetailPage() {
                       />
                       <div className="flex gap-2">
                         <button
-                          onClick={() => handleQuestionSave(q.id)}
+                          onClick={() => handleQuestionSave(q.id || '')}
                           className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
                           disabled={actionLoading.includes('question-edit')}
                         >
@@ -4662,16 +4890,16 @@ export default function WorkspaceDetailPage() {
               </button>
             </div>
           </div>
-          {workspace.illustrations?.length ? (
+          {workspace?.illustrations?.length ? (
             <ul className="space-y-3 text-gray-100/90 max-h-[60vh] overflow-y-auto pr-1">
-              {workspace.illustrations.map((ill: any) => (
+              {workspace?.illustrations?.map((ill) => (
                 <li key={ill.id} className="border border-white/10 rounded-xl p-4 bg-black/30">
                   <div className="flex items-center justify-between">
                     <p className="font-semibold">{ill.title || 'Illustration'}</p>
                     <button
                       onClick={() => {
-                        setEditingIllustrationId(ill.id)
-                        setIllustrationDraft({ id: ill.id, title: ill.title || '', content: ill.content || '', source: ill.source || '' })
+                        setEditingIllustrationId(ill.id || null)
+                        setIllustrationDraft({ id: String(ill.id || ''), title: ill.title || '', content: ill.content || '', source: ill.source || '' })
                       }}
                       className="cyber-outline px-3 py-1 text-xs rounded-full"
                     >
@@ -4682,20 +4910,20 @@ export default function WorkspaceDetailPage() {
                     <div className="space-y-3 mt-3">
                       <label className="text-xs uppercase tracking-widest cyber-muted">Illustration Title</label>
                       <input
-                        value={illustrationDraft.title}
+                        value={String(illustrationDraft.title || '')}
                         onChange={(e) => setIllustrationDraft({ ...illustrationDraft, title: e.target.value })}
                         className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
                       />
                       <label className="text-xs uppercase tracking-widest cyber-muted">Illustration Content</label>
                       <textarea
-                        value={illustrationDraft.content}
+                        value={String(illustrationDraft.content || '')}
                         onChange={(e) => setIllustrationDraft({ ...illustrationDraft, content: e.target.value })}
                         className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
                         rows={4}
                       />
                       <label className="text-xs uppercase tracking-widest cyber-muted">Source</label>
                       <input
-                        value={illustrationDraft.source}
+                        value={String(illustrationDraft.source || '')}
                         onChange={(e) => setIllustrationDraft({ ...illustrationDraft, source: e.target.value })}
                         className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
                       />
@@ -4720,7 +4948,7 @@ export default function WorkspaceDetailPage() {
                     </div>
                   ) : (
                     <>
-                      <div className="mt-1">{renderMarkdown(ill.content)}</div>
+                      <div className="mt-1">{renderMarkdown(ill.content || ill.text || ill.title || '')}</div>
                       {ill.source && <p className="text-xs cyber-muted mt-2">Source: {ill.source}</p>}
                     </>
                   )}
@@ -4740,11 +4968,11 @@ export default function WorkspaceDetailPage() {
   const handleWorkspaceSave = async () => {
     const config = withToken()
     if (!config || !workspaceDraft) return
+    const client = getWorkspaceApiClient()
+    if (!client) return
     setActionLoading((prev) => (prev.includes('workspace') ? prev : [...prev, 'workspace']))
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`,
-        {
+      await client.updateWorkspace(workspaceId, {
           title: workspaceDraft.title,
           seriesTitle: workspaceDraft.seriesTitle,
           mainPassage: workspaceDraft.mainPassage,
@@ -4757,12 +4985,8 @@ export default function WorkspaceDetailPage() {
           storyArc: workspaceDraft.storyArc,
           language: workspaceDraft.language,
           includeEGW: workspaceDraft.includeEGW,
-        },
-        config,
-      )
-      const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
-      setWorkspace(refreshed.data)
-      setWorkspaceDraft(refreshed.data)
+        })
+      await refreshWorkspaceState(config)
       setEditingWorkspace(false)
     } catch (err) {
       console.error('Failed to update workspace', err)
@@ -4775,11 +4999,11 @@ export default function WorkspaceDetailPage() {
   const handleOutlineSave = async () => {
     const config = withToken()
     if (!config || !outlineDraft) return
+    const client = getWorkspaceApiClient()
+    if (!client) return
     setActionLoading((prev) => (prev.includes('outline-edit') ? prev : [...prev, 'outline-edit']))
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/outlines/${outlineDraft.id}`,
-        {
+      await client.updateOutline(outlineDraft.id, {
           title: outlineDraft.title,
           structure: {
             introduction: outlineDraft.introduction,
@@ -4788,11 +5012,8 @@ export default function WorkspaceDetailPage() {
             conclusion: outlineDraft.conclusion,
             callToAction: outlineDraft.callToAction,
           },
-        },
-        config,
-      )
-      const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
-      setWorkspace(refreshed.data)
+        })
+      await refreshWorkspaceState(config)
       setEditingOutlineId(null)
       setOutlineDraft(null)
     } catch (err) {
@@ -4803,21 +5024,39 @@ export default function WorkspaceDetailPage() {
     }
   }
 
+  const handleOutlineSelect = async (outlineId: string) => {
+    const config = withToken()
+    if (!config) return
+    const client = getWorkspaceApiClient()
+    if (!client) return
+    const actionKey = `outline-select-${outlineId}`
+    setActionLoading((prev) => (prev.includes(actionKey) ? prev : [...prev, actionKey]))
+    try {
+      await client.updateOutline(outlineId, { isSelected: true })
+      await refreshWorkspaceState(config)
+    } catch (err) {
+      console.error('Failed to activate outline', err)
+      setError('Unable to activate outline.')
+    } finally {
+      setActionLoading((prev) => prev.filter((item) => item !== actionKey))
+    }
+  }
+
   const handleManuscriptSave = async (id: string, inlineHtml?: string) => {
     const config = withToken()
     if (!config) return
+    const client = getWorkspaceApiClient()
+    if (!client) return
     setActionLoading((prev) => (prev.includes('manuscript-edit') ? prev : [...prev, 'manuscript-edit']))
     try {
       const textToSave = inlineHtml !== undefined ? inlineHtml : manuscriptDraft
-      const existingManuscript = workspace?.manuscripts?.find((m: any) => m.id === id)
+      const existingManuscript = workspace?.manuscripts?.find((m) => m.id === id)
       const cuesToSaveRaw = inlineHtml !== undefined ? (existingManuscript?.content?.cues || {}) : manuscriptCueDraft
       const cuesToSave = normalizeManuscriptCues(cuesToSaveRaw)
       const cueAnchors = buildCueAnchorsFromHtml(textToSave, cuesToSave)
       const staleInfo = evaluateCueCoverage(cuesToSave, textToSave, cueAnchors)
       setManuscriptCueHealth((prev) => ({ ...prev, [id]: staleInfo }))
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/manuscripts/${id}`,
-        {
+      await client.updateManuscript(id, {
           content: {
             formatVersion: 'v2',
             text: textToSave,
@@ -4828,11 +5067,8 @@ export default function WorkspaceDetailPage() {
               cueAnchorUpdatedAt: new Date().toISOString(),
             },
           },
-        },
-        config,
-      )
-      const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
-      setWorkspace(refreshed.data)
+        })
+      await refreshWorkspaceState(config)
       if (!inlineHtml) {
         setEditingManuscriptId(null)
         setLegacyConvertCandidateId(null)
@@ -4850,16 +5086,13 @@ export default function WorkspaceDetailPage() {
   const handleRegenerateManuscriptCues = async (manuscriptId: string) => {
     const config = withToken()
     if (!config) return
+    const client = getAppApiClient()
+    if (!client) return
     const actionKey = `manuscript-cues-${manuscriptId}`
     setActionLoading((prev) => (prev.includes(actionKey) ? prev : [...prev, actionKey]))
     try {
-      await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/manuscripts/${manuscriptId}/cues/regenerate`,
-        {},
-        config,
-      )
-      const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
-      setWorkspace(refreshed.data)
+      await client.post(`/workspaces/${workspaceId}/manuscripts/${manuscriptId}/cues/regenerate`, {})
+      await refreshWorkspaceState(config)
     } catch (err) {
       console.error('Failed to regenerate manuscript cues', err)
       setError('Unable to regenerate manuscript cues.')
@@ -4871,15 +5104,12 @@ export default function WorkspaceDetailPage() {
   const handleApplicationSave = async (id: string) => {
     const config = withToken()
     if (!config) return
+    const client = getWorkspaceApiClient()
+    if (!client) return
     setActionLoading((prev) => (prev.includes('application-edit') ? prev : [...prev, 'application-edit']))
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/applications/${id}`,
-        { content: applicationDraft },
-        config,
-      )
-      const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
-      setWorkspace(refreshed.data)
+      await client.updateApplication(id, { content: applicationDraft })
+      await refreshWorkspaceState(config)
       setEditingApplicationId(null)
       setApplicationDraft('')
     } catch (err) {
@@ -4893,15 +5123,12 @@ export default function WorkspaceDetailPage() {
   const handleQuestionSave = async (id: string) => {
     const config = withToken()
     if (!config) return
+    const client = getWorkspaceApiClient()
+    if (!client) return
     setActionLoading((prev) => (prev.includes('question-edit') ? prev : [...prev, 'question-edit']))
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/discussion-questions/${id}`,
-        { question: questionDraft },
-        config,
-      )
-      const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
-      setWorkspace(refreshed.data)
+      await client.updateDiscussionQuestion(id, { question: questionDraft })
+      await refreshWorkspaceState(config)
       setEditingQuestionId(null)
       setQuestionDraft('')
     } catch (err) {
@@ -4915,19 +5142,16 @@ export default function WorkspaceDetailPage() {
   const handleIllustrationSave = async () => {
     const config = withToken()
     if (!config || !illustrationDraft) return
+    const client = getWorkspaceApiClient()
+    if (!client) return
     setActionLoading((prev) => (prev.includes('illustration-edit') ? prev : [...prev, 'illustration-edit']))
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/illustrations/${illustrationDraft.id}`,
-        {
+      await client.updateIllustration(String(illustrationDraft.id), {
           title: illustrationDraft.title,
           content: illustrationDraft.content,
           source: illustrationDraft.source,
-        },
-        config,
-      )
-      const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
-      setWorkspace(refreshed.data)
+        })
+      await refreshWorkspaceState(config)
       setEditingIllustrationId(null)
       setIllustrationDraft(null)
     } catch (err) {
@@ -4941,20 +5165,17 @@ export default function WorkspaceDetailPage() {
   const handleCitationSave = async () => {
     const config = withToken()
     if (!config || !citationDraft) return
+    const client = getWorkspaceApiClient()
+    if (!client) return
     setActionLoading((prev) => (prev.includes('citation-edit') ? prev : [...prev, 'citation-edit']))
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workspaces/citations/${citationDraft.id}`,
-        {
+      await client.updateCitation(citationDraft.id, {
           statement: citationDraft.statement,
           verseReferences: citationDraft.verseReferences
             ? citationDraft.verseReferences.split(',').map((item: string) => item.trim()).filter(Boolean)
             : [],
-        },
-        config,
-      )
-      const refreshed = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}`, config)
-      setWorkspace(refreshed.data)
+        })
+      await refreshWorkspaceState(config)
       setEditingCitationId(null)
       setCitationDraft(null)
     } catch (err) {
@@ -4962,6 +5183,99 @@ export default function WorkspaceDetailPage() {
       setError('Unable to save citation changes.')
     } finally {
       setActionLoading((prev) => prev.filter((item) => item !== 'citation-edit'))
+    }
+  }
+
+  const persistClaimReviewDecision = async (
+    claim: WorkspaceClaimLedgerEntry | null | undefined,
+    decision: 'repair' | 'acknowledge' | 'cite',
+    note?: string,
+  ) => {
+    const config = withToken()
+    if (!config || !claim?.id) return
+    const client = getWorkspaceApiClient()
+    if (!client) return
+    await client.recordClaimReview(workspaceId, {
+        claimId: String(claim.id),
+        decision,
+        note,
+        claimText: claim.claimText,
+        claimType: claim.claimType,
+        supportLevel: claim.supportLevel,
+        sourceType: claim.sourceType,
+        sourceIds: claim.sourceIds,
+        location: claim.location || claim.locationPath,
+      })
+    await refreshWorkspaceState(config)
+  }
+
+  const handleRepairClaim = async (claim: WorkspaceClaimLedgerEntry | null | undefined) => {
+    try {
+      await persistClaimReviewDecision(claim, 'repair', 'Needs repair')
+      if (claim?.location === 'outline' || claim?.claimType === 'outline') {
+        setActivePhase('OUTLINE')
+        setActiveSection('outlines')
+      } else if (claim?.location === 'study-report') {
+        setActivePhase('STUDY')
+        setActiveSection('study-report')
+      } else {
+        setActivePhase('REFINE')
+        setActiveSection('citations')
+      }
+      if (claim?.id && workspace?.citations?.length) {
+        const citation = workspace.citations.find((item) => item.id === claim.id)
+        if (citation) {
+          setEditingCitationId(citation.id)
+          setCitationDraft({
+            id: citation.id,
+            statement: citation.statement || '',
+            verseReferences: (citation.verseReferences || []).join(', '),
+          })
+        }
+      }
+    } catch (err) {
+      console.error('Failed to mark claim for repair', err)
+      setError('Unable to mark claim for repair.')
+    }
+  }
+
+  const handleAcknowledgeClaim = async (claim: WorkspaceClaimLedgerEntry | null | undefined) => {
+    try {
+      const config = withToken()
+      if (!config) return
+      const client = getWorkspaceApiClient()
+      if (!client) return
+      await persistClaimReviewDecision(claim, 'acknowledge', 'Reviewed and acknowledged')
+      if (claim?.id && workspace?.citations?.length) {
+        const citation = workspace.citations.find((item) => item.id === claim.id)
+        if (citation) {
+          await client.updateCitation(citation.id, { isVerified: true })
+          await refreshWorkspaceState(config)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to acknowledge claim', err)
+      setError('Unable to acknowledge claim.')
+    }
+  }
+
+  const handleCiteClaim = async (claim: WorkspaceClaimLedgerEntry | null | undefined) => {
+    try {
+      await persistClaimReviewDecision(claim, 'cite', 'Need stronger citation support')
+      if (claim?.sourceIds?.length) {
+        setActivePhase('PASSAGE')
+        setActiveSection('scripture')
+        await openReferencePreview(String(claim.sourceIds[0]), claim.claimText)
+      } else if (claim?.location === 'outline') {
+        setActivePhase('OUTLINE')
+        setActiveSection('outlines')
+      } else {
+        setActivePhase('REFINE')
+        setActiveSection('citations')
+      }
+    } catch (err) {
+      console.error('Failed to cite claim', err)
+      setError('Unable to route claim to citation support.')
     }
   }
 
@@ -4999,12 +5313,8 @@ export default function WorkspaceDetailPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <nav className="bg-black/40 backdrop-blur border-b border-white/10">
-        <div className="container mx-auto px-1 py-4 flex flex-wrap items-center gap-3 justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.4em] text-cyan-400">Clever Sermon</p>
-            <h1 className="text-2xl font-bold text-white">Workspace Core</h1>
-          </div>
+      <div className="container mx-auto px-1 pt-4">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 backdrop-blur">
           <div className="w-full lg:w-auto lg:flex-1 lg:max-w-2xl">
             <div className="flex items-center gap-2">
               <input
@@ -5035,14 +5345,13 @@ export default function WorkspaceDetailPage() {
             Back to dashboard
           </button>
         </div>
-      </nav>
-
-      {/* Phase Navigation */}
-      <PhaseNavigation 
-        activePhase={activePhase}
-        onPhaseChange={handlePhaseChange}
-        progress={progress}
-      />
+        <WorkspaceFlowShell
+          workspaceId={workspaceId}
+          state={workspaceState}
+          onPhaseChange={handlePhaseChange}
+          onSectionChange={setActiveSection}
+        />
+      </div>
 
       <div className="container mx-auto px-1 py-6">
         {searchQuery.trim().length > 0 && (
@@ -5055,7 +5364,7 @@ export default function WorkspaceDetailPage() {
             </div>
             {searchResults.length ? (
               <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                {searchResults.map((item: any) => (
+                {searchResults.map((item) => (
                   <button
                     type="button"
                     key={`${item.type}-${item.id}`}
@@ -5074,7 +5383,34 @@ export default function WorkspaceDetailPage() {
           </div>
         )}
         <div className="lg:grid lg:grid-cols-[280px_minmax(0,1fr)] gap-6">
-          <aside className="hidden lg:block">{renderRail()}</aside>
+          <aside className="hidden lg:block">
+            <WorkspaceCommandRail
+              workspace={workspace}
+              advancedMode={advancedMode}
+              progress={progress}
+              activeSection={activeSection}
+              activePhase={activePhase}
+              onSectionChange={(section) => {
+                if (section === 'visualizations' && !advancedMode) {
+                  setError('Enable Advanced Mode to access visualizations.')
+                  setActiveSection('study-report')
+                  setActivePhase('STUDY')
+                  return
+                }
+                setActiveSection(section)
+                const nextPhase = sectionPhaseMap[section]
+                if (nextPhase) setActivePhase(nextPhase)
+                if (section === 'visualizations') {
+                  setVisualizationMode(nextPhase === 'REFINE' ? 'refine' : 'passage')
+                }
+              }}
+              onPhaseChange={setActivePhase}
+              onVisualizationModeChange={setVisualizationMode}
+              onToggleAdvancedMode={handleToggleAdvancedMode}
+              onCloseRail={() => setRailOpen(false)}
+              onNextStepAction={handleNextStepAction}
+            />
+          </aside>
           <div className="space-y-6">
             <div className="flex items-center justify-between lg:hidden">
               <button
@@ -5089,527 +5425,51 @@ export default function WorkspaceDetailPage() {
             <div className={`cyber-panel rounded-2xl relative ${activeSection === 'manuscript' ? 'overflow-visible' : 'overflow-hidden'}`}>
               <div className="p-6">
               {activeSection === 'workspace' && (
-                <div className="space-y-6 min-h-full">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    <div>
-                      {editingWorkspace ? (
-                        <div className="space-y-2">
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Title</label>
-                          <input
-                            value={workspaceDraft?.title || ''}
-                            onChange={(e) => setWorkspaceDraft({ ...workspaceDraft, title: e.target.value })}
-                            className="w-full text-3xl font-bold mb-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                          />
-                        </div>
-                      ) : (
-                        <h2 className="text-3xl font-bold mb-2">{workspace.title}</h2>
-                      )}
-                      {editingWorkspace ? (
-                        <div className="space-y-2">
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Main Passage</label>
-                          <input
-                            value={workspaceDraft?.mainPassage || ''}
-                            onChange={(e) => setWorkspaceDraft({ ...workspaceDraft, mainPassage: e.target.value })}
-                            className="w-full text-cyan-200/80 bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                          />
-                        </div>
-                      ) : (
-                        <p className="text-cyan-200/80">{workspace.mainPassage}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="cyber-tag">{workspace.status}</span>
-                      <button
-                        onClick={() => {
-                          if (editingWorkspace) {
-                            setEditingWorkspace(false)
-                            setWorkspaceDraft(workspace)
-                          } else {
-                            setEditingWorkspace(true)
-                          }
-                        }}
-                        className="cyber-outline px-3 py-2 text-xs rounded-full"
-                      >
-                        {editingWorkspace ? 'Cancel' : 'Edit'}
-                      </button>
-                      {editingWorkspace && (
-                        <button
-                          onClick={handleWorkspaceSave}
-                          className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                          disabled={actionLoading.includes('workspace')}
-                        >
-                          {actionLoading.includes('workspace') ? 'Saving...' : 'Save'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-4 grid md:grid-cols-2 gap-4 text-sm text-gray-200/80">
-                    <div>
-                      {editingWorkspace ? (
-                        <div className="space-y-2">
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Series Title</label>
-                          <input
-                            value={workspaceDraft?.seriesTitle || ''}
-                            onChange={(e) => setWorkspaceDraft({ ...workspaceDraft, seriesTitle: e.target.value })}
-                            placeholder="Series"
-                            className="w-full mb-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                          />
-                        </div>
-                      ) : (
-                        <p><span className="font-semibold text-cyan-300">Series:</span> {workspace.seriesTitle || '—'}</p>
-                      )}
-                      {editingWorkspace ? (
-                        <div className="space-y-2">
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Theme</label>
-                          <input
-                            value={workspaceDraft?.theme || ''}
-                            onChange={(e) => setWorkspaceDraft({ ...workspaceDraft, theme: e.target.value })}
-                            placeholder="Theme"
-                            className="w-full mb-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                          />
-                        </div>
-                      ) : (
-                        <p><span className="font-semibold text-cyan-300">Theme:</span> {workspace.theme || '—'}</p>
-                      )}
-                      {editingWorkspace ? (
-                        <div className="space-y-2">
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Audience Profile</label>
-                          <input
-                            value={workspaceDraft?.audienceProfile || ''}
-                            onChange={(e) => setWorkspaceDraft({ ...workspaceDraft, audienceProfile: e.target.value })}
-                            placeholder="Audience"
-                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                          />
-                        </div>
-                      ) : (
-                        <p><span className="font-semibold text-cyan-300">Audience:</span> {workspace.audienceProfile || '—'}</p>
-                      )}
-                      {editingWorkspace ? (
-                        <div className="space-y-2">
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Theological Lens</label>
-                          <div className="w-full mb-2 bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-gray-200/90">
-                            Adventist (fixed)
-                          </div>
-                        </div>
-                      ) : (
-                        <p><span className="font-semibold text-cyan-300">Lens:</span> {formatTheologicalLens()}</p>
-                      )}
-                      {editingWorkspace && (
-                        <StoryArcSelector
-                          value={workspaceDraft?.storyArc || ''}
-                          onChange={(arc) => setWorkspaceDraft({ ...workspaceDraft, storyArc: arc })}
-                          className="mt-4"
-                        />
-                      )}
-                      {!editingWorkspace && workspace.storyArc && (
-                        <p><span className="font-semibold text-cyan-300">Story Arc:</span> {storyArcLabels[workspace.storyArc] || workspace.storyArc}</p>
-                      )}
-                      {editingWorkspace && (
-                        <div className="mt-4">
-                          <WorkspaceEGWToggle
-                            includeEGW={workspaceDraft?.includeEGW ?? true}
-                            onToggle={(value: boolean) => setWorkspaceDraft({ ...workspaceDraft, includeEGW: value })}
-                          />
-                        </div>
-                      )}
-                      {!editingWorkspace && (
-                        <p><span className="font-semibold text-cyan-300">Include EGW:</span> {workspace.includeEGW !== false ? 'Yes' : 'No'}</p>
-                      )}
-                    </div>
-                    <div>
-                      {editingWorkspace ? (
-                        <div className="space-y-2">
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Style</label>
-                          <select
-                            value={workspaceDraft?.style || ''}
-                            onChange={(e) => setWorkspaceDraft({ ...workspaceDraft, style: e.target.value })}
-                            className="w-full mb-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                          >
-                            <option value="">Style</option>
-                            <option value="expository">Expository</option>
-                            <option value="topical">Topical</option>
-                            <option value="narrative">Narrative</option>
-                            <option value="apologetic">Apologetic</option>
-                            <option value="devotional">Devotional</option>
-                          </select>
-                        </div>
-                      ) : (
-                        <p>
-                          <span className="font-semibold text-cyan-300">Style:</span>{' '}
-                          {styleLabels[workspace.style] || workspace.style || '—'}
-                        </p>
-                      )}
-                      {editingWorkspace ? (
-                        <div className="space-y-2">
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Story Arc</label>
-                          <select
-                            value={workspaceDraft?.storyArc || ''}
-                            onChange={(e) => setWorkspaceDraft({ ...workspaceDraft, storyArc: e.target.value })}
-                            className="w-full mb-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                          >
-                            <option value="">Story Arc</option>
-                            <option value="problem_truth_response">Problem → Truth → Response</option>
-                            <option value="tension_turn_resolution">Tension → Turn → Resolution</option>
-                            <option value="question_discovery_answer">Question → Discovery → Answer</option>
-                            <option value="challenge_journey_transformation">Challenge → Journey → Transformation</option>
-                          </select>
-                        </div>
-                      ) : (
-                        <p>
-                          <span className="font-semibold text-cyan-300">Story Arc:</span>{' '}
-                          {storyArcLabels[workspace.storyArc] || workspace.storyArc || '—'}
-                        </p>
-                      )}
-                      {editingWorkspace ? (
-                        <div className="space-y-2">
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Language</label>
-                          <select
-                            value={workspaceDraft?.language || 'en'}
-                            onChange={(e) => setWorkspaceDraft({ ...workspaceDraft, language: e.target.value })}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                          >
-                            <option value="en">English</option>
-                            <option value="es">Español</option>
-                          </select>
-                        </div>
-                      ) : (
-                        <p><span className="font-semibold text-cyan-300">Language:</span> {workspace.language || 'en'}</p>
-                      )}
-                      <p><span className="font-semibold text-cyan-300">Created:</span> {new Date(workspace.createdAt).toLocaleDateString()}</p>
-                    </div>
-                  </div>
-                  <div className="grid lg:grid-cols-2 gap-6">
-                    <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <h3 className="text-xl font-semibold mb-3">Sermon Goals</h3>
-                      {editingWorkspace ? (
-                        <div className="space-y-2">
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Sermon Goals</label>
-                          <textarea
-                            value={workspaceDraft?.sermonGoals || ''}
-                            onChange={(e) => setWorkspaceDraft({ ...workspaceDraft, sermonGoals: e.target.value })}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-gray-100/90"
-                            rows={4}
-                          />
-                        </div>
-                      ) : (
-                        <p className="text-gray-100/90">{workspace.sermonGoals || 'No goals set yet.'}</p>
-                      )}
-                    </div>
-                    <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <h3 className="text-xl font-semibold mb-3">Additional Passages</h3>
-                      {editingWorkspace ? (
-                        <div className="space-y-2">
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Additional Passages</label>
-                          <textarea
-                            value={(workspaceDraft?.additionalPassages || []).join('\n')}
-                            onChange={(e) =>
-                              setWorkspaceDraft({
-                                ...workspaceDraft,
-                                additionalPassages: e.target.value
-                                  .split(/\n|,/)
-                                  .map((item) => item.trim())
-                                  .filter(Boolean),
-                              })
-                            }
-                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-gray-100/90"
-                            rows={4}
-                          />
-                        </div>
-                      ) : workspace.additionalPassages?.length ? (
-                        <ul className="list-disc list-inside text-gray-100/90">
-                          {workspace.additionalPassages.map((passage: string) => (
-                            <li key={passage}>{passage}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-gray-100/90">No additional passages.</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                <WorkspaceOverviewSection
+                  workspace={workspace}
+                  workspaceDraft={workspaceDraft}
+                  editingWorkspace={editingWorkspace}
+                  setEditingWorkspace={setEditingWorkspace}
+                  setWorkspaceDraft={setWorkspaceDraft}
+                  handleWorkspaceSave={handleWorkspaceSave}
+                  actionLoading={actionLoading}
+                  styleLabels={styleLabels}
+                  formatTheologicalLens={formatTheologicalLens}
+                />
               )}
 
               {activeSection === 'outlines' && (
-                <div className="space-y-4 relative min-h-full">
-                  {/* Sermon Core - The DNA of the message */}
-                  <SermonCore
-                    workspaceId={workspaceId}
-                    mainPassage={workspace?.mainPassage || ''}
-                    theme={workspace?.theme}
-                    studyReport={workspace?.studyReports?.[0]?.sections}
-                    initialData={workspace?.sermonCore}
-                    onDataChange={handleSermonCoreChange}
-                    onGenerate={handleGenerateSermonCore}
-                    isGenerating={sermonCoreGenerating}
-                  />
-
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <h3 className="text-xl font-semibold">Outlines</h3>
-                      {workspace?.egwEnabled && (
-                        <span className="text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-200 border border-blue-400/40 flex items-center gap-1">
-                          <Book className="w-3 h-3" />
-                          EGW Enabled
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => openPromptEditor('outline')}
-                        className="cyber-outline text-xs px-4 py-2 rounded-full"
-                      >
-                        Prompt
-                      </button>
-                      <button
-                        onClick={() => handleGenerate('outlines')}
-                        className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                        disabled={actionLoading.includes('outlines')}
-                      >
-                        {actionLoading.includes('outlines') ? 'Generating...' : 'Generate'}
-                      </button>
-                    </div>
-                  </div>
-                  {workspace.outlines?.length ? (
-                    <div className="space-y-4">
-                      <div className="border border-cyan-400/30 rounded-xl p-4 bg-cyan-500/10">
-                        <p className="text-[11px] uppercase tracking-widest text-cyan-200/80">Passage Focus</p>
-                        <p className="text-sm text-cyan-100/95 mt-1">
-                          {getPassageFocusText() || `${workspace.mainPassage} is the controlling passage for this sermon movement.`}
-                        </p>
-                      </div>
-                      {[...workspace.outlines]
-                        .sort((a: any, b: any) => Number(b?.isSelected) - Number(a?.isSelected))
-                        .map((outline: any) => {
-                          const pointNodes = getOutlinePointNodes(outline.structure)
-                          const isExpanded = expandedOutlineId === outline.id || outline.isSelected
-                          const totalMinutes = pointNodes.reduce((sum: number, point: any) => sum + estimatePointMinutes(point), 6)
-                          const flowNarrativeEntries = getFlowNarrativeEntries(outline, pointNodes)
-                          return (
-                            <div
-                              key={outline.id}
-                              className={`border rounded-xl p-4 transition-all ${
-                                outline.isSelected
-                                  ? 'border-cyan-300/70 bg-cyan-500/10 ring-1 ring-cyan-300/60 shadow-[0_0_24px_rgba(34,211,238,0.22)]'
-                                  : 'border-white/10 bg-black/30'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between mb-3">
-                                <div>
-                                  <p className="font-semibold text-cyan-300">{getOutlineTitle(outline)}</p>
-                                  <div className="flex items-center gap-2 mt-1">
-                                    {outline.isSelected && <span className="cyber-tag">Selected • Active Build</span>}
-                                    {outline?.structure?.outlineType && (
-                                      <span className="text-[10px] px-2 py-1 rounded-full border border-white/20 text-gray-200/90 uppercase">
-                                        {outline.structure.outlineType}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={() => setExpandedOutlineId((prev) => (prev === outline.id ? null : outline.id))}
-                                    className="cyber-outline px-3 py-1 text-xs rounded-full"
-                                  >
-                                    {isExpanded ? 'Collapse' : 'Expand'}
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      setEditingOutlineId(outline.id)
-                                      setOutlineDraft({
-                                        id: outline.id,
-                                        title: outline.title,
-                                        introduction: outline.structure?.introduction || '',
-                                        points: outline.structure?.points || [],
-                                        pointNodes: Array.isArray(outline.structure?.pointNodes) ? outline.structure.pointNodes : [],
-                                        conclusion: outline.structure?.conclusion || '',
-                                        callToAction: outline.structure?.callToAction || '',
-                                      })
-                                    }}
-                                    className="cyber-outline px-3 py-1 text-xs rounded-full"
-                                  >
-                                    Edit
-                                  </button>
-                                </div>
-                              </div>
-
-                              <div className="space-y-3 mb-3">
-                                <div className="grid md:grid-cols-12 gap-3">
-                                  <div className="md:col-span-8 border border-white/10 rounded-xl p-3 bg-black/20">
-                                    <p className="text-[10px] uppercase tracking-widest cyber-muted">Big Idea</p>
-                                    <div className="mt-1">
-                                      {renderCollapsibleMarkdown(getOutlineBigIdea(outline), `${outline.id}-bigidea`, 'max-h-20')}
-                                    </div>
-                                  </div>
-                                  <div className="md:col-span-4 border border-white/10 rounded-xl p-3 bg-black/20">
-                                    <p className="text-[10px] uppercase tracking-widest cyber-muted">Estimated Timing</p>
-                                    <p className="text-sm text-gray-100/95 mt-1">{totalMinutes} minutes</p>
-                                    <p className="text-xs text-gray-300 mt-1">Intro 3 • Body {Math.max(1, totalMinutes - 6)} • Conclusion 3</p>
-                                  </div>
-                                </div>
-                                <div className="border border-white/10 rounded-xl p-3 bg-black/20">
-                                  <p className="text-[10px] uppercase tracking-widest cyber-muted">Flow</p>
-                                  <div className="mt-3 overflow-x-auto pb-1">
-                                    <div className="flex items-stretch gap-2 min-w-max pr-1">
-                                      {flowNarrativeEntries.map((entry: any, index: number) => (
-                                        <div key={`${outline.id}-flow-detail-${entry.id}`} className="flex items-stretch gap-2">
-                                          <div className="w-72 border border-cyan-400/20 rounded-lg p-3 bg-cyan-500/5">
-                                            <p className="text-[10px] uppercase tracking-widest text-cyan-300/90">{entry.label}</p>
-                                            <p className="text-sm text-cyan-100 font-medium mt-1 leading-relaxed">{entry.title}</p>
-                                            <div className="mt-2 text-xs">
-                                              {renderCollapsibleMarkdown(
-                                                entry.detail,
-                                                `${outline.id}-flow-detail-${entry.id}`,
-                                                'max-h-20'
-                                              )}
-                                            </div>
-                                          </div>
-                                          {index < flowNarrativeEntries.length - 1 && (
-                                            <div className="flex items-center text-cyan-300/80 px-1 text-lg">→</div>
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {editingOutlineId === outline.id && outlineDraft ? (
-                                <div className="space-y-3">
-                                  <label className="text-xs uppercase tracking-widest cyber-muted">Outline Title</label>
-                                  <input
-                                    value={outlineDraft.title}
-                                    onChange={(e) => setOutlineDraft({ ...outlineDraft, title: e.target.value })}
-                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                                  />
-                                  <label className="text-xs uppercase tracking-widest cyber-muted">Introduction</label>
-                                  <textarea
-                                    value={outlineDraft.introduction}
-                                    onChange={(e) => setOutlineDraft({ ...outlineDraft, introduction: e.target.value })}
-                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                                    rows={2}
-                                  />
-                                  <label className="text-xs uppercase tracking-widest cyber-muted">Main Points (one per line)</label>
-                                  <textarea
-                                    value={outlineDraft.points?.join('\n')}
-                                    onChange={(e) => setOutlineDraft({ ...outlineDraft, points: e.target.value.split('\n').filter(Boolean) })}
-                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                                    rows={4}
-                                  />
-                                  <label className="text-xs uppercase tracking-widest cyber-muted">Conclusion</label>
-                                  <textarea
-                                    value={outlineDraft.conclusion}
-                                    onChange={(e) => setOutlineDraft({ ...outlineDraft, conclusion: e.target.value })}
-                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                                    rows={2}
-                                  />
-                                  <label className="text-xs uppercase tracking-widest cyber-muted">Call To Action</label>
-                                  <textarea
-                                    value={outlineDraft.callToAction}
-                                    onChange={(e) => setOutlineDraft({ ...outlineDraft, callToAction: e.target.value })}
-                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                                    rows={2}
-                                  />
-                                  <div className="flex gap-2">
-                                    <button
-                                      onClick={handleOutlineSave}
-                                      className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                                      disabled={actionLoading.includes('outline-edit')}
-                                    >
-                                      {actionLoading.includes('outline-edit') ? 'Saving...' : 'Save'}
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        setEditingOutlineId(null)
-                                        setOutlineDraft(null)
-                                      }}
-                                      className="cyber-outline text-xs px-4 py-2 rounded-full"
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : isExpanded ? (
-                                <div className="text-sm text-gray-100/90 space-y-3">
-                                  {pointNodes.length > 0 && (
-                                    <div className="space-y-2">
-                                      <p className="text-xs uppercase tracking-widest cyber-muted">Main Points</p>
-                                      {pointNodes.map((point: any, index: number) => {
-                                        const supportingVerses = Array.isArray(point.supportingVerses) ? point.supportingVerses : []
-                                        return (
-                                          <div key={`${outline.id}-point-${index}`} className="border border-white/10 rounded-xl p-3 bg-black/20">
-                                            <p className="font-semibold text-white leading-relaxed">
-                                              {index + 1}. {point.title}
-                                            </p>
-                                            {(point.summary || point.movement) && (
-                                              <div className="mt-2 border border-cyan-400/20 rounded-lg p-2 bg-cyan-500/5">
-                                                <p className="text-[10px] uppercase tracking-widest text-cyan-300/90">Preaching Insight</p>
-                                                {renderCollapsibleMarkdown(
-                                                  point.summary || point.movement,
-                                                  `${outline.id}-${index}-insight`,
-                                                  'max-h-20'
-                                                )}
-                                              </div>
-                                            )}
-                                            {renderOutlinePointSection('Subpoints', point.subpoints, `${outline.id}-${index}-subpoints`, 'text-gray-200')}
-                                            {renderOutlinePointSection(
-                                              'Supporting Verses',
-                                              supportingVerses,
-                                              `${outline.id}-${index}-verses`,
-                                              'text-cyan-200',
-                                              (verse: string) => {
-                                                openReferencePreview(
-                                                  verse,
-                                                  point.summary || point.movement || 'This verse reinforces the point through direct thematic support.',
-                                                )
-                                              },
-                                            )}
-                                            {renderOutlinePointSection('Themes', point.canonicalThemes, `${outline.id}-${index}-themes`, 'text-emerald-200')}
-                                            {renderOutlinePointSection('Applications', point.applications, `${outline.id}-${index}-apps`, 'text-amber-200')}
-                                            {renderOutlinePointSection('Discussion Questions', point.discussionQuestions, `${outline.id}-${index}-questions`, 'text-sky-200')}
-                                            {renderOutlinePointSection('Illustration Ideas', point.illustrationIdeas, `${outline.id}-${index}-illustrations`, 'text-rose-200')}
-                                            {renderOutlinePointSection('Media Suggestions', point.mediaSuggestions, `${outline.id}-${index}-media`, 'text-violet-200')}
-                                            {Array.isArray(point.egwSupport) && point.egwSupport.length > 0 && (
-                                              <div className="mt-3">
-                                                <p className="text-[10px] uppercase tracking-widest text-cyan-300/90 mb-2">EGW Support</p>
-                                                <div className="space-y-2">
-                                                  {point.egwSupport.map((item: any, egwIndex: number) => (
-                                                    <div key={`${outline.id}-${index}-egw-${egwIndex}`} className="border border-blue-400/20 rounded-lg p-3 bg-blue-500/5">
-                                                      {(item?.citation || item?.reference) && (
-                                                        <p className="text-xs font-semibold text-blue-200">{item?.citation || item?.reference}</p>
-                                                      )}
-                                                      {(item?.quote || item?.text) && (
-                                                        <p className="text-xs text-gray-100/90 mt-1 leading-relaxed">{item?.quote || item?.text}</p>
-                                                      )}
-                                                      {item?.relevance && (
-                                                        <p className="text-[11px] text-blue-200/80 mt-1">{item.relevance}</p>
-                                                      )}
-                                                    </div>
-                                                  ))}
-                                                </div>
-                                              </div>
-                                            )}
-                                            {renderOutlinePointSection('References', point.references, `${outline.id}-${index}-references`, 'text-fuchsia-200')}
-                                          </div>
-                                        )
-                                      })}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <p className="text-xs text-gray-300">Collapsed. Expand to view full structure.</p>
-                              )}
-                            </div>
-                          )
-                        })}
-                    </div>
-                  ) : (
-                    <p className="text-gray-100/90">No outlines yet.</p>
-                  )}
-                </div>
+                <WorkspaceOutlinePhase
+                  workspace={workspace}
+                  workspaceState={workspaceState}
+                  actionLoading={actionLoading}
+                  sermonCoreGenerating={sermonCoreGenerating}
+                  getPassageFocusText={getPassageFocusText}
+                  getOutlinePointNodes={getOutlinePointNodes}
+                  estimatePointMinutes={estimatePointMinutes}
+                  getFlowNarrativeEntries={getFlowNarrativeEntries}
+                  getOutlineTitle={getOutlineTitle}
+                  getOutlineBigIdea={getOutlineBigIdea}
+                  renderCollapsibleMarkdown={renderCollapsibleMarkdown}
+                  renderOutlinePointSection={renderOutlinePointSection}
+                  openReferencePreview={openReferencePreview}
+                  onOpenPromptEditor={openPromptEditor}
+                  onGenerateOutlines={() => handleGenerate('outlines')}
+                  onGenerateSermonCore={handleGenerateSermonCore}
+                  onSermonCoreChange={handleSermonCoreChange}
+                  onSelectOutline={handleOutlineSelect}
+                  editingOutlineId={editingOutlineId}
+                  outlineDraft={outlineDraft}
+                  setEditingOutlineId={setEditingOutlineId}
+                  setOutlineDraft={setOutlineDraft}
+                  handleOutlineSave={handleOutlineSave}
+                  expandedOutlineId={expandedOutlineId}
+                  setExpandedOutlineId={setExpandedOutlineId}
+                />
               )}
 
           {activeSection === 'manuscript' && (
-            <div className="space-y-4 relative min-h-full">
+            <WorkspaceManuscriptPhase workspace={workspace}>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <h3 className="text-xl font-semibold">Manuscript</h3>
@@ -5637,614 +5497,96 @@ export default function WorkspaceDetailPage() {
                 </div>
               </div>
               <div className="border border-white/10 rounded-2xl p-5 bg-gradient-to-br from-black/40 to-black/20 space-y-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs uppercase tracking-widest text-gray-400 font-medium">Generation Controls</p>
-                  <p className="text-[10px] text-gray-500">Changes apply on next generation</p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs text-gray-300 font-medium flex items-center gap-2">
-                      <span className="text-base">🎭</span> Tone
-                    </label>
-                    <select
-                      value={manuscriptTone}
-                      onChange={(e) => setManuscriptTone(e.target.value)}
-                      className="w-full bg-black/50 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-gray-100 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 transition-colors"
-                    >
-                      <option value="teaching">Teaching — Instructional, clear</option>
-                      <option value="pastoral">Pastoral — Warm, caring</option>
-                      <option value="evangelistic">Evangelistic — Urgent, inviting</option>
-                      <option value="storytelling">Storytelling — Narrative, engaging</option>
-                      <option value="motivational">Motivational — Inspiring, energetic</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs text-gray-300 font-medium flex items-center gap-2">
-                      <span className="text-base">⏱️</span> Length
-                    </label>
-                    <select
-                      value={manuscriptTargetMinutes}
-                      onChange={(e) => setManuscriptTargetMinutes(Number(e.target.value) || 22)}
-                      className="w-full bg-black/50 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-gray-100 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 transition-colors"
-                    >
-                      <option value={10}>10 minutes (~1,450 words)</option>
-                      <option value={22}>22 minutes (~3,190 words)</option>
-                      <option value={20}>20 minutes (~2,900 words)</option>
-                      <option value={30}>30 minutes (~4,350 words)</option>
-                      <option value={40}>40 minutes (~5,800 words)</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs text-gray-300 font-medium flex items-center gap-2">
-                      <span className="text-base">📄</span> Format
-                    </label>
-                    <select
-                      value={manuscriptFormat}
-                      onChange={(e) => setManuscriptFormat((e.target.value as 'full' | 'notes') || 'full')}
-                      className="w-full bg-black/50 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-gray-100 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 transition-colors"
-                    >
-                      <option value="full">Full Manuscript — Word-for-word</option>
-                      <option value="notes">Preaching Notes — Bullet points</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-white/5">
-                  <div className="space-y-1.5">
-                    <label className="text-xs text-gray-300 font-medium flex items-center gap-2">
-                      <span className="text-base">👥</span> Audience Focus
-                    </label>
-                    <select
-                      value={manuscriptAudienceMode}
-                      onChange={(e) => setManuscriptAudienceMode(e.target.value)}
-                      className="w-full bg-black/50 border border-white/15 rounded-xl px-3 py-2.5 text-sm text-gray-100 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 transition-colors"
-                    >
-                      <option value="default">Use Workspace Audience</option>
-                      <option value="youth">Youth — Modern, relatable</option>
-                      <option value="families">Families — Inclusive, practical</option>
-                      <option value="evangelistic meeting">Evangelistic — Seeker-friendly</option>
-                      <option value="bible study group">Bible Study — Deep, interactive</option>
-                      <option value="conference congregation">Conference — Formal, inspiring</option>
-                    </select>
-                  </div>
-                  <label className="flex items-center gap-3 p-3 rounded-xl border border-white/10 bg-black/30 cursor-pointer hover:bg-black/40 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={manuscriptIncludeSlideCues}
-                      onChange={(e) => setManuscriptIncludeSlideCues(e.target.checked)}
-                      className="w-4 h-4 rounded border-white/20 bg-black/50 text-cyan-500 focus:ring-cyan-500/30"
-                    />
-                    <div>
-                      <p className="text-xs text-gray-200 font-medium">Generate Slide Cues</p>
-                      <p className="text-[10px] text-gray-500">Visual prompts for slides</p>
-                    </div>
-                  </label>
-                  <label className="flex items-center gap-3 p-3 rounded-xl border border-white/10 bg-black/30 cursor-pointer hover:bg-black/40 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={manuscriptIncludeKeyLines}
-                      onChange={(e) => setManuscriptIncludeKeyLines(e.target.checked)}
-                      className="w-4 h-4 rounded border-white/20 bg-black/50 text-cyan-500 focus:ring-cyan-500/30"
-                    />
-                    <div>
-                      <p className="text-xs text-gray-200 font-medium">Generate Key Lines</p>
-                      <p className="text-[10px] text-gray-500">Memorable statements to emphasize</p>
-                    </div>
-                  </label>
-                </div>
+                <WorkspaceManuscriptControls
+                  actionLoading={actionLoading}
+                  manuscriptTone={manuscriptTone}
+                  setManuscriptTone={setManuscriptTone}
+                  manuscriptTargetMinutes={manuscriptTargetMinutes}
+                  setManuscriptTargetMinutes={setManuscriptTargetMinutes}
+                  manuscriptFormat={manuscriptFormat}
+                  setManuscriptFormat={setManuscriptFormat}
+                  manuscriptAudienceMode={manuscriptAudienceMode}
+                  setManuscriptAudienceMode={setManuscriptAudienceMode}
+                  manuscriptIncludeSlideCues={manuscriptIncludeSlideCues}
+                  setManuscriptIncludeSlideCues={setManuscriptIncludeSlideCues}
+                  manuscriptIncludeKeyLines={manuscriptIncludeKeyLines}
+                  setManuscriptIncludeKeyLines={setManuscriptIncludeKeyLines}
+                  openPromptEditor={openPromptEditor}
+                  handleGenerate={handleGenerate}
+                />
               </div>
-              {workspace.manuscripts?.length ? (
-                <div className="space-y-4">
-                  {lastRepairNotice ? (
-                    <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100 flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] uppercase tracking-widest text-emerald-300">Last Repair Applied</p>
-                        <p>
-                          Changed sections: {lastRepairNotice.repairedCount} · Remaining review items: {lastRepairNotice.remainingCount}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          className="cyber-outline text-xs px-3 py-2 rounded-full"
-                          onClick={() => setShowRepairMarkers((prev) => !prev)}
-                        >
-                          {showRepairMarkers ? 'Hide Inline Markers' : 'Show Inline Markers'}
-                        </button>
-                        <button
-                          type="button"
-                          className="cyber-outline text-xs px-3 py-2 rounded-full"
-                          onClick={() =>
-                            setManuscriptQualityExpanded((prev) => ({
-                              ...prev,
-                              [lastRepairNotice.manuscriptId]: true,
-                            }))
-                          }
-                        >
-                          Show Repair Changes
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                  {[latestManuscript].filter(Boolean).map((manuscript: any) => (
-                    <div key={manuscript.id} className="border border-white/10 rounded-2xl overflow-visible bg-black/30">
-                      <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-black/40 to-transparent border-b border-white/5">
-                        <div className="flex items-center gap-6">
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg">📝</span>
-                            <div>
-                              <p className="text-sm font-medium text-white">{manuscript.wordCount?.toLocaleString() || '—'} words</p>
-                              <p className="text-[10px] text-gray-500">~{manuscript.estimatedMinutes || '—'} min read</p>
-                            </div>
-                          </div>
-                          {manuscript.content?.metadata?.options && (
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2 text-[10px] text-gray-500">
-                                <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 capitalize">
-                                  {manuscript.content.metadata.options.tone || 'teaching'}
-                                </span>
-                                <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10">
-                                  {manuscript.content.metadata.options.format === 'notes' ? 'notes' : 'full'}
-                                </span>
-                                <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10">
-                                  {manuscript.content.metadata.options.targetMinutes || 22} min
-                                </span>
-                              </div>
-                              {manuscriptOptionsDrifted(manuscript.content.metadata.options) ? (
-                                <p className="text-[10px] text-amber-300/90">
-                                  Controls changed after this draft. Regenerate to apply current settings.
-                                </p>
-                              ) : null}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {(() => {
-                            const qualityUi = getManuscriptQualityUi(manuscript)
-                            return (
-                              <span className={`text-[10px] px-2 py-1 rounded-full border uppercase tracking-widest ${qualityUi.className}`}>
-                                {qualityUi.label}
-                              </span>
-                            )
-                          })()}
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setManuscriptQualityExpanded((prev) => ({
-                                ...prev,
-                                [manuscript.id]: !prev[manuscript.id],
-                              }))
-                            }
-                            className="cyber-outline text-[10px] px-2 py-1 rounded-full"
-                          >
-                            {manuscriptQualityExpanded[manuscript.id] ? 'Hide details' : 'Quality details'}
-                          </button>
-                        </div>
-                      </div>
-                      <div className="p-5 space-y-4">
-                      {manuscriptQualityExpanded[manuscript.id] ? (
-                        <div className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
-                          <p className="text-[10px] uppercase tracking-widest text-cyan-300">Quality Governance</p>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-gray-300">
-                            <p>Attempts: {manuscript?.content?.metadata?.quality?.repairAttempts ?? 0}</p>
-                            <p>Fixed: {Array.isArray(manuscript?.content?.metadata?.quality?.repairedIssues) ? manuscript.content.metadata.quality.repairedIssues.length : 0}</p>
-                            <p>Remaining: {Array.isArray(manuscript?.content?.metadata?.quality?.remainingIssues) ? manuscript.content.metadata.quality.remainingIssues.length : 0}</p>
-                          </div>
-                          {manuscript?.content?.metadata?.quality?.warningMessage ? (
-                            <p className="text-xs text-amber-200">{String(manuscript.content.metadata.quality.warningMessage)}</p>
-                          ) : null}
-                          {Array.isArray(manuscript?.content?.metadata?.repair?.auditTrail) ? (
-                            <p className="text-[11px] text-gray-400">
-                              Repair provenance: {manuscript.content.metadata.repair.auditTrail.length} patch actions.
-                            </p>
-                          ) : null}
-                          {(() => {
-                            const auditTrail = getRepairAuditTrail(manuscript)
-                            if (!auditTrail.length) return null
-                            return (
-                              <div className="pt-2 space-y-2">
-                                <p className="text-[10px] uppercase tracking-widest text-cyan-300">What Changed</p>
-                                {auditTrail.map((entry: any, idx: number) => {
-                                  const result = String(entry?.result || 'unknown')
-                                  const resultTone =
-                                    result === 'repaired'
-                                      ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-100'
-                                      : result === 'locked'
-                                        ? 'border-amber-400/30 bg-amber-500/10 text-amber-100'
-                                        : 'border-white/15 bg-black/30 text-gray-200'
-                                  return (
-                                    <div key={`${entry?.issueId || 'issue'}-${idx}`} className={`rounded-lg border p-3 space-y-2 ${resultTone}`}>
-                                      <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <p className="text-[11px] uppercase tracking-widest">
-                                          {String(entry?.issueId || 'issue')} · {result}
-                                        </p>
-                                        <button
-                                          type="button"
-                                          onClick={() => focusRepairAuditChange(manuscript.id, entry)}
-                                          className="cyber-outline text-[10px] px-2 py-1 rounded-full"
-                                        >
-                                          Locate in Manuscript
-                                        </button>
-                                      </div>
-                                      <p className="text-xs text-cyan-100/90">Anchor: {String(entry?.anchor || '—')}</p>
-                                      {(() => {
-                                        const rawBefore = normalizeRepairSnippetRaw(String(entry?.beforeSnippet || ''))
-                                        const rawAfter = normalizeRepairSnippetRaw(String(entry?.afterSnippet || ''))
-                                        const displayBefore = rawBefore || 'No snippet was captured for this repair action.'
-                                        const displayAfter = rawAfter || 'No snippet was captured for this repair action.'
-                                        const { beforeHtml, afterHtml } = buildInlineWordDiff(displayBefore, displayAfter)
-                                        const { removedText, addedText } = buildWordDiff(displayBefore, displayAfter)
-                                        const showDiff = Boolean(removedText || addedText)
-                                        return (
-                                          <>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                                              <div className="rounded-md border border-white/15 bg-black/25 p-2">
-                                                <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1">Before</p>
-                                                <div className="max-h-36 overflow-y-auto pr-1">
-                                                  <p
-                                                    className="text-gray-200 whitespace-pre-wrap"
-                                                    dangerouslySetInnerHTML={{ __html: beforeHtml }}
-                                                  />
-                                                </div>
-                                              </div>
-                                              <div className="rounded-md border border-white/15 bg-black/25 p-2">
-                                                <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1">After</p>
-                                                <div className="max-h-36 overflow-y-auto pr-1">
-                                                  <p
-                                                    className="text-gray-100 whitespace-pre-wrap"
-                                                    dangerouslySetInnerHTML={{ __html: afterHtml }}
-                                                  />
-                                                </div>
-                                              </div>
-                                            </div>
-                                            {showDiff ? (
-                                              <div className="rounded-md border border-white/15 bg-black/35 p-2">
-                                                <p className="text-[10px] uppercase tracking-widest text-cyan-200 mb-2">Diff</p>
-                                                <div className="max-h-36 overflow-y-auto space-y-1 font-mono text-[11px] leading-relaxed pr-1">
-                                                  {removedText ? (
-                                                    <p className="whitespace-pre-wrap text-rose-200 bg-rose-500/10 border border-rose-400/20 rounded px-2 py-1">
-                                                      <span className="text-rose-300 mr-1">-</span>
-                                                      {removedText}
-                                                    </p>
-                                                  ) : null}
-                                                  {addedText ? (
-                                                    <p className="whitespace-pre-wrap text-emerald-200 bg-emerald-500/10 border border-emerald-400/20 rounded px-2 py-1">
-                                                      <span className="text-emerald-300 mr-1">+</span>
-                                                      {addedText}
-                                                    </p>
-                                                  ) : null}
-                                                </div>
-                                              </div>
-                                            ) : null}
-                                          </>
-                                        );
-                                      })()}
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            )
-                          })()}
-                        </div>
-                      ) : null}
-                      {(() => {
-                        const repairedItems = getRepairedAuditItems(manuscript)
-                        if (!repairedItems.length) return null
-                        const expanded = !!repairHistoryExpanded[manuscript.id]
-                        const visibleItems = expanded ? repairedItems : repairedItems.slice(0, 3)
-                        return (
-                          <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 p-3 space-y-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="text-[10px] uppercase tracking-widest text-emerald-300">
-                                Repaired Sections ({repairedItems.length})
-                              </p>
-                              {repairedItems.length > 3 ? (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setRepairHistoryExpanded((prev) => ({
-                                      ...prev,
-                                      [manuscript.id]: !expanded,
-                                    }))
-                                  }
-                                  className="cyber-outline text-[10px] px-2 py-1 rounded-full"
-                                >
-                                  {expanded ? 'Show Less' : `Show ${repairedItems.length - 3} More`}
-                                </button>
-                              ) : null}
-                            </div>
-                            <div className="space-y-2">
-                              {visibleItems.map((entry: any, idx: number) => (
-                                <div key={`repair-visible-${entry?.issueId || 'issue'}-${idx}`} className="rounded-md border border-emerald-400/20 bg-black/25 p-2">
-                                  <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                                    <p className="text-[11px] text-emerald-100">
-                                      {String(entry?.issueId || 'issue')} · {String(entry?.anchor || 'anchor')}
-                                    </p>
-                                    <button
-                                      type="button"
-                                      onClick={() => focusRepairAuditChange(manuscript.id, entry)}
-                                      className="cyber-outline text-[10px] px-2 py-1 rounded-full"
-                                    >
-                                      Locate
-                                    </button>
-                                  </div>
-                                  <p className="text-xs text-emerald-50/90">{summarizeRepairSnippet(String(entry?.afterSnippet || entry?.beforeSnippet || ''))}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )
-                      })()}
-                      {!isManuscriptV2(manuscript) && legacyConvertCandidateId === manuscript.id && (
-                        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100 space-y-2">
-                          <p className="text-xs uppercase tracking-widest text-amber-300">Legacy manuscript format</p>
-                          <p>This manuscript still uses markdown/tag format. Convert it when you want to edit in the new rich editor.</p>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => {
-                                const converted = toV2ManuscriptDraft(manuscript)
-                                setEditingManuscriptId(manuscript.id)
-                                setLegacyConvertCandidateId(null)
-                                setManuscriptDraft(converted.html)
-                                setManuscriptCueDraft(converted.cues)
-                              }}
-                              className="cyber-button text-xs px-3 py-2 rounded-full"
-                            >
-                              Convert & Edit
-                            </button>
-                            <button
-                              onClick={() => setLegacyConvertCandidateId(null)}
-                              className="cyber-outline text-xs px-3 py-2 rounded-full"
-                            >
-                              Dismiss
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                      {editingManuscriptId === manuscript.id ? (
-                        <div className="space-y-3">
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Manuscript Text</label>
-                          <ManuscriptRichEditor value={manuscriptDraft} onChange={setManuscriptDraft} />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleManuscriptSave(manuscript.id)}
-                              className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                              disabled={actionLoading.includes('manuscript-edit')}
-                            >
-                              {actionLoading.includes('manuscript-edit') ? 'Saving...' : 'Save'}
-                            </button>
-                            <button
-                              onClick={() => {
-                                setEditingManuscriptId(null)
-                                setLegacyConvertCandidateId(null)
-                                setManuscriptDraft('')
-                                setManuscriptCueDraft(emptyManuscriptCues())
-                              }}
-                              className="cyber-outline text-xs px-4 py-2 rounded-full"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : isManuscriptV2(manuscript) ? (
-                        <div className="space-y-3">
-                          {getRepairedAuditItems(manuscript).length > 0 ? (
-                            <div className="text-[11px] text-amber-200">
-                              {showRepairMarkers
-                                ? `Inline repaired markers visible (${getRepairedAuditItems(manuscript).length}).`
-                                : `Inline repaired markers hidden (${getRepairedAuditItems(manuscript).length}).`}
-                            </div>
-                          ) : null}
-                        <div className={`grid grid-cols-1 gap-6 items-start ${manuscriptCuesCollapsed ? 'xl:grid-cols-[1fr_64px]' : 'xl:grid-cols-[1fr_320px]'}`}>
-                          <div
-                            ref={(node) => {
-                              manuscriptContentRefs.current[manuscript.id] = node
-                            }}
-                            contentEditable
-                            suppressContentEditableWarning
-                            onBlur={(e) => {
-                              const newHtml = (e.target as HTMLDivElement).innerHTML
-                              if (newHtml !== manuscript.content?.text) {
-                                handleManuscriptSave(manuscript.id, newHtml)
-                              }
-                            }}
-                            className="manuscript-display rounded-lg shadow-xl bg-white px-12 py-16 md:px-16 md:py-20 max-w-4xl mx-auto
-                              text-gray-900 text-[1.05rem] leading-[1.9] outline-none focus:ring-2 focus:ring-cyan-400/50 cursor-text
-                              [&_h1]:text-[2.5rem] [&_h1]:leading-tight [&_h1]:text-center [&_h1]:mb-8 [&_h1]:mt-0 [&_h1]:font-bold [&_h1]:text-black
-                              [&_h2]:text-[1.75rem] [&_h2]:leading-snug [&_h2]:mt-12 [&_h2]:mb-4 [&_h2]:pb-2 [&_h2]:border-b [&_h2]:border-gray-300 [&_h2]:font-semibold [&_h2]:text-black
-                              [&_h3]:text-[1.35rem] [&_h3]:leading-snug [&_h3]:mt-8 [&_h3]:mb-3 [&_h3]:text-gray-900 [&_h3]:font-medium
-                              [&_p]:text-gray-900 [&_p]:leading-[1.9] [&_p]:my-4 [&_p]:text-[1.05rem]
-                              [&_ul]:my-4 [&_ol]:my-4 [&_li]:my-1 [&_li]:text-gray-900 [&_li]:leading-relaxed
-                              [&_strong]:text-black [&_strong]:font-bold
-                              [&_em]:text-gray-800 [&_em]:italic
-                              [&_blockquote]:my-6 [&_blockquote]:pl-6 [&_blockquote]:border-l-4 [&_blockquote]:border-gray-400 [&_blockquote]:italic [&_blockquote]:text-gray-700 [&_blockquote]:bg-gray-100 [&_blockquote]:py-3 [&_blockquote]:pr-4 [&_blockquote]:rounded-r
-                              [&_.manuscript-section-title]:text-black [&_.manuscript-section-title]:font-serif
-                              [&_.manuscript-subsection-title]:text-gray-900
-                              [&_.manuscript-scripture-ref]:my-4 [&_.manuscript-scripture-ref]:text-gray-700 [&_.manuscript-scripture-ref]:text-[1.15rem] [&_.manuscript-scripture-ref]:font-medium [&_.manuscript-scripture-ref]:italic
-                              [&_.manuscript-scripture-block]:my-6 [&_.manuscript-scripture-block]:rounded-lg [&_.manuscript-scripture-block]:border [&_.manuscript-scripture-block]:border-gray-300 [&_.manuscript-scripture-block]:bg-gray-100 [&_.manuscript-scripture-block]:px-6 [&_.manuscript-scripture-block]:py-4
-                              [&_.manuscript-scripture-block>p]:my-2 [&_.manuscript-scripture-block>p]:text-[1.05rem] [&_.manuscript-scripture-block>p]:leading-relaxed [&_.manuscript-scripture-block>p]:text-gray-900
-                              [&_.manuscript-callout]:my-5 [&_.manuscript-callout]:rounded-lg [&_.manuscript-callout]:border [&_.manuscript-callout]:border-blue-300 [&_.manuscript-callout]:bg-blue-50 [&_.manuscript-callout]:px-5 [&_.manuscript-callout]:py-4
-                              [&_[data-repair-marker='true']]:relative
-                              [&_[data-repair-marker='true']::after]:content-[attr(data-repair-label)] [&_[data-repair-marker='true']::after]:block [&_[data-repair-marker='true']::after]:w-fit [&_[data-repair-marker='true']::after]:ml-auto [&_[data-repair-marker='true']::after]:mt-1 [&_[data-repair-marker='true']::after]:rounded-full [&_[data-repair-marker='true']::after]:border [&_[data-repair-marker='true']::after]:border-amber-500/60 [&_[data-repair-marker='true']::after]:bg-amber-100 [&_[data-repair-marker='true']::after]:px-1.5 [&_[data-repair-marker='true']::after]:py-0.5 [&_[data-repair-marker='true']::after]:text-[9px] [&_[data-repair-marker='true']::after]:leading-none [&_[data-repair-marker='true']::after]:font-semibold [&_[data-repair-marker='true']::after]:uppercase [&_[data-repair-marker='true']::after]:tracking-wider [&_[data-repair-marker='true']::after]:text-amber-900
-                              selection:bg-blue-200 print:shadow-none print:px-8 print:py-12"
-                            style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
-                            dangerouslySetInnerHTML={{
-                              __html: ensureManuscriptRichHtml(String(manuscript.content?.text || ''), markdownLikeToHtml),
-                            }}
-                          />
-                          {renderManuscriptCuesPanel(
-                            normalizeManuscriptCues(manuscript.content?.cues),
-                            false,
-                            (cue, cueType, cueIndex) =>
-                              focusCueInManuscript(
-                                manuscript.id,
-                                cue,
-                                cueType,
-                                cueIndex,
-                                manuscript?.content?.metadata?.cueAnchors || {},
-                              ),
-                            {
-                              staleInfo:
-                                manuscriptCueHealth[manuscript.id] ||
-                                evaluateCueCoverage(
-                                  normalizeManuscriptCues(manuscript.content?.cues),
-                                  String(manuscript.content?.text || ''),
-                                  manuscript?.content?.metadata?.cueAnchors || {},
-                                ),
-                              onRegenerateCues: () => handleRegenerateManuscriptCues(manuscript.id),
-                              regenerating: actionLoading.includes(`manuscript-cues-${manuscript.id}`),
-                            },
-                          )}
-                        </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          <p className="text-xs uppercase tracking-widest text-amber-300 mb-4">Legacy manuscript format</p>
-                          <div 
-                            className="rounded-lg shadow-xl bg-white px-12 py-16 md:px-16 md:py-20 prose prose-lg prose-slate max-w-4xl mx-auto prose-headings:text-gray-900 prose-headings:font-serif prose-p:text-gray-700 prose-p:leading-[1.9] prose-strong:text-gray-900 prose-em:text-gray-800"
-                            style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
-                          >
-                            {renderMarkdown(sanitizeManuscriptForDisplay(manuscript.content?.text || ''))}
-                          </div>
-                        </div>
-                      )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              {latestManuscript ? (
+                <WorkspaceManuscriptCard
+                  manuscript={latestManuscript}
+                  actionLoading={actionLoading}
+                  lastRepairNotice={lastRepairNotice}
+                  showRepairMarkers={showRepairMarkers}
+                  setShowRepairMarkers={setShowRepairMarkers}
+                  manuscriptQualityExpanded={manuscriptQualityExpanded}
+                  setManuscriptQualityExpanded={setManuscriptQualityExpanded}
+                  repairHistoryExpanded={repairHistoryExpanded}
+                  setRepairHistoryExpanded={setRepairHistoryExpanded}
+                  legacyConvertCandidateId={legacyConvertCandidateId}
+                  setLegacyConvertCandidateId={setLegacyConvertCandidateId}
+                  editingManuscriptId={editingManuscriptId}
+                  setEditingManuscriptId={setEditingManuscriptId}
+                  manuscriptDraft={manuscriptDraft}
+                  setManuscriptDraft={setManuscriptDraft}
+                  manuscriptCueDraft={manuscriptCueDraft}
+                  setManuscriptCueDraft={setManuscriptCueDraft}
+                  getManuscriptQualityUi={getManuscriptQualityUi}
+                  manuscriptOptionsDrifted={manuscriptOptionsDrifted}
+                  getRepairAuditTrail={getRepairAuditTrail}
+                  normalizeRepairSnippetRaw={normalizeRepairSnippetRaw}
+                  buildInlineWordDiff={buildInlineWordDiff}
+                  buildWordDiff={buildWordDiff}
+                  focusRepairAuditChange={focusRepairAuditChange}
+                  getRepairedAuditItems={getRepairedAuditItems}
+                  summarizeRepairSnippet={summarizeRepairSnippet}
+                  isManuscriptV2={isManuscriptV2}
+                  toV2ManuscriptDraft={toV2ManuscriptDraft}
+                  renderManuscriptCuesPanel={renderManuscriptCuesPanel}
+                  focusCueInManuscript={focusCueInManuscript}
+                  ensureManuscriptRichHtml={ensureManuscriptRichHtml}
+                  markdownLikeToHtml={markdownLikeToHtml}
+                  sanitizeManuscriptForDisplay={sanitizeManuscriptForDisplay}
+                  emptyManuscriptCues={emptyManuscriptCues}
+                  handleManuscriptSave={handleManuscriptSave}
+                  handleRegenerateManuscriptCues={handleRegenerateManuscriptCues}
+                />
               ) : (
                 <p className="text-gray-100/90">No manuscript yet.</p>
               )}
-            </div>
+            </WorkspaceManuscriptPhase>
           )}
 
           {activeSection === 'citations' && (
-            <div className="space-y-4 relative min-h-full">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold">Citations</h3>
-                <div className="flex items-center gap-2">
-                  <select
-                    value={citationTranslation}
-                    onChange={(e) => setCitationTranslation(e.target.value.toUpperCase())}
-                    className="cyber-outline text-xs px-3 py-2 rounded-full"
-                  >
-                    <option value="KJV">KJV</option>
-                    <option value="WEB">WEB</option>
-                  </select>
-                  <button
-                    onClick={() => openPromptEditor('citations')}
-                    className="cyber-outline text-xs px-4 py-2 rounded-full"
-                  >
-                    Prompt
-                  </button>
-                  <button
-                    onClick={() => handleGenerate('citations')}
-                    className="cyber-button-secondary text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                    disabled={actionLoading.includes('citations')}
-                  >
-                    {actionLoading.includes('citations') ? 'Generating...' : 'Generate'}
-                  </button>
-                </div>
-              </div>
-              <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                <p className="text-xs uppercase tracking-widest cyber-muted">Write</p>
-                <p className="text-sm text-gray-200 mt-2">
-                  Citation drafting and editing live here. Validation now belongs in Refine.
-                </p>
-                <button
-                  onClick={() => {
-                    setActivePhase('REFINE')
-                    setActiveSection('dna')
-                  }}
-                  className="cyber-outline text-xs px-3 py-2 rounded-full mt-3"
-                >
-                  Open Refine
-                </button>
-              </div>
-              {workspace.citations?.length ? (
-                <ul className="space-y-3 text-gray-100/90">
-                  {workspace.citations.map((citation: any) => (
-                    <li key={citation.id} className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <div className="flex items-center justify-between">
-                        <span className="cyber-tag">{citation.statementType}</span>
-                        <button
-                          onClick={() => {
-                            setEditingCitationId(citation.id)
-                            setCitationDraft({
-                              id: citation.id,
-                              statement: citation.statement || '',
-                              verseReferences: (citation.verseReferences || []).join(', '),
-                            })
-                          }}
-                          className="cyber-outline px-3 py-1 text-xs rounded-full"
-                        >
-                          Edit
-                        </button>
-                      </div>
-                      {editingCitationId === citation.id && citationDraft ? (
-                        <div className="space-y-3 mt-3">
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Statement</label>
-                          <textarea
-                            value={citationDraft.statement}
-                            onChange={(e) => setCitationDraft({ ...citationDraft, statement: e.target.value })}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                            rows={3}
-                          />
-                          <label className="text-xs uppercase tracking-widest cyber-muted">Verse References (comma separated)</label>
-                          <input
-                            value={citationDraft.verseReferences}
-                            onChange={(e) => setCitationDraft({ ...citationDraft, verseReferences: e.target.value })}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={handleCitationSave}
-                              className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                              disabled={actionLoading.includes('citation-edit')}
-                            >
-                              {actionLoading.includes('citation-edit') ? 'Saving...' : 'Save'}
-                            </button>
-                            <button
-                              onClick={() => {
-                                setEditingCitationId(null)
-                                setCitationDraft(null)
-                              }}
-                              className="cyber-outline text-xs px-4 py-2 rounded-full"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex items-center gap-2">
-                            <div className="mt-1 flex-1">{renderMarkdown(citation.statement)}</div>
-                            <span
-                              className={`text-[10px] uppercase tracking-widest px-2 py-1 rounded-full border ${
-                                citation.isVerified
-                                  ? 'border-cyan-400/60 text-cyan-200'
-                                  : 'border-red-400/50 text-red-200'
-                              }`}
-                            >
-                              {citation.isVerified ? 'Verified' : 'Unverified'}
-                            </span>
-                          </div>
-                          {citation.verseReferences?.length > 0 && (
-                            <p className="text-xs cyber-muted mt-2">
-                              Verses: {citation.verseReferences.join(', ')}
-                            </p>
-                          )}
-                        </>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-gray-100/90">No citations yet.</p>
-              )}
-            </div>
+            <WorkspaceCitationReview
+              workspace={workspace}
+              workspaceState={workspaceState}
+              actionLoading={actionLoading}
+              citationTranslation={citationTranslation}
+              setCitationTranslation={setCitationTranslation}
+              onOpenPromptEditor={openPromptEditor}
+              onGenerateCitations={() => handleGenerate('citations')}
+              onValidateCitations={handleCitationValidate}
+              editingCitationId={editingCitationId}
+              citationDraft={citationDraft}
+              setEditingCitationId={setEditingCitationId}
+              setCitationDraft={setCitationDraft}
+              handleCitationSave={handleCitationSave}
+              renderMarkdown={renderMarkdown}
+              onOpenRefine={() => {
+                setActivePhase('REFINE')
+                setActiveSection('dna')
+              }}
+              onRepairClaim={handleRepairClaim}
+              onAcknowledgeClaim={handleAcknowledgeClaim}
+              onCiteClaim={handleCiteClaim}
+            />
           )}
           {activeSection === 'scripture' && (
-            <div className="space-y-4 relative min-h-full">
+            <WorkspaceScripturePhase>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-xl font-semibold">Scripture</h3>
                 <button
@@ -6393,7 +5735,7 @@ export default function WorkspaceDetailPage() {
                 {extractVerses(scriptureResult).length ? (
                   <div className="space-y-4">
                     <div className="space-y-3 text-sm text-gray-100/90">
-                      {extractVerses(scriptureResult).map((verse: any, index: number) => {
+                      {extractVerses(scriptureResult).map((verse, index: number) => {
                         const reference = typeof verse?.reference === 'string' ? verse.reference : ''
                         const match = reference.match(/\b(\d+):(\d+)\b/)
                         const fallbackStart = getReferenceStartVerse(scriptureLastLookup)
@@ -6415,285 +5757,47 @@ export default function WorkspaceDetailPage() {
                       <div className="text-sm text-amber-300">{audioError}</div>
                     )}
                     {audioUrl && (
-                      <AudioPlayer 
-                        audioUrl={audioUrl} 
-                        title={`${scriptureResult.reference} - ${scriptureTranslation}`}
+                      <AudioPlayer
+                        audioUrl={audioUrl}
+                        title={`${String((scriptureResult as Record<string, unknown> | null)?.reference || scriptureLastLookup || workspace?.mainPassage || 'Passage')} - ${scriptureTranslation}`}
                         onError={(error) => setAudioError(error)}
                       />
                     )}
                     
-                    {/* Passage Summary - Interpretive Framing */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => regenerateScriptureSection('passageSummary')}
-                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
-                      >
-                        Generate
-                      </button>
-                      {generatedScriptureSections.passageSummary ? (
-                        <PassageSummary 
-                          key={`${scriptureLastLookup}-passageSummary-${scriptureSectionRefreshKey.passageSummary}`}
-                          reference={scriptureLastLookup}
-                          token={localStorage.getItem('token') || ''}
-                          language={workspace?.language || 'en'}
-                          cachedData={passageSummary}
-                          onDataLoad={(data: any) => {
-                            setPassageSummary(data)
-                            persistCurrentScriptureSection('passageSummary', data)
-                          }}
-                        />
-                      ) : (
-                        <div className="cyber-panel rounded-2xl p-6">
-                          <div className="flex items-center gap-2 mb-1">
-                            <BookOpen className="w-5 h-5 text-cyan-400" />
-                            <h3 className="text-lg font-semibold">Passage Summary</h3>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Per-Verse Context Panel */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => regenerateScriptureSection('verseContext')}
-                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
-                      >
-                        Generate
-                      </button>
-                      {generatedScriptureSections.verseContext ? (
-                        <PerVerseContextPanel 
-                          key={`${scriptureLastLookup}-verseContext-${scriptureSectionRefreshKey.verseContext}`}
-                          reference={scriptureLastLookup}
-                          token={localStorage.getItem('token') || ''}
-                          language={workspace?.language || 'en'}
-                          cachedData={perVerseContext}
-                          onDataLoad={(data: any) => {
-                            setPerVerseContext(data)
-                            persistCurrentScriptureSection('verseContext', data)
-                          }}
-                        />
-                      ) : (
-                        <div className="cyber-panel rounded-2xl p-6">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Clock className="w-5 h-5 text-cyan-400" />
-                            <h3 className="text-lg font-semibold">Historical Context</h3>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Translation Comparison */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => regenerateScriptureSection('translationComparison')}
-                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
-                      >
-                        Generate
-                      </button>
-                      {generatedScriptureSections.translationComparison ? (
-                        <TranslationComparisonEnhanced 
-                          key={`${scriptureLastLookup}-translationComparison-${scriptureSectionRefreshKey.translationComparison}`}
-                          reference={scriptureLastLookup}
-                          token={localStorage.getItem('token') || ''}
-                          language={workspace?.language || 'en'}
-                          cachedData={translationComparison}
-                          onDataLoad={(data: any) => {
-                            setTranslationComparison(data)
-                            persistCurrentScriptureSection('translationComparison', data)
-                          }}
-                        />
-                      ) : (
-                        <div className="cyber-panel rounded-2xl p-6">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Rows className="w-5 h-5 text-cyan-400" />
-                            <h3 className="text-lg font-semibold">Translation Comparison</h3>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Verse Commentary */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => regenerateScriptureSection('verseCommentary')}
-                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
-                      >
-                        Generate
-                      </button>
-                      {generatedScriptureSections.verseCommentary ? (
-                        <VerseCommentaryPanel 
-                          key={`${scriptureLastLookup}-verseCommentary-${scriptureSectionRefreshKey.verseCommentary}`}
-                          reference={scriptureLastLookup}
-                          token={localStorage.getItem('token') || ''}
-                          language={workspace?.language || 'en'}
-                          cachedData={verseCommentary}
-                          onDataLoad={(data: any) => {
-                            setVerseCommentary(data)
-                            persistCurrentScriptureSection('verseCommentary', data)
-                          }}
-                        />
-                      ) : (
-                        <div className="cyber-panel rounded-2xl p-6">
-                          <div className="flex items-center gap-2 mb-1">
-                            <MessageSquare className="w-5 h-5 text-cyan-400" />
-                            <h3 className="text-lg font-semibold">Verse Commentary</h3>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Structural Analysis */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => regenerateScriptureSection('structuralAnalysis')}
-                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
-                      >
-                        Generate
-                      </button>
-                      {generatedScriptureSections.structuralAnalysis ? (
-                        <StructuralAnalysisPanel 
-                          key={`${scriptureLastLookup}-structuralAnalysis-${scriptureSectionRefreshKey.structuralAnalysis}`}
-                          passage={scriptureLastLookup}
-                          token={localStorage.getItem('token') || ''}
-                          language={workspace?.language || 'en'}
-                          cachedData={structuralAnalysis}
-                          onDataLoad={(data: any) => {
-                            setStructuralAnalysis(data)
-                            persistCurrentScriptureSection('structuralAnalysis', data)
-                          }}
-                        />
-                      ) : (
-                        <div className="cyber-panel rounded-2xl p-6">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Layers className="w-5 h-5 text-cyan-400" />
-                            <h3 className="text-lg font-semibold">Structural Analysis</h3>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Interpretive Challenges */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => regenerateScriptureSection('interpretiveChallenges')}
-                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
-                      >
-                        Generate
-                      </button>
-                      {generatedScriptureSections.interpretiveChallenges ? (
-                        <InterpretiveChallengePanel 
-                          key={`${scriptureLastLookup}-interpretiveChallenges-${scriptureSectionRefreshKey.interpretiveChallenges}`}
-                          passage={scriptureLastLookup}
-                          token={localStorage.getItem('token') || ''}
-                          language={workspace?.language || 'en'}
-                          cachedData={interpretiveChallenges}
-                          onDataLoad={(data: any) => {
-                            setInterpretiveChallenges(data)
-                            persistCurrentScriptureSection('interpretiveChallenges', data)
-                          }}
-                        />
-                      ) : (
-                        <div className="cyber-panel rounded-2xl p-6">
-                          <div className="flex items-center gap-2 mb-1">
-                            <AlertCircle className="w-5 h-5 text-cyan-400" />
-                            <h3 className="text-lg font-semibold">Interpretive Challenges</h3>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Canonical Theme Tracing */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => regenerateScriptureSection('canonicalThemes')}
-                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
-                      >
-                        Generate
-                      </button>
-                      {generatedScriptureSections.canonicalThemes ? (
-                        <CanonicalThemeTracing 
-                          key={`${scriptureLastLookup}-canonicalThemes-${scriptureSectionRefreshKey.canonicalThemes}`}
-                          reference={scriptureLastLookup}
-                          token={localStorage.getItem('token') || ''}
-                          workspaceId={workspaceId}
-                          language={workspace?.language || 'en'}
-                          cachedData={canonicalThemes}
-                          onDataLoad={(data: any) => {
-                            setCanonicalThemes(data)
-                            persistCurrentScriptureSection('canonicalThemes', data)
-                          }}
-                          onAddToOutline={async (theme, verses) => {
-                        // Add theme to the selected outline or first outline
-                        const selectedOutline = workspace.outlines?.find((o: any) => o.isSelected) || workspace.outlines?.[0]
-                        
-                        if (!selectedOutline) {
-                          console.error('No outline found to add theme to')
-                          return
-                        }
-                        
-                        // Create new point
-                        const newPoint = {
-                          id: Date.now().toString(),
-                          text: theme,
-                          level: 1,
-                          supportingVerses: verses,
-                          notes: `Canonical theme: ${verses.join(', ')}`
-                        }
-                        
-                        // Update outline structure
-                        const updatedPoints = [...(selectedOutline.structure?.points || []), newPoint]
-                        const updatedOutline = {
-                          ...selectedOutline,
-                          structure: {
-                            ...selectedOutline.structure,
-                            points: updatedPoints
-                          }
-                        }
-                        
-                        // Update workspace
-                        const updatedOutlines = workspace.outlines.map((o: any) => 
-                          o.id === selectedOutline.id ? updatedOutline : o
-                        )
-                        
-                        setWorkspace({ ...workspace, outlines: updatedOutlines })
-                        
-                        // Save to backend
-                        try {
-                          await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/outlines/${selectedOutline.id}`, {
-                            method: 'PUT',
-                            headers: {
-                              'Content-Type': 'application/json',
-                              Authorization: `Bearer ${localStorage.getItem('token')}`
-                            },
-                            body: JSON.stringify(updatedOutline)
-                          })
-                          console.log('Theme added to outline successfully')
-                        } catch (error) {
-                          console.error('Failed to save outline:', error)
-                        }
-                          }}
-                        />
-                      ) : (
-                        <div className="cyber-panel rounded-2xl p-6">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Network className="w-5 h-5 text-cyan-400" />
-                            <h3 className="text-lg font-semibold">Canonical Theme Tracing</h3>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    
+                    {WorkspaceScriptureAnalysisPanelsBridge({
+                      workspaceId,
+                      language: String(workspace?.language || 'en'),
+                      token: localStorage.getItem('token') || '',
+                      scriptureLastLookup,
+                      generatedScriptureSections,
+                      sectionRefreshKey: scriptureSectionRefreshKey,
+                      passageSummary,
+                      setPassageSummary,
+                      perVerseContext,
+                      setPerVerseContext,
+                      translationComparison,
+                      setTranslationComparison,
+                      verseCommentary,
+                      setVerseCommentary,
+                      structuralAnalysis,
+                      setStructuralAnalysis,
+                      interpretiveChallenges,
+                      setInterpretiveChallenges,
+                      canonicalThemes,
+                      setCanonicalThemes,
+                      studySynthesis,
+                      setStudySynthesis,
+                      regenerateScriptureSection,
+                      persistCurrentScriptureSection,
+                      onAddToOutline: handleAddCanonicalThemeToOutline,
+                    })}
+
                     {/* Study Notes */}
-                    {scriptureResult.studyNotes && scriptureResult.studyNotes.length > 0 && (
-                      <StudyNotes 
-                        notes={scriptureResult.studyNotes}
+                    {isRecord(scriptureResult) &&
+                      Array.isArray((scriptureResult as WorkspaceScriptureResult).studyNotes) &&
+                      ((scriptureResult as WorkspaceScriptureResult).studyNotes || []).length > 0 && (
+                      <StudyNotes
+                        notes={(scriptureResult as WorkspaceScriptureResult).studyNotes || []}
                         onVerseClick={handleVerseClick}
                       />
                     )}
@@ -6718,478 +5822,80 @@ export default function WorkspaceDetailPage() {
                       )
                     })()}
                     
-                    {/* Study Synthesis - Final Theological Takeaway */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => regenerateScriptureSection('studySynthesis')}
-                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
-                      >
-                        Generate
-                      </button>
-                      {generatedScriptureSections.studySynthesis ? (
-                        <StudySynthesis 
-                          key={`${scriptureLastLookup}-studySynthesis-${scriptureSectionRefreshKey.studySynthesis}`}
-                          reference={scriptureLastLookup}
-                          token={localStorage.getItem('token') || ''}
-                          language={workspace?.language || 'en'}
-                          cachedData={studySynthesis}
-                          onDataLoad={(data: any) => {
-                            setStudySynthesis(data)
-                            persistCurrentScriptureSection('studySynthesis', data)
-                          }}
-                        />
-                      ) : (
-                        <div className="cyber-panel rounded-2xl p-6">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Lightbulb className="w-5 h-5 text-cyan-400" />
-                            <h3 className="text-lg font-semibold">Study Synthesis</h3>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
                   </div>
                 ) : (
                   <p className="text-gray-200/80">No passage loaded yet.</p>
                 )}
               </div>
-            </div>
+            </WorkspaceScripturePhase>
           )}
           {activeSection === 'word-study' && (
-            <div className="space-y-4 relative min-h-full">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold">{isSpanishWorkspace ? 'Estudio de palabras' : 'Word Study'}</h3>
-                <button
-                  onClick={() => handleWordStudyLookup()}
-                  disabled={actionLoading.includes('word-study')}
-                  className="cyber-outline text-xs px-3 py-2 rounded-full disabled:opacity-60"
-                >
-                  {actionLoading.includes('word-study')
-                    ? (isSpanishWorkspace ? 'Buscando...' : 'Looking up...')
-                    : (isSpanishWorkspace ? 'Buscar' : 'Lookup')}
-                </button>
-              </div>
-              <div className="cyber-panel rounded-2xl p-6 space-y-4">
-                <div className="grid md:grid-cols-3 gap-3">
-                  <input
-                    value={wordStudyWord}
-                    onChange={(e) => setWordStudyWord(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        handleWordStudyLookup()
-                      }
-                    }}
-                    placeholder="agape"
-                    className="md:col-span-2 w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                  />
-                  <select
-                    value={wordStudyLanguage}
-                    onChange={(e) => setWordStudyLanguage(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                  >
-                    {availableLanguages.map(lang => (
-                      <option key={lang.value} value={lang.value}>{lang.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] uppercase tracking-widest text-cyan-200/70">
-                      {isSpanishWorkspace ? 'Sugerido desde' : 'Suggested From'} {scriptureLastLookup || workspace?.mainPassage || (isSpanishWorkspace ? 'Pasaje' : 'Passage')}
-                    </p>
-                    {wordStudySuggestionsLoading ? (
-                      <span className="text-[11px] text-gray-400">{isSpanishWorkspace ? 'Cargando...' : 'Loading...'}</span>
-                    ) : null}
-                  </div>
-                  {wordStudySuggestions.length ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {wordStudySuggestions.map((item, index) => (
-                        <button
-                          key={`${item.term}-${index}`}
-                          type="button"
-                          onClick={() => {
-                            setWordStudyWord(item.term)
-                            if (item.language) setWordStudyLanguage(item.language)
-                            handleWordStudyLookup({ word: item.term, language: item.language || wordStudyLanguage })
-                          }}
-                          className="cyber-outline text-xs px-3 py-1.5 rounded-full text-left"
-                          title={item.reason || item.gloss || ''}
-                        >
-                          {item.term}
-                          {item.transliteration ? (
-                            <span className="text-cyan-200/70"> · {item.transliteration}</span>
-                          ) : null}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-gray-300 mt-2">
-                      {wordStudySuggestionsLoading
-                        ? (isSpanishWorkspace ? 'Analizando términos del pasaje...' : 'Analyzing passage terms...')
-                        : (isSpanishWorkspace
-                          ? 'Aún no hay términos sugeridos. Abre primero Escritura y luego vuelve aquí.'
-                          : 'No suggested terms yet. Open Scripture first, then return here.')}
-                    </p>
-                  )}
-                </div>
-                {wordStudyError ? (
-                  <div className="border border-red-400/40 bg-red-500/10 text-red-100 text-sm rounded-xl px-4 py-3">
-                    {wordStudyError}
-                  </div>
-                ) : wordStudyLastLookup ? (
-                  <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-widest text-cyan-200/80">
-                    <span>{isSpanishWorkspace ? 'Última búsqueda' : 'Last lookup'}: {wordStudyLastLookup}</span>
-                    <span className="text-cyan-200/40">•</span>
-                    <span>{wordStudyLanguage}</span>
-                  </div>
-                ) : null}
-                {wordStudyResult ? (
-                  <div className="text-sm text-gray-100/90 space-y-2">
-                    <p><span className="text-cyan-200">Lemma:</span> {wordStudyResult.lemma}</p>
-                    {wordStudyResult.originalScript && (
-                      <p><span className="text-cyan-200">{isSpanishWorkspace ? 'Escritura original' : 'Original Script'}:</span> {wordStudyResult.originalScript}</p>
-                    )}
-                    <p><span className="text-cyan-200">{isSpanishWorkspace ? 'Transliteración' : 'Transliteration'}:</span> {wordStudyResult.transliteration}</p>
-                    <div>
-                      <span className="text-cyan-200">{isSpanishWorkspace ? 'Definición' : 'Definition'}:</span>
-                      <div className="mt-1">{renderSmartValue(wordStudyResult.definition || 'N/A')}</div>
-                    </div>
-                    <p><span className="text-cyan-200">Strong's:</span> {wordStudyResult.strongs || 'N/A'}</p>
-                    <p><span className="text-cyan-200">{isSpanishWorkspace ? 'Categoría gramatical' : 'Part of Speech'}:</span> {wordStudyResult.partOfSpeech || 'N/A'}</p>
-                    <p><span className="text-cyan-200">{isSpanishWorkspace ? 'Ocurrencias' : 'Occurrences'}:</span> {wordStudyResult.usageCount || 'N/A'}</p>
-                    {wordStudyResult.examples?.length ? (
-                      <ul className="list-disc list-inside space-y-1">
-                        {wordStudyResult.examples.map((example: string, index: number) => (
-                          <li key={`${example}-${index}`}>{example}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-gray-200/80">{isSpanishWorkspace ? 'No hay ejemplos cargados.' : 'No examples loaded.'}</p>
-                    )}
-                    {wordStudyResult.verseOccurrences?.length ? (
-                      <div>
-                        <p className="text-xs uppercase tracking-widest cyber-muted">{isSpanishWorkspace ? 'Otras ocurrencias' : 'Other occurrences'}</p>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {wordStudyResult.verseOccurrences.slice(0, 12).map((verse: string) => (
-                            <span key={verse} className="px-2 py-1 rounded-full text-xs border border-white/10 text-gray-100/90">
-                              {verse}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                    {wordStudyResult.distributionByBook?.length ? (
-                      <div>
-                        <p className="text-xs uppercase tracking-widest cyber-muted">{isSpanishWorkspace ? 'Distribución por libro' : 'Distribution by book'}</p>
-                        <div className="mt-2 grid md:grid-cols-2 gap-2 text-xs">
-                          {wordStudyResult.distributionByBook.slice(0, 10).map((entry: any) => (
-                            <div key={entry.book} className="flex items-center justify-between border border-white/10 rounded-lg px-2 py-1">
-                              <span className="text-gray-100/90">{entry.book}</span>
-                              <span className="text-cyan-200">{entry.count}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                    {wordStudyInsights ? (
-                      <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                        <p className="text-xs uppercase tracking-widest cyber-muted">{isSpanishWorkspace ? 'Perspectivas avanzadas' : 'Advanced Insights'}</p>
-                        <div className="mt-2 space-y-2">
-                          <div>
-                            <p className="text-xs cyber-muted uppercase tracking-widest">{isSpanishWorkspace ? 'Raíz' : 'Root'}</p>
-                            {renderSmartValue(wordStudyInsights.rootWord || 'N/A')}
-                          </div>
-                          <div>
-                            <p className="text-xs cyber-muted uppercase tracking-widest">{isSpanishWorkspace ? 'Rango semántico' : 'Semantic Range'}</p>
-                            {renderSmartValue(wordStudyInsights.semanticRange || [])}
-                          </div>
-                          <div>
-                            <p className="text-xs cyber-muted uppercase tracking-widest">{isSpanishWorkspace ? 'Matices' : 'Nuance'}</p>
-                            {renderSmartValue(wordStudyInsights.nuanceNotes || [])}
-                          </div>
-                          {wordStudyInsights.grammarInsights ? (
-                            <div className="mt-2 grid md:grid-cols-2 gap-2 text-xs">
-                              {['tense', 'voice', 'mood', 'case', 'number', 'gender', 'notes'].map((key) => {
-                                const value = wordStudyInsights.grammarInsights?.[key]
-                                return (
-                                  <div key={key} className="flex items-center justify-between border border-white/10 rounded-lg px-2 py-1">
-                                    <span className="text-gray-100/90 capitalize">{key}</span>
-                                    <span className="text-cyan-200">{String(value || 'N/A')}</span>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <p className="text-gray-200/80">{isSpanishWorkspace ? 'Aún no se ha cargado ningún estudio de palabras.' : 'No word study loaded yet.'}</p>
-                )}
-              </div>
-            </div>
+            <WorkspaceWordStudySection
+              isSpanishWorkspace={isSpanishWorkspace}
+              actionLoading={actionLoading}
+              wordStudyWord={wordStudyWord}
+              setWordStudyWord={setWordStudyWord}
+              wordStudyLanguage={wordStudyLanguage}
+              setWordStudyLanguage={setWordStudyLanguage}
+              availableLanguages={availableLanguages}
+              scriptureLastLookup={scriptureLastLookup}
+              wordStudySuggestionsLoading={wordStudySuggestionsLoading}
+              wordStudySuggestions={wordStudySuggestions}
+              wordStudyError={wordStudyError}
+              wordStudyLastLookup={wordStudyLastLookup}
+              wordStudyResult={wordStudyResult}
+              wordStudyInsights={wordStudyInsights}
+              handleWordStudyLookup={handleWordStudyLookup}
+              renderSmartValue={renderSmartValue}
+            />
           )}
           {activeSection === 'cross-references' && (
-            <div className="space-y-4 relative min-h-full">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold">Cross References</h3>
-                <button
-                  onClick={handleCrossReferenceLookup}
-                  disabled={actionLoading.includes('cross-references')}
-                  className="cyber-outline text-xs px-3 py-2 rounded-full disabled:opacity-60"
-                >
-                  {actionLoading.includes('cross-references') ? 'Looking up...' : 'Lookup'}
-                </button>
-              </div>
-              <div className="cyber-panel rounded-2xl p-6 space-y-4">
-                <input
-                  value={crossRefVerse}
-                  onChange={(e) => setCrossRefVerse(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      handleCrossReferenceLookup()
-                    }
-                  }}
-                  placeholder="John 3:16"
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                />
-                {crossRefError ? (
-                  <div className="border border-red-400/40 bg-red-500/10 text-red-100 text-sm rounded-xl px-4 py-3">
-                    {crossRefError}
-                  </div>
-                ) : crossRefLastLookup ? (
-                  <div className="space-y-4">
-                    <CrossReferenceRanked
-                      verse={crossRefLastLookup}
-                      token={localStorage.getItem('token') || ''}
-                      onReferencesLoaded={(count) => setCrossRefHasScriptureResults(count > 0)}
-                    />
-                    {crossRefHasScriptureResults ? (
-                      <CrossReferenceSOPPanel
-                        verse={crossRefLastLookup}
-                        token={localStorage.getItem('token') || ''}
-                        language={workspace?.language || 'en'}
-                      />
-                    ) : null}
-                  </div>
-                ) : (
-                  <p className="text-gray-200/80">Enter a verse reference above to explore cross references.</p>
-                )}
-              </div>
-            </div>
+            <WorkspaceCrossReferencesSection
+              actionLoading={actionLoading}
+              crossRefVerse={crossRefVerse}
+              setCrossRefVerse={setCrossRefVerse}
+              crossRefError={crossRefError}
+              crossRefLastLookup={crossRefLastLookup}
+              crossRefHasScriptureResults={crossRefHasScriptureResults}
+              setCrossRefHasScriptureResults={setCrossRefHasScriptureResults}
+              handleCrossReferenceLookup={handleCrossReferenceLookup}
+              workspaceLanguage={workspace?.language || 'en'}
+              token={localStorage.getItem('token') || ''}
+            />
           )}
           {activeSection === 'study-report' && (
             <div className="space-y-4 relative min-h-full">
-              {(() => {
-                const studyAssets = getStudyAssetsSource()
-                const studyMediaPrompts = getStudyMediaPrompts()
-                return (
-                  <>
-              {/* Scripture Analysis Section - Interpretation Tools */}
               {scriptureLastLookup && (
                 <div className="mb-6">
-                <CollapsibleSection 
-                  title="Scripture Analysis" 
-                  defaultOpen={false}
-                >
-                  <div className="space-y-4">
-                    <p className="text-xs text-cyan-200/70 mb-4">
-                      Deep exegetical analysis of {scriptureLastLookup}
-                    </p>
-                    
-                    {/* Passage Summary */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => regenerateScriptureSection('passageSummary')}
-                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
-                      >
-                        Generate
-                      </button>
-                      {generatedScriptureSections.passageSummary ? (
-                        <PassageSummary 
-                          key={`study-${scriptureLastLookup}-passageSummary`}
-                          reference={scriptureLastLookup}
-                          token={localStorage.getItem('token') || ''}
-                          language={workspace?.language || 'en'}
-                          cachedData={passageSummary}
-                          onDataLoad={(data: any) => {
-                            setPassageSummary(data)
-                            persistCurrentScriptureSection('passageSummary', data)
-                          }}
-                        />
-                      ) : (
-                        <div className="cyber-panel rounded-2xl p-6">
-                          <div className="flex items-center gap-2 mb-1">
-                            <BookOpen className="w-5 h-5 text-cyan-400" />
-                            <h3 className="text-lg font-semibold">Passage Summary</h3>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Structural Analysis */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => regenerateScriptureSection('structuralAnalysis')}
-                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
-                      >
-                        Generate
-                      </button>
-                      {generatedScriptureSections.structuralAnalysis ? (
-                        <StructuralAnalysisPanel 
-                          key={`study-${scriptureLastLookup}-structuralAnalysis`}
-                          passage={scriptureLastLookup}
-                          token={localStorage.getItem('token') || ''}
-                          language={workspace?.language || 'en'}
-                          cachedData={structuralAnalysis}
-                          onDataLoad={(data: any) => {
-                            setStructuralAnalysis(data)
-                            persistCurrentScriptureSection('structuralAnalysis', data)
-                          }}
-                        />
-                      ) : (
-                        <div className="cyber-panel rounded-2xl p-6">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Layers className="w-5 h-5 text-cyan-400" />
-                            <h3 className="text-lg font-semibold">Structural Analysis</h3>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Interpretive Challenges */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => regenerateScriptureSection('interpretiveChallenges')}
-                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
-                      >
-                        Generate
-                      </button>
-                      {generatedScriptureSections.interpretiveChallenges ? (
-                        <InterpretiveChallengePanel 
-                          key={`study-${scriptureLastLookup}-interpretiveChallenges`}
-                          passage={scriptureLastLookup}
-                          token={localStorage.getItem('token') || ''}
-                          language={workspace?.language || 'en'}
-                          cachedData={interpretiveChallenges}
-                          onDataLoad={(data: any) => {
-                            setInterpretiveChallenges(data)
-                            persistCurrentScriptureSection('interpretiveChallenges', data)
-                          }}
-                        />
-                      ) : (
-                        <div className="cyber-panel rounded-2xl p-6">
-                          <div className="flex items-center gap-2 mb-1">
-                            <AlertCircle className="w-5 h-5 text-cyan-400" />
-                            <h3 className="text-lg font-semibold">Interpretive Challenges</h3>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Canonical Theme Tracing */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => regenerateScriptureSection('canonicalThemes')}
-                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
-                      >
-                        Generate
-                      </button>
-                      {generatedScriptureSections.canonicalThemes ? (
-                        <CanonicalThemeTracing 
-                          key={`study-${scriptureLastLookup}-canonicalThemes`}
-                          reference={scriptureLastLookup}
-                          token={localStorage.getItem('token') || ''}
-                          workspaceId={workspaceId}
-                          language={workspace?.language || 'en'}
-                          cachedData={canonicalThemes}
-                          onDataLoad={(data: any) => {
-                            setCanonicalThemes(data)
-                            persistCurrentScriptureSection('canonicalThemes', data)
-                          }}
-                          onAddToOutline={async (theme, verses) => {
-                            const selectedOutline = workspace.outlines?.find((o: any) => o.isSelected) || workspace.outlines?.[0]
-                            if (!selectedOutline) return
-                            const newPoint = {
-                              id: Date.now().toString(),
-                              text: theme,
-                              level: 1,
-                              supportingVerses: verses,
-                              notes: `Canonical theme: ${verses.join(', ')}`
-                            }
-                            const updatedPoints = [...(selectedOutline.structure?.points || []), newPoint]
-                            const updatedOutline = {
-                              ...selectedOutline,
-                              structure: { ...selectedOutline.structure, points: updatedPoints }
-                            }
-                            const updatedOutlines = workspace.outlines.map((o: any) => 
-                              o.id === selectedOutline.id ? updatedOutline : o
-                            )
-                            setWorkspace({ ...workspace, outlines: updatedOutlines })
-                            try {
-                              await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/outlines/${selectedOutline.id}`, {
-                                method: 'PUT',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                  Authorization: `Bearer ${localStorage.getItem('token')}`
-                                },
-                                body: JSON.stringify(updatedOutline)
-                              })
-                            } catch (error) {
-                              console.error('Failed to save outline:', error)
-                            }
-                          }}
-                        />
-                      ) : (
-                        <div className="cyber-panel rounded-2xl p-6">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Network className="w-5 h-5 text-cyan-400" />
-                            <h3 className="text-lg font-semibold">Canonical Theme Tracing</h3>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Study Synthesis */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => regenerateScriptureSection('studySynthesis')}
-                        className="absolute top-4 right-4 z-20 cyber-outline text-xs px-3 py-1.5 rounded-full"
-                      >
-                        Generate
-                      </button>
-                      {generatedScriptureSections.studySynthesis ? (
-                        <StudySynthesis 
-                          key={`study-${scriptureLastLookup}-studySynthesis`}
-                          reference={scriptureLastLookup}
-                          token={localStorage.getItem('token') || ''}
-                          language={workspace?.language || 'en'}
-                          cachedData={studySynthesis}
-                          onDataLoad={(data: any) => {
-                            setStudySynthesis(data)
-                            persistCurrentScriptureSection('studySynthesis', data)
-                          }}
-                        />
-                      ) : (
-                        <div className="cyber-panel rounded-2xl p-6">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Lightbulb className="w-5 h-5 text-cyan-400" />
-                            <h3 className="text-lg font-semibold">Study Synthesis</h3>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </CollapsibleSection>
+                  <CollapsibleSection title="Scripture Analysis" defaultOpen={false}>
+                    <WorkspaceScriptureAnalysisPanels
+                      workspaceId={workspaceId}
+                      language={workspace?.language || 'en'}
+                      token={localStorage.getItem('token') || ''}
+                      scriptureLastLookup={scriptureLastLookup}
+                      generatedScriptureSections={generatedScriptureSections}
+                      sectionRefreshKey={scriptureSectionRefreshKey}
+                      passageSummary={passageSummary}
+                      setPassageSummary={setPassageSummary}
+                      perVerseContext={perVerseContext}
+                      setPerVerseContext={setPerVerseContext}
+                      translationComparison={translationComparison}
+                      setTranslationComparison={setTranslationComparison}
+                      verseCommentary={verseCommentary}
+                      setVerseCommentary={setVerseCommentary}
+                      structuralAnalysis={structuralAnalysis}
+                      setStructuralAnalysis={setStructuralAnalysis}
+                      interpretiveChallenges={interpretiveChallenges}
+                      setInterpretiveChallenges={setInterpretiveChallenges}
+                      canonicalThemes={canonicalThemes}
+                      setCanonicalThemes={setCanonicalThemes}
+                      studySynthesis={studySynthesis}
+                      setStudySynthesis={setStudySynthesis}
+                      regenerateScriptureSection={regenerateScriptureSection}
+                      persistCurrentScriptureSection={persistCurrentScriptureSection}
+                      onAddToOutline={handleAddCanonicalThemeToOutline}
+                    />
+                  </CollapsibleSection>
                 </div>
               )}
 
@@ -7237,748 +5943,109 @@ export default function WorkspaceDetailPage() {
                   )}
                 </div>
               )}
-              <div className="space-y-4">
-                <p className="text-xs text-cyan-100/80">
-                  Applications, Discussion Questions, Illustration Ideas, and Media Suggestions require a generated Study Report.
-                </p>
-                {(() => {
-                  const requireStudyReport = !hasGeneratedStudyReport()
-                  return (
-                    <>
-        {renderStudyAssetCard(
-          'study-applications',
-          'Applications',
-          <Lightbulb className="w-4 h-4" />,
-          'Generate',
-          () => handleGenerate('applications'),
-          renderStudyAssetBoxes(studyAssets.applications, 'study-assets-applications', 'No applications yet.', {
-            accentClass: 'text-amber-100',
-            itemClassName: 'border border-amber-400/20 rounded-lg p-3 bg-amber-500/5',
-          }),
-          'Edit',
-          () => setStudyAssetEditor('applications'),
-          isStudyAssetLoading('applications'),
-          getStudyAssetLoadingLabel('applications'),
-          isStudyAssetLoading('applications') || requireStudyReport,
-        )}
-                {renderStudyAssetCard(
-                  'study-questions',
-                  'Discussion Questions',
-                  <MessageSquare className="w-4 h-4" />,
-          'Generate',
-          () => handleGenerate('questions'),
-          renderStudyAssetBoxes(studyAssets.discussionQuestions, 'study-assets-questions', 'No discussion questions yet.', {
-            accentClass: 'text-sky-100',
-            itemClassName: 'border border-sky-400/20 rounded-lg p-3 bg-sky-500/5',
-          }),
-          'Edit',
-          () => setStudyAssetEditor('questions'),
-          isStudyAssetLoading('questions'),
-          getStudyAssetLoadingLabel('questions'),
-          isStudyAssetLoading('questions') || requireStudyReport,
-        )}
-                {renderStudyAssetCard(
-                  'study-illustrations',
-                  'Illustration Ideas',
-                  <Layers className="w-4 h-4" />,
-          'Generate',
-          () => handleGenerate('illustrations'),
-          renderStudyAssetBoxes(studyAssets.illustrationIdeas, 'study-assets-illustrations', 'No illustration ideas yet.', {
-            accentClass: 'text-rose-100',
-            itemClassName: 'border border-rose-400/20 rounded-lg p-3 bg-rose-500/5',
-          }),
-          'Edit',
-          () => setStudyAssetEditor('illustrations'),
-          isStudyAssetLoading('illustrations'),
-          getStudyAssetLoadingLabel('illustrations'),
-          isStudyAssetLoading('illustrations') || requireStudyReport,
-        )}
-                {renderStudyAssetCard(
-                  'study-media',
-                  'Media Suggestions',
-                  <Film className="w-4 h-4" />,
-                  'Generate',
-                  () => handleGenerate('media'),
-                  renderStudyAssetBoxes(studyMediaPrompts, 'study-assets-media', 'No media suggestions yet.', {
-                    itemClassName: 'border border-violet-400/20 rounded-lg p-3 bg-violet-500/5',
-                    renderItem: (item: any) => (
-                      <>
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-semibold text-violet-100">{item.type}</p>
-                          <span className="text-[10px] uppercase tracking-widest text-violet-200/70">{item.intent}</span>
-                        </div>
-                        {item?.useCase ? (
-                          <p className="text-[11px] text-cyan-100/90 mt-2">{item.useCase}</p>
-                        ) : null}
-                        <p className="text-xs text-violet-50/90 mt-2 leading-relaxed">{item.prompt}</p>
-                      </>
-                    ),
-                  }),
-                  undefined,
-                  undefined,
-                  isStudyAssetLoading('media'),
-                  getStudyAssetLoadingLabel('media'),
-                  isStudyAssetLoading('media') || requireStudyReport,
-                )}
-                    </>
-                  )
-                })()}
-              </div>
-              <div className="cyber-panel rounded-2xl p-6 space-y-6">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <Network className="w-5 h-5 text-cyan-300" />
-                    <div>
-                      <h4 className="text-lg font-semibold">Study Visualizations</h4>
-                      <p className="text-xs text-gray-400 mt-1">Keep the charts inside Study instead of bouncing to another page.</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setActivePhase('PASSAGE')
-                      setVisualizationMode('passage')
-                      setActiveSection('visualizations')
-                    }}
-                    className="cyber-outline text-xs px-3 py-2 rounded-full"
-                  >
-                    Open Full View
-                  </button>
-                </div>
-                <div className="space-y-6">
-                  <div className="cyber-panel rounded-2xl p-5">
-                    <h5 className="text-base font-semibold mb-3">Canonical Constellation</h5>
-                    <InteractiveCanonicalConstellation focusPassage={workspace.mainPassage} />
-                  </div>
-                  {workspace.mainPassage && (
-                    <div className="cyber-panel rounded-2xl p-5">
-                      <SanctuaryProphecyMapper
-                        passage={workspace.mainPassage}
-                        mode={/Daniel|Revelation/.test(workspace.mainPassage) ? 'prophecy' : 'sanctuary'}
-                        language={workspace.language || 'en'}
-                      />
-                    </div>
-                  )}
-                  <div className="cyber-panel rounded-2xl p-5">
-                    <h5 className="text-base font-semibold mb-3">Prophecy Fulfillment Web</h5>
-                    <InteractiveProphecyWeb theme="all" />
-                  </div>
-                  <div className="cyber-panel rounded-2xl p-5">
-                    <h5 className="text-base font-semibold mb-3">Biblical Narrative Map</h5>
-                    <BiblicalNarrativeMap focusPassage={workspace.mainPassage} />
-                  </div>
-                </div>
-              </div>
-                  </>
-                )
-              })()}
+              <WorkspaceStudyReportSection
+                workspace={workspace}
+                hasGeneratedStudyReport={hasGeneratedStudyReport()}
+                onGenerate={(asset) => handleGenerate(asset)}
+                onEditAsset={(asset) => setStudyAssetEditor(asset)}
+                isStudyAssetLoading={isStudyAssetLoading}
+                getStudyAssetLoadingLabel={getStudyAssetLoadingLabel}
+                expandedTextBlocks={expandedTextBlocks}
+                toggleTextBlock={toggleTextBlock}
+                onOpenFullView={() => {
+                  setActivePhase('PASSAGE')
+                  setVisualizationMode('passage')
+                  setActiveSection('visualizations')
+                }}
+              />
             </div>
           )}
           {activeSection === 'coach' && (
-            <div className="space-y-4 relative min-h-full">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-xl font-semibold">Socratic Sermon Coach</h3>
-                  <p className="text-xs text-gray-400 mt-1">
-                    Seminary-style refinement questions after Study Report, Outline, and Manuscript.
-                  </p>
-                </div>
-                <button
-                  onClick={handleSocraticCoachGenerate}
-                  className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                  disabled={actionLoading.includes('coach')}
-                >
-                  {actionLoading.includes('coach') ? 'Generating...' : 'Generate Questions'}
-                </button>
-              </div>
-
-              <div className="cyber-panel rounded-2xl p-5 grid md:grid-cols-2 gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-widest cyber-muted mb-2">Mode</p>
-                  <select
-                    value={coachMode}
-                    onChange={(e) => setCoachMode(e.target.value as 'refine' | 'self_reflection')}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                  >
-                    <option value="refine">Refine Sermon</option>
-                    <option value="self_reflection">Pastor Self-Reflection</option>
-                  </select>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-widest cyber-muted mb-2">Listener Simulation</p>
-                  <select
-                    value={coachListenerProfile}
-                    onChange={(e) => setCoachListenerProfile(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                  >
-                    <option value="general_congregation">General Congregation</option>
-                    <option value="new_believer">New Believer</option>
-                    <option value="skeptic">Skeptic</option>
-                    <option value="teenager">Teenager</option>
-                    <option value="bible_scholar">Bible Scholar</option>
-                    <option value="family_church">Family Church</option>
-                  </select>
-                </div>
-              </div>
-
-              {socraticCoachSession ? (
-                <div className="space-y-4">
-                  <div className="cyber-panel rounded-2xl p-5">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <p className="text-xs uppercase tracking-widest cyber-muted mb-2">Coach + Repair</p>
-                      <button
-                        type="button"
-                        onClick={handleApplyAllCoachRepairs}
-                        disabled={actionLoading.includes('coach-repair-apply') || !!repairJob || pendingCoachRepairPlan.length === 0}
-                        className="cyber-button text-xs px-3 py-2 rounded-full disabled:opacity-60"
-                      >
-                        {actionLoading.includes('coach-repair-apply')
-                          ? 'Queueing...'
-                          : pendingCoachRepairPlan.length > 0
-                            ? `Repair All Pending Sections (${pendingCoachRepairPlan.length})`
-                            : 'All Actions Repaired'}
-                      </button>
-                    </div>
-                    <p className="text-sm text-gray-200">{socraticCoachSession.summary || 'No summary available.'}</p>
-                    <p className="text-xs text-gray-400 mt-2">
-                      Repair actions edit manuscript sections mapped to each question anchor. They do not edit the question text itself.
-                    </p>
-                    {repairJob ? (
-                      <div className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3 text-xs text-cyan-100 mt-3">
-                        <span className="uppercase tracking-widest text-cyan-300 mr-2">Repair Job</span>
-                        {repairJob.state || repairJob.status}
-                        {repairJob.message ? ` · ${repairJob.message}` : ''}
-                      </div>
-                    ) : null}
-                    {pendingCoachRepairPlan.length > 0 ? (
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {pendingCoachRepairPlan.map((item: any, idx: number) => (
-                          <span
-                            key={`${String(item?.issueId || 'pending')}-${idx}`}
-                            className="px-2 py-1 rounded-md text-[10px] uppercase tracking-widest bg-red-500/10 text-red-200 border border-red-500/20"
-                          >
-                            {String(item?.issueType || 'issue')} · {String(item?.severity || 'medium')}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="mt-4 rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
-                        All mapped repair actions are already applied for this manuscript.
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-3">
-                    {(socraticCoachSession.questions || []).map((question: any, index: number) => {
-                      const feedback = coachFeedback?.[question.id]
-                      const repairIssue = getRepairIssueByQuestionId(String(question.id || ''))
-                      const repairIssueId = String(repairIssue?.issueId || '').trim()
-                      const repairResolved = Boolean(repairIssueId) && repairedIssueIds.has(repairIssueId)
-                      const anchor = String(repairIssue?.targetAnchor || question?.sourceAnchor || workspace.mainPassage)
-                      const locked = repairLockedAnchors.includes(anchor)
-                      const answerLoading = actionLoading.includes(`coach-answer-${question.id}`)
-                      const applyOutlineLoading = actionLoading.includes(`coach-apply-outline-${question.id}`)
-                      const applyManuscriptLoading = actionLoading.includes(`coach-apply-manuscript-${question.id}`)
-                      return (
-                        <div key={question.id || index} className="cyber-panel rounded-2xl p-5 space-y-3">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <p className="text-xs uppercase tracking-widest text-cyan-300">
-                                {(question.id || `Q${index + 1}`)} · {question.dimension || 'text_fidelity'}
-                              </p>
-                              <h4 className="text-base font-semibold mt-1">{question.question}</h4>
-                            </div>
-                            <span className="px-2 py-1 rounded-full text-[10px] uppercase tracking-widest bg-black/30 border border-white/10">
-                              {question.severity || 'medium'}
-                            </span>
-                          </div>
-                          <p className="text-xs text-gray-300">
-                            <span className="text-cyan-200">Purpose:</span> {question.purpose || 'Clarify sermon logic and text fidelity.'}
-                          </p>
-                          <p className="text-xs text-gray-300">
-                            <span className="text-cyan-200">Anchor:</span> {question.sourceAnchor || workspace.mainPassage}
-                          </p>
-                          {question.listenerAngle ? (
-                            <p className="text-xs text-gray-300">
-                              <span className="text-cyan-200">Listener Challenge:</span> {question.listenerAngle}
-                            </p>
-                          ) : null}
-                          {repairIssue ? (
-                            <div className="rounded-lg border border-white/10 bg-black/25 p-3 space-y-2">
-                              <div className="flex items-start justify-between gap-3">
-                                <p className="text-xs text-gray-200">
-                                  <span className="uppercase tracking-widest text-cyan-300 mr-2">Repair Action</span>
-                                  {String(repairIssue?.issueType || 'text_fidelity')} · {String(repairIssue?.severity || 'medium')}
-                                  <span className="block text-gray-400 mt-1">{String(repairIssue?.proposedAction || '')}</span>
-                                </p>
-                                {repairResolved ? (
-                                  <span className="text-[10px] px-2 py-1 rounded-full border border-emerald-400/40 text-emerald-200 bg-emerald-500/15 uppercase tracking-widest">
-                                    Repaired
-                                  </span>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setRepairLockedAnchors((prev) =>
-                                        locked ? prev.filter((value) => value !== anchor) : [...prev, anchor],
-                                      )
-                                    }
-                                    className={`text-[10px] px-2 py-1 rounded-full border ${
-                                      locked
-                                        ? 'border-amber-400/40 text-amber-200 bg-amber-500/15'
-                                        : 'border-white/20 text-gray-300 bg-black/30'
-                                    }`}
-                                  >
-                                    {locked ? 'Locked' : 'Lock Anchor'}
-                                  </button>
-                                )}
-                              </div>
-                              <p className="text-[11px] text-cyan-200">Anchor: {anchor}</p>
-                              {repairResolved ? (
-                                <p className="text-[11px] text-emerald-200 pt-1">
-                                  Already applied to the current manuscript version.
-                                </p>
-                              ) : (
-                                <div className="pt-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleApplyCoachRepair(String(question.id || ''))}
-                                    disabled={actionLoading.includes('coach-repair-apply') || !!repairJob}
-                                    className="cyber-button text-xs px-3 py-2 rounded-full disabled:opacity-60"
-                                  >
-                                    {actionLoading.includes('coach-repair-apply') ? 'Queueing...' : 'Repair Manuscript For This Question'}
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          ) : null}
-
-                          <textarea
-                            value={coachAnswers[question.id] || ''}
-                            onChange={(e) =>
-                              setCoachAnswers((prev) => ({ ...prev, [question.id]: e.target.value }))
-                            }
-                            placeholder="Type your answer here..."
-                            className="w-full min-h-[90px] bg-black/40 border border-white/10 rounded-xl px-3 py-2"
-                          />
-                          <button
-                            onClick={() => handleSocraticCoachAnswer(question.id)}
-                            className="cyber-outline text-xs px-3 py-2 rounded-full disabled:opacity-60"
-                            disabled={answerLoading || !String(coachAnswers[question.id] || '').trim()}
-                          >
-                            {answerLoading ? 'Reviewing...' : 'Get Coach Feedback'}
-                          </button>
-
-                          {feedback ? (
-                            <div className="border border-cyan-400/25 bg-cyan-500/5 rounded-xl p-4 space-y-2">
-                              {feedback.affirmation ? (
-                                <p className="text-sm text-cyan-100">
-                                  <span className="text-cyan-300">Affirmation:</span> {feedback.affirmation}
-                                </p>
-                              ) : null}
-                              {feedback.coachFeedback ? (
-                                <p className="text-sm text-gray-200">
-                                  <span className="text-cyan-300">Feedback:</span> {feedback.coachFeedback}
-                                </p>
-                              ) : null}
-                              {feedback.improvementSuggestion ? (
-                                <p className="text-sm text-gray-200">
-                                  <span className="text-cyan-300">Improvement:</span> {feedback.improvementSuggestion}
-                                </p>
-                              ) : null}
-                              {feedback.rewriteHint ? (
-                                <p className="text-sm text-gray-200">
-                                  <span className="text-cyan-300">Rewrite Hint:</span> {feedback.rewriteHint}
-                                </p>
-                              ) : null}
-                              {feedback.nextQuestion ? (
-                                <p className="text-sm text-gray-200">
-                                  <span className="text-cyan-300">Next Question:</span> {feedback.nextQuestion}
-                                </p>
-                              ) : null}
-
-                              <div className="pt-2 flex flex-wrap gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => handleApplyCoachToOutline(question, feedback)}
-                                  disabled={applyOutlineLoading}
-                                  className="cyber-outline text-xs px-3 py-2 rounded-full disabled:opacity-60"
-                                >
-                                  {applyOutlineLoading ? 'Applying...' : 'Push To Outline'}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleApplyCoachToManuscript(question, feedback)}
-                                  disabled={applyManuscriptLoading}
-                                  className="cyber-outline text-xs px-3 py-2 rounded-full disabled:opacity-60"
-                                >
-                                  {applyManuscriptLoading ? 'Applying...' : 'Push To Manuscript'}
-                                </button>
-                              </div>
-                            </div>
-                          ) : null}
-                        </div>
-                      )
-                    })}
-                  </div>
-
-                  {socraticCoachSession.nextStepSuggestion ? (
-                    <div className="cyber-panel rounded-2xl p-4">
-                      <p className="text-xs uppercase tracking-widest cyber-muted mb-2">Next Step</p>
-                      <p className="text-sm text-gray-200">{socraticCoachSession.nextStepSuggestion}</p>
-                    </div>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="cyber-panel rounded-2xl p-6">
-                  <p className="text-gray-200/80">
-                    Generate Socratic questions to challenge your interpretation, strengthen exposition, and tighten applications.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-          {activeSection === 'dna' && (
-            <div className="space-y-4 relative min-h-full">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-xl font-semibold">{dnaText('Sermon DNA', 'ADN del Sermón')}</h3>
-                  <p className="text-xs text-gray-400 mt-1">
-                    {dnaText('Integrity, composition, and theological profile', 'Integridad, composición y perfil teológico')}
-                  </p>
-                </div>
-                <button
-                  onClick={() => handleGenerate('dna')}
-                  className="cyber-button text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                >
-                  {actionLoading.includes('dna') ? dnaText('Analyzing...', 'Analizando...') : dnaText('Run Full DNA', 'Ejecutar ADN Completo')}
-                </button>
-              </div>
-
-              <div className="cyber-panel rounded-2xl p-5 space-y-4">
-                <details
-                  open={dnaFlowExpanded}
-                  onToggle={(event) => setDnaFlowExpanded((event.currentTarget as HTMLDetailsElement).open)}
-                  className="border border-white/10 rounded-xl p-4 bg-black/20"
-                >
-                  <summary className="cursor-pointer text-sm text-cyan-200">
-                    {dnaText('Refine · Flow Visualization', 'Refinar · Visualización de Flujo')}
-                  </summary>
-                  <p className="text-sm text-gray-200 mt-3 mb-4">
-                    {dnaText(
-                      'Inspect movement, pacing, and structural grounding without leaving Sermon DNA.',
-                      'Inspecciona movimiento, ritmo y fundamento estructural sin salir de ADN del Sermón.',
-                    )}
-                  </p>
-                  {(() => {
-                    const selectedOutline = (workspace.outlines?.find((o: any) => o.isSelected) || workspace.outlines?.[0])?.structure || {}
-                    const selectedPointNodes = getOutlinePointNodes(selectedOutline)
-                    return (
-                      <InteractiveSermonFlowSculptor
-                        bigIdea={workspace.theme || workspace.title}
-                        points={selectedOutline?.points || []}
-                        applications={selectedPointNodes.flatMap((point: any) => point.applications || []).length
-                          ? selectedPointNodes.flatMap((point: any) => point.applications || [])
-                          : (workspace.applications || []).map((app: any) => app.content)}
-                        supportingVerses={{}}
-                        illustrations={selectedPointNodes.flatMap((point: any) => point.illustrationIdeas || []).length
-                          ? selectedPointNodes.flatMap((point: any) => point.illustrationIdeas || [])
-                          : (workspace.illustrations || []).map((ill: any) => ill.content)}
-                      />
-                    )
-                  })()}
-                </details>
-              </div>
-
-              <div className="cyber-panel rounded-2xl p-5 space-y-4">
-                <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Layer 1 · Sermon Integrity', 'Capa 1 · Integridad del Sermón')}</p>
-                {dnaIntegrityLoading ? (
-                  <p className="text-sm text-gray-300">{dnaText('Running integrity checks...', 'Ejecutando chequeos de integridad...')}</p>
-                ) : dnaIntegrityReport ? (
-                  <div className="grid md:grid-cols-3 gap-3">
-                    <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Integrity Score', 'Puntaje de Integridad')}</p>
-                      <p className="text-2xl font-semibold text-cyan-200 mt-2">{dnaIntegrityReport.overallScore}%</p>
-                    </div>
-                    <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Passage Alignment', 'Alineación con el Pasaje')}</p>
-                      <p className="text-2xl font-semibold text-cyan-200 mt-2">
-                        {passageAlignmentScore !== null ? `${passageAlignmentScore}%` : '—'}
-                      </p>
-                    </div>
-                    <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Issue Mix', 'Resumen de Problemas')}</p>
-                      <p className="text-sm text-gray-200 mt-2">
-                        {dnaText('Critical', 'Crítico')} {criticalIssuesCount} · {dnaText('Warning', 'Advertencia')} {warningIssuesCount}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-300">{dnaText('No integrity report yet.', 'Aún no hay reporte de integridad.')}</p>
-                )}
-              </div>
-
-              <div className="cyber-panel rounded-2xl p-5 space-y-4">
-                <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Layer 2 · Sermon Composition', 'Capa 2 · Composición del Sermón')}</p>
-                <div className="grid md:grid-cols-3 gap-3">
-                  <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                    <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Sermon Type', 'Tipo de Sermón')}</p>
-                    <p className="text-lg font-semibold text-gray-100 mt-2">{sermonType}</p>
-                  </div>
-                  <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                    <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Outline Points', 'Puntos del Bosquejo')}</p>
-                    <p className="text-lg font-semibold text-gray-100 mt-2">{outlinePointsForDna.length || 0}</p>
-                  </div>
-                  <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                    <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Estimated Delivery', 'Duración Estimada')}</p>
-                    <p className="text-lg font-semibold text-gray-100 mt-2">{estimatedMinutesDna ? `${estimatedMinutesDna} min` : '—'}</p>
-                  </div>
-                </div>
-                <div className="grid md:grid-cols-3 gap-3">
-                  <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                    <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Explanation', 'Explicación')}</p>
-                    <p className="text-xl font-semibold text-cyan-200 mt-2">{explanationPct}%</p>
-                  </div>
-                  <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                    <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Application', 'Aplicación')}</p>
-                    <p className="text-xl font-semibold text-cyan-200 mt-2">{applicationPct}%</p>
-                  </div>
-                  <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                    <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Illustration', 'Ilustración')}</p>
-                    <p className="text-xl font-semibold text-cyan-200 mt-2">{illustrationPct}%</p>
-                  </div>
-                </div>
-                <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                  <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Scripture Usage', 'Uso de Escritura')}</p>
-                  <p className="text-sm text-gray-200 mt-2">
-                    {dnaText('References in manuscript', 'Referencias en manuscrito')}: {scriptureReferencesInManuscript.length} · {dnaText('Paragraphs', 'Párrafos')}: {paragraphCount}
-                  </p>
-                </div>
-              </div>
-
-              <div className="cyber-panel rounded-2xl p-5 space-y-4">
-                <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Layer 3 · Theological Profile', 'Capa 3 · Perfil Teológico')}</p>
-                {latestDnaAnalysis ? (
-                  <div className="space-y-4">
-                    <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                      <p className="text-xs uppercase tracking-widest cyber-muted mb-2">{dnaText('DNA Summary', 'Resumen ADN')}</p>
-                      <p className="text-sm text-gray-300 whitespace-pre-wrap">{latestDnaAnalysis.summary}</p>
-                    </div>
-                    <div className="grid md:grid-cols-2 gap-3">
-                      <div className="border border-white/10 rounded-xl p-4 bg-black/30">
-                        <p className="text-xs uppercase tracking-widest cyber-muted mb-2">{dnaText('Theological Emphasis', 'Énfasis Teológico')}</p>
-                        {theologicalThemeCounts.length ? (
-                          <div className="flex flex-wrap gap-2">
-                            {theologicalThemeCounts.map(([theme, count]) => (
-                              <span
-                                key={theme}
-                                className="px-2 py-1 rounded-md text-[10px] uppercase tracking-widest bg-cyan-500/10 text-cyan-200 border border-cyan-500/20"
-                              >
-                                {theme} {count > 1 ? `(${count})` : ''}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-gray-300">{dnaText('No themes detected yet.', 'Aún no se detectan temas.')}</p>
-                        )}
-                      </div>
-                      <div className="border border-white/10 rounded-xl p-4 bg-black/30 space-y-3">
-                        <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Core Scores', 'Puntajes Base')}</p>
-                        {latestDnaAnalysis.scores && Object.entries(latestDnaAnalysis.scores).map(([key, value]) => (
-                          <div key={key}>
-                            <div className="flex justify-between text-xs uppercase tracking-widest cyber-muted mb-1">
-                              <span>{String(key)}</span>
-                              <span>{Number(value)}/10</span>
-                            </div>
-                            <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-                              <div
-                                className="h-2 rounded-full bg-cyan-400"
-                                style={{ width: `${Math.min(100, Number(value) * 10)}%` }}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <p className="text-xs cyber-muted">
-                      {new Date(latestDnaAnalysis.createdAt).toLocaleString()}
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-gray-100/90">{dnaText('No DNA analysis yet. Run Full DNA.', 'Aún no hay análisis ADN. Ejecuta ADN Completo.')}</p>
-                )}
-              </div>
-
-              {dnaIntegrityReport?.issues?.length ? (
-                <div className="cyber-panel rounded-2xl p-5 space-y-3">
-                  <p className="text-xs uppercase tracking-widest cyber-muted">{dnaText('Integrity Findings', 'Hallazgos de Integridad')}</p>
-                  <div className="space-y-2">
-                    {dnaIntegrityReport.issues.slice(0, 8).map((issue, index) => (
-                      <div key={`${issue.category}-${index}`} className="border border-white/10 rounded-lg p-3 bg-black/30">
-                        <p className="text-sm text-gray-200">{issue.message}</p>
-                        <p className="text-[11px] uppercase tracking-widest text-cyan-200/70 mt-1">
-                          {issue.severity} · {issue.category}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {/* Keep existing detailed checker available */}
-              <div className="pt-2">
-                <details
-                  open={dnaIntegrityExpanded}
-                  onToggle={(event) => setDnaIntegrityExpanded((event.currentTarget as HTMLDetailsElement).open)}
-                  className="border border-white/10 rounded-xl p-4 bg-black/20"
-                >
-                  <summary className="cursor-pointer text-sm text-cyan-200">
-                    {dnaText('Open Detailed Integrity Checker', 'Abrir Chequeador de Integridad Detallado')}
-                  </summary>
-                  <div className="mt-4">
-                    <SermonIntegrityDashboard workspaceId={workspaceId} />
-                  </div>
-                </details>
-              </div>
-            </div>
+            <WorkspaceRefineSection
+              workspace={workspace}
+              workspaceId={workspaceId}
+              actionLoading={actionLoading}
+              isSpanishWorkspace={isSpanishWorkspace}
+              dnaIntegrityReport={dnaIntegrityReport}
+              dnaIntegrityLoading={dnaIntegrityLoading}
+              dnaIntegrityExpanded={dnaIntegrityExpanded}
+              setDnaIntegrityExpanded={setDnaIntegrityExpanded}
+              dnaFlowExpanded={dnaFlowExpanded}
+              setDnaFlowExpanded={setDnaFlowExpanded}
+              dnaText={dnaText}
+              latestDnaAnalysis={latestDnaAnalysis}
+              sermonType={sermonType}
+              outlinePointsForDna={outlinePointsForDna}
+              estimatedMinutesDna={estimatedMinutesDna}
+              explanationPct={explanationPct}
+              applicationPct={applicationPct}
+              illustrationPct={illustrationPct}
+              scriptureReferencesInManuscript={scriptureReferencesInManuscript}
+              paragraphCount={paragraphCount}
+              theologicalThemeCounts={theologicalThemeCounts}
+              criticalIssuesCount={criticalIssuesCount}
+              warningIssuesCount={warningIssuesCount}
+              passageAlignmentScore={passageAlignmentScore}
+              getOutlinePointNodes={getOutlinePointNodes}
+              handleGenerateDna={() => handleGenerate('dna')}
+              socraticCoachSession={socraticCoachSession}
+              coachMode={coachMode}
+              setCoachMode={setCoachMode}
+              coachListenerProfile={coachListenerProfile}
+              setCoachListenerProfile={setCoachListenerProfile}
+              coachAnswers={coachAnswers}
+              setCoachAnswers={setCoachAnswers}
+              coachFeedback={coachFeedback}
+              repairLockedAnchors={repairLockedAnchors}
+              setRepairLockedAnchors={setRepairLockedAnchors}
+              repairJob={repairJob}
+              pendingCoachRepairPlan={pendingCoachRepairPlan}
+              handleSocraticCoachGenerate={handleSocraticCoachGenerate}
+              handleSocraticCoachAnswer={handleSocraticCoachAnswer}
+              handleApplyAllCoachRepairs={handleApplyAllCoachRepairs}
+              handleApplyCoachRepair={handleApplyCoachRepair}
+              handleApplyCoachToOutline={handleApplyCoachToOutline}
+              handleApplyCoachToManuscript={handleApplyCoachToManuscript}
+              getRepairIssueByQuestionId={getRepairIssueByQuestionId}
+              repairedIssueIds={repairedIssueIds}
+            />
           )}
           {activeSection === 'visualizations' && (
-            <div className="space-y-6 relative min-h-full">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.4em] text-cyan-400">Visualizations</p>
-                  <h3 className="text-2xl font-semibold">3D Insight Tools</h3>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
+            advancedMode ? (
+              <WorkspaceVisualizationsSection
+                workspace={workspace}
+                visualizationMode={visualizationMode}
+                setVisualizationMode={setVisualizationMode}
+                setActivePhase={setActivePhase}
+              />
+            ) : (
+              <div className="cyber-panel rounded-2xl p-6">
+                <p className="text-xs uppercase tracking-[0.25em] text-cyan-300 mb-2">Advanced Mode</p>
+                <h3 className="text-xl font-semibold text-white mb-2">Visualizations are gated</h3>
+                <p className="text-sm text-gray-200/80 mb-4">
+                  Turn on Advanced Mode to access canonical constellation, prophecy web, narrative map, and flow sculptor tools.
+                </p>
                 <button
-                  onClick={() => {
-                    setVisualizationMode('passage')
-                    setActivePhase('PASSAGE')
-                  }}
-                  className={visualizationMode === 'passage' ? 'cyber-button text-xs px-4 py-2 rounded-full' : 'cyber-outline text-xs px-4 py-2 rounded-full'}
+                  type="button"
+                  onClick={() => handleToggleAdvancedMode(true)}
+                  className="cyber-button text-xs px-4 py-2 rounded-full"
                 >
-                  Passage Tools
-                </button>
-                <button
-                  onClick={() => {
-                    setVisualizationMode('refine')
-                    setActivePhase('REFINE')
-                  }}
-                  className={visualizationMode === 'refine' ? 'cyber-button text-xs px-4 py-2 rounded-full' : 'cyber-outline text-xs px-4 py-2 rounded-full'}
-                >
-                  Refine Flow
+                  Enable Advanced Mode
                 </button>
               </div>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="cyber-panel rounded-2xl p-5">
-                  <p className="text-xs uppercase tracking-[0.25em] text-cyan-300 mb-2">Passage</p>
-                  <p className="text-sm text-gray-200/80">
-                    Canonical Constellation, Prophecy Web, Sanctuary connections, and Narrative Map belong to passage discovery.
-                  </p>
-                </div>
-                <div className="cyber-panel rounded-2xl p-5">
-                  <p className="text-xs uppercase tracking-[0.25em] text-cyan-300 mb-2">Refine</p>
-                  <p className="text-sm text-gray-200/80">
-                    Sermon Flow Sculptor belongs to refinement. Use it after outline and manuscript work to test movement and grounding.
-                  </p>
-                </div>
-              </div>
-              <div className="cyber-panel rounded-2xl p-5">
-                <p className="text-xs uppercase tracking-[0.25em] text-cyan-300 mb-2">Legend</p>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  <span className="px-2 py-1 rounded-full border border-cyan-400/40 bg-cyan-500/10 text-cyan-200">solid = quotation / fulfillment</span>
-                  <span className="px-2 py-1 rounded-full border border-green-400/40 bg-green-500/10 text-green-200">dashed = thematic</span>
-                  <span className="px-2 py-1 rounded-full border border-purple-400/40 bg-purple-500/10 text-purple-200">dotted = typology / lexical</span>
-                  <span className="px-2 py-1 rounded-full border border-red-400/40 bg-red-500/10 text-red-200">red warnings = weak grounding</span>
-                </div>
-              </div>
-              <div className="space-y-6">
-                {visualizationMode === 'passage' && (
-                  <>
-                <div className="cyber-panel rounded-2xl p-6">
-                  <h4 className="text-lg font-semibold mb-2">Canonical Constellation</h4>
-                  <p className="text-xs uppercase tracking-[0.25em] text-cyan-300 mb-2">What This Answers</p>
-                  <p className="text-base text-cyan-100 mb-2">Where does this passage connect across Scripture?</p>
-                  <p className="text-sm text-gray-200/80 mb-4">
-                    Visualize cross-testament connections for {workspace.mainPassage}.
-                  </p>
-                  <InteractiveCanonicalConstellation focusPassage={workspace.mainPassage} />
-                </div>
-                
-                {/* Sanctuary/Prophecy Mapper for relevant passages */}
-                {workspace.mainPassage && (
-                  /Daniel|Revelation|Hebrews|Leviticus|Exodus 25/.test(workspace.mainPassage) && (
-                    <div className="cyber-panel rounded-2xl p-6">
-                      <h4 className="text-lg font-semibold mb-2">Sanctuary & Prophecy Connections</h4>
-                      <p className="text-sm text-gray-200/80 mb-4">
-                        Trace sanctuary and prophetic connections for {workspace.mainPassage}.
-                      </p>
-                      <SanctuaryProphecyMapper 
-                        passage={workspace.mainPassage}
-                        mode={/Daniel|Revelation/.test(workspace.mainPassage) ? 'prophecy' : 'sanctuary'}
-                        language={workspace.language || 'en'}
-                      />
-                    </div>
-                  )
-                )}
-                
-                <div className="cyber-panel rounded-2xl p-6">
-                  <h4 className="text-lg font-semibold mb-2">Prophecy Fulfillment Web</h4>
-                  <p className="text-xs uppercase tracking-[0.25em] text-cyan-300 mb-2">What This Answers</p>
-                  <p className="text-base text-cyan-100 mb-2">How do prophecy and fulfillment relate?</p>
-                  <p className="text-sm text-gray-200/80 mb-4">
-                    Explore Daniel/Revelation connections and thematic threads.
-                  </p>
-                  <InteractiveProphecyWeb theme="all" />
-                </div>
-                  </>
-                )}
-                {visualizationMode === 'refine' && (
-                <div className="cyber-panel rounded-2xl p-6">
-                  <h4 className="text-lg font-semibold mb-2">Sermon Flow Sculptor</h4>
-                  <p className="text-xs uppercase tracking-[0.25em] text-cyan-300 mb-2">What This Answers</p>
-                  <p className="text-base text-cyan-100 mb-2">Is my sermon structurally and biblically grounded?</p>
-                  <p className="text-sm text-gray-200/80 mb-4">
-                    Map your outline into a spatial integrity model.
-                  </p>
-                  {(() => {
-                    const selectedOutline = (workspace.outlines?.find((o: any) => o.isSelected) || workspace.outlines?.[0])?.structure || {}
-                    const selectedPointNodes = getOutlinePointNodes(selectedOutline)
-                    return (
-                  <InteractiveSermonFlowSculptor
-                    bigIdea={workspace.theme || workspace.title}
-                    points={selectedOutline?.points || []}
-                    applications={selectedPointNodes.flatMap((point: any) => point.applications || []).length
-                      ? selectedPointNodes.flatMap((point: any) => point.applications || [])
-                      : (workspace.applications || []).map((app: any) => app.content)}
-                    supportingVerses={{}}
-                    illustrations={selectedPointNodes.flatMap((point: any) => point.illustrationIdeas || []).length
-                      ? selectedPointNodes.flatMap((point: any) => point.illustrationIdeas || [])
-                      : (workspace.illustrations || []).map((ill: any) => ill.content)}
-                  />
-                    )
-                  })()}
-                </div>
-                )}
-                {visualizationMode === 'passage' && (
-                <div className="cyber-panel rounded-2xl p-6">
-                  <h4 className="text-lg font-semibold mb-2">Biblical Narrative Map</h4>
-                  <p className="text-xs uppercase tracking-[0.25em] text-cyan-300 mb-2">What This Answers</p>
-                  <p className="text-base text-cyan-100 mb-2">Where does this passage sit in the redemptive storyline?</p>
-                  <p className="text-sm text-gray-200/80 mb-4">
-                    Timeline map from Creation to New Creation with canonical links around {workspace.mainPassage}.
-                  </p>
-                  <BiblicalNarrativeMap focusPassage={workspace.mainPassage} />
-                </div>
-                )}
-              </div>
-            </div>
+            )
           )}
           {activeSection === 'media' && (
-            <MediaProductionStudio 
-              workspace={workspace} 
-              token={localStorage.getItem('token') || ''} 
-            />
+            <div className="space-y-6">
+              <MediaProductionStudio
+                workspace={workspace}
+                token={localStorage.getItem('token') || ''}
+              />
+              <WorkspaceExportPanel
+                workspace={workspace}
+                token={localStorage.getItem('token') || ''}
+              />
+            </div>
           )}
           {activeSection === 'church-settings' && (
             <ChurchSettingsPanel token={localStorage.getItem('token') || ''} />
@@ -8026,7 +6093,32 @@ export default function WorkspaceDetailPage() {
                 Close
               </button>
             </div>
-            {renderRail()}
+            <WorkspaceCommandRail
+              workspace={workspace}
+              advancedMode={advancedMode}
+              progress={progress}
+              activeSection={activeSection}
+              activePhase={activePhase}
+              onSectionChange={(section) => {
+                if (section === 'visualizations' && !advancedMode) {
+                  setError('Enable Advanced Mode to access visualizations.')
+                  setActiveSection('study-report')
+                  setActivePhase('STUDY')
+                  return
+                }
+                setActiveSection(section)
+                const nextPhase = sectionPhaseMap[section]
+                if (nextPhase) setActivePhase(nextPhase)
+                if (section === 'visualizations') {
+                  setVisualizationMode(nextPhase === 'REFINE' ? 'refine' : 'passage')
+                }
+              }}
+              onPhaseChange={setActivePhase}
+              onVisualizationModeChange={setVisualizationMode}
+              onToggleAdvancedMode={handleToggleAdvancedMode}
+              onCloseRail={() => setRailOpen(false)}
+              onNextStepAction={handleNextStepAction}
+            />
           </div>
         </div>
       )}
