@@ -3,6 +3,7 @@
 import { Book } from 'lucide-react'
 import SermonCore, { SermonCoreData } from '@/components/SermonCore'
 import WorkspaceOutlineControls from '@/components/WorkspaceOutlineControls'
+import { renderCollapsibleMarkdown, renderOutlinePointSection } from '@/components/workspace-render.helpers'
 import type {
   WorkspaceFlowNarrativeEntry,
   WorkspaceOutlineDraft,
@@ -32,8 +33,8 @@ interface WorkspaceOutlinePhaseProps {
   getFlowNarrativeEntries: (outline: WorkspaceOutlineItem, pointNodes: WorkspaceOutlinePoint[]) => WorkspaceFlowNarrativeEntry[]
   getOutlineTitle: (outline: WorkspaceOutlineItem) => string
   getOutlineBigIdea: (outline: WorkspaceOutlineItem) => string
-  renderCollapsibleMarkdown: (text: string, key: string, collapsedHeight?: string) => JSX.Element | null
-  renderOutlinePointSection: (label: string, items: string[] | undefined, key: string, colorClass?: string, onItemClick?: (value: string) => void) => JSX.Element | null
+  expandedTextBlocks: Record<string, boolean>
+  toggleTextBlock: (key: string) => void
   openReferencePreview: (reference: string, context?: string) => void
   onOpenPromptEditor: (type: 'outline') => void
   onGenerateOutlines: () => void
@@ -60,8 +61,8 @@ export default function WorkspaceOutlinePhase({
   getFlowNarrativeEntries,
   getOutlineTitle,
   getOutlineBigIdea,
-  renderCollapsibleMarkdown,
-  renderOutlinePointSection,
+  expandedTextBlocks,
+  toggleTextBlock,
   openReferencePreview,
   onOpenPromptEditor,
   onGenerateOutlines,
@@ -181,7 +182,7 @@ export default function WorkspaceOutlinePhase({
                       <div className="md:col-span-8 border border-white/10 rounded-xl p-3 bg-black/20">
                         <p className="text-[10px] uppercase tracking-widest cyber-muted">Big Idea</p>
                         <div className="mt-1">
-                          {renderCollapsibleMarkdown(getOutlineBigIdea(outline), `${outline.id}-bigidea`, 'max-h-20')}
+                          {renderCollapsibleMarkdown(getOutlineBigIdea(outline), `${outline.id}-bigidea`, expandedTextBlocks, toggleTextBlock, 'max-h-20')}
                         </div>
                       </div>
                       <div className="md:col-span-4 border border-white/10 rounded-xl p-3 bg-black/20">
@@ -200,7 +201,7 @@ export default function WorkspaceOutlinePhase({
                                 <p className="text-[10px] uppercase tracking-widest text-cyan-300/90">{entry.label}</p>
                                 <p className="text-sm text-cyan-100 font-medium mt-1 leading-relaxed">{entry.title}</p>
                                 <div className="mt-2 text-xs">
-                                  {renderCollapsibleMarkdown(entry.detail, `${outline.id}-flow-detail-${entry.id}`, 'max-h-20')}
+                                  {renderCollapsibleMarkdown(entry.detail, `${outline.id}-flow-detail-${entry.id}`, expandedTextBlocks, toggleTextBlock, 'max-h-20')}
                                 </div>
                               </div>
                               {index < flowNarrativeEntries.length - 1 && (
@@ -284,14 +285,16 @@ export default function WorkspaceOutlinePhase({
                                 {(point.summary || point.movement) && (
                                   <div className="mt-2 border border-cyan-400/20 rounded-lg p-2 bg-cyan-500/5">
                                     <p className="text-[10px] uppercase tracking-widest text-cyan-300/90">Preaching Insight</p>
-                                    {renderCollapsibleMarkdown(insightText, `${outline.id}-${index}-insight`, 'max-h-20')}
+                                    {renderCollapsibleMarkdown(insightText, `${outline.id}-${index}-insight`, expandedTextBlocks, toggleTextBlock, 'max-h-20')}
                                   </div>
                                 )}
-                                {renderOutlinePointSection('Subpoints', point.subpoints, `${outline.id}-${index}-subpoints`, 'text-gray-200')}
+                                {renderOutlinePointSection('Subpoints', point.subpoints, `${outline.id}-${index}-subpoints`, expandedTextBlocks, toggleTextBlock, 'text-gray-200')}
                                 {renderOutlinePointSection(
                                   'Supporting Verses',
                                   supportingVerses,
                                   `${outline.id}-${index}-verses`,
+                                  expandedTextBlocks,
+                                  toggleTextBlock,
                                   'text-cyan-200',
                                   (verse: string) => {
                                     openReferencePreview(
@@ -300,11 +303,11 @@ export default function WorkspaceOutlinePhase({
                                     )
                                   },
                                 )}
-                                {renderOutlinePointSection('Themes', point.canonicalThemes, `${outline.id}-${index}-themes`, 'text-emerald-200')}
-                                {renderOutlinePointSection('Applications', point.applications, `${outline.id}-${index}-apps`, 'text-amber-200')}
-                                {renderOutlinePointSection('Discussion Questions', point.discussionQuestions, `${outline.id}-${index}-questions`, 'text-sky-200')}
-                                {renderOutlinePointSection('Illustration Ideas', point.illustrationIdeas, `${outline.id}-${index}-illustrations`, 'text-rose-200')}
-                                {renderOutlinePointSection('Media Suggestions', point.mediaSuggestions, `${outline.id}-${index}-media`, 'text-violet-200')}
+                                {renderOutlinePointSection('Themes', point.canonicalThemes, `${outline.id}-${index}-themes`, expandedTextBlocks, toggleTextBlock, 'text-emerald-200')}
+                                {renderOutlinePointSection('Applications', point.applications, `${outline.id}-${index}-apps`, expandedTextBlocks, toggleTextBlock, 'text-amber-200')}
+                                {renderOutlinePointSection('Discussion Questions', point.discussionQuestions, `${outline.id}-${index}-questions`, expandedTextBlocks, toggleTextBlock, 'text-sky-200')}
+                                {renderOutlinePointSection('Illustration Ideas', point.illustrationIdeas, `${outline.id}-${index}-illustrations`, expandedTextBlocks, toggleTextBlock, 'text-rose-200')}
+                                {renderOutlinePointSection('Media Suggestions', point.mediaSuggestions, `${outline.id}-${index}-media`, expandedTextBlocks, toggleTextBlock, 'text-violet-200')}
                                 {Array.isArray(point.egwSupport) && point.egwSupport.length > 0 && (
                                   <div className="mt-3">
                                     <p className="text-[10px] uppercase tracking-widest text-cyan-300/90 mb-2">EGW Support</p>
@@ -325,7 +328,7 @@ export default function WorkspaceOutlinePhase({
                                     </div>
                                   </div>
                                 )}
-                                {renderOutlinePointSection('References', point.references, `${outline.id}-${index}-references`, 'text-fuchsia-200')}
+                                {renderOutlinePointSection('References', point.references, `${outline.id}-${index}-references`, expandedTextBlocks, toggleTextBlock, 'text-fuchsia-200')}
                               </div>
                             )
                           })}

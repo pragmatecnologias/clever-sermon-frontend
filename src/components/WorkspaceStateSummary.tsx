@@ -3,159 +3,7 @@
 import { useEffect, useState } from 'react'
 import { ArrowRight, CheckCircle2, Layers3, Loader2, RotateCcw, Sparkles } from 'lucide-react'
 import { createWorkspaceApiClient } from '@/lib/api/openapi-client'
-
-type WorkspaceStateResponse = {
-  activePhase: 'THEME' | 'PASSAGE' | 'STUDY' | 'OUTLINE' | 'WRITE' | 'REFINE' | 'DELIVER'
-  activeSection: string
-  progress: {
-    themeConfigured: boolean
-    passageExplored: boolean
-    studyGenerated: boolean
-    outlineCreated: boolean
-    manuscriptWritten: boolean
-    refineCompleted: boolean
-    deliverPrepared: boolean
-  }
-  artifacts: {
-    outlines: number
-    manuscripts: number
-    studyReports: number
-    applications: number
-    illustrations: number
-    citations: number
-  }
-  nextAction: {
-    phase: string
-    section: string
-    action: string
-    label: string
-    description: string
-  }
-  activeOutline?: {
-    id: string
-    title: string
-    isSelected: boolean
-    pointCount: number
-  } | null
-  outlineHistory?: Array<{
-    id: string
-    title: string
-    revisionLabel?: string
-    archivedAt?: string
-    pointCount?: number
-  }>
-  outlineComparison?: {
-    previousRevisionLabel: string | null
-    pointDelta: number | null
-    titleChanged: boolean
-  } | null
-  activeManuscript?: {
-    id: string
-    outlineId: string | null
-    wordCount: number | null
-    estimatedMinutes: number | null
-  } | null
-  manuscriptHistory?: Array<{
-    id: string
-    outlineId: string | null
-    revisionLabel?: string
-    archivedAt?: string
-    wordCount?: number | null
-    estimatedMinutes?: number | null
-  }>
-  manuscriptComparison?: {
-    previousRevisionLabel: string | null
-    wordDelta: number | null
-    minuteDelta: number | null
-    outlineChanged: boolean
-  } | null
-  latestIntegrityReport?: {
-    overallScore?: number
-    balanced?: boolean
-    issueCount?: number
-    strengthCount?: number
-    criticalIssueCount?: number
-    warningIssueCount?: number
-    reviewedIssueCount?: number
-    updatedAt?: string
-  } | null
-  mediaPack?: {
-    status?: 'draft' | 'ready' | 'outdated'
-    generatedAt?: string
-    sourceOutlineId?: string | null
-    sourceManuscriptId?: string | null
-    sourceStudyReportId?: string | null
-    slideCount?: number
-    audioEnabled?: boolean
-    musicEnabled?: boolean
-    videoEnabled?: boolean
-    exportPrepared?: boolean
-  } | null
-  exportPack?: {
-    status?: 'draft' | 'ready' | 'outdated'
-    generatedAt?: string
-    sourceOutlineId?: string | null
-    sourceManuscriptId?: string | null
-    sourceStudyReportId?: string | null
-    artifacts?: Array<{
-      type: 'pptx' | 'pdf' | 'docx' | 'study-report'
-      label: string
-      status?: 'pending' | 'ready' | 'downloaded' | 'outdated'
-      filename?: string
-      url?: string | null
-    }>
-  } | null
-  integrityIssueLedger?: Array<{
-    id: string
-    severity?: string
-    category?: string
-    message?: string
-    affectedItem?: string
-    decision?: string
-    note?: string
-    status?: string
-    updatedAt?: string
-  }>
-  integrityIssueReviews?: Array<{
-    issueId: string
-    decision: string
-    note?: string
-    updatedAt: string
-    issueMessage?: string
-    severity?: string
-    category?: string
-    affectedItem?: string
-  }>
-  claimLedger?: Array<{
-    id: string
-    claimText: string
-    claimType: string
-    supportLevel: string
-    sourceType: string
-    sourceIds: string[]
-    location?: string
-    verified?: boolean
-  }>
-  claimReviewDecisions?: Array<{
-    claimId: string
-    decision: string
-    updatedAt: string
-  }>
-  sourceLedger?: Array<{
-    id: string
-    sourceType: string
-    label: string
-    reference?: string
-    verified?: boolean
-  }>
-  workspace: {
-    title: string
-    mainPassage: string
-    status: string
-    egwEnabled?: boolean
-    language?: string
-  }
-}
+import type { WorkspaceStateResponse } from '@/lib/api/openapi-client'
 
 const phaseLabels: Record<WorkspaceStateResponse['activePhase'], string> = {
   THEME: 'Theme',
@@ -473,7 +321,7 @@ export default function WorkspaceStateSummary({ workspaceId, state: initialState
         <div className="rounded-xl border border-white/10 bg-black/20 p-3">
           <p className="text-[10px] uppercase tracking-[0.25em] text-gray-400">Support</p>
           <p className="mt-1 text-sm font-semibold text-white">
-            {state.claimLedger?.filter((item) => item.supportLevel === 'supported').length || 0} supported
+            {(state.claimLedger || []).filter((item: WorkspaceStateResponse['claimLedger'][number]) => item.supportLevel === 'supported').length || 0} supported
           </p>
         </div>
         <div className="rounded-xl border border-white/10 bg-black/20 p-3">
@@ -516,7 +364,7 @@ export default function WorkspaceStateSummary({ workspaceId, state: initialState
             </button>
           </div>
           <div className="mt-3 space-y-2">
-            {(state.outlineHistory || []).slice(0, 3).map((item, index) => (
+            {(state.outlineHistory || []).slice(0, 3).map((item: WorkspaceStateResponse['outlineHistory'][number], index) => (
               <div key={`${item.id}-${index}`} className="rounded-xl border border-white/10 bg-black/30 p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -563,7 +411,7 @@ export default function WorkspaceStateSummary({ workspaceId, state: initialState
             </button>
           </div>
           <div className="mt-3 space-y-2">
-            {(state.manuscriptHistory || []).slice(0, 3).map((item, index) => (
+            {(state.manuscriptHistory || []).slice(0, 3).map((item: WorkspaceStateResponse['manuscriptHistory'][number], index) => (
               <div key={`${item.id}-${index}`} className="rounded-xl border border-white/10 bg-black/30 p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -608,8 +456,10 @@ export default function WorkspaceStateSummary({ workspaceId, state: initialState
             <span className="text-xs text-gray-400">{integrityIssues.length} item(s)</span>
           </div>
           <div className="mt-3 space-y-2 max-h-72 overflow-y-auto pr-1">
-            {integrityIssues.map((issue) => {
-              const reviewed = reviewedIntegrityIssues.find((item) => item.issueId === issue.id)
+            {integrityIssues.map((issue: WorkspaceStateResponse['integrityIssueLedger'][number]) => {
+              const reviewed = reviewedIntegrityIssues.find(
+                (item: WorkspaceStateResponse['integrityIssueReviews'][number]) => item.issueId === issue.id,
+              )
               return (
                 <div key={issue.id} className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2">
                   <div className="flex flex-wrap items-start justify-between gap-3">

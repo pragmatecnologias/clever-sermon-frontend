@@ -2,6 +2,7 @@
 
 import SermonIntegrityDashboard from '@/components/SermonIntegrityDashboard'
 import InteractiveSermonFlowSculptor from '@/components/InteractiveSermonFlowSculptor'
+import { getLatestManuscriptRepairIssues } from '@/components/workspace-metadata.helpers'
 
 interface WorkspaceRefineSectionProps {
   workspace: any
@@ -41,15 +42,15 @@ interface WorkspaceRefineSectionProps {
   repairLockedAnchors: string[]
   setRepairLockedAnchors: (value: string[] | ((prev: string[]) => string[])) => void
   repairJob: any
-  pendingCoachRepairPlan: any[]
+  pendingCoachRepairPlan?: any[]
   handleSocraticCoachGenerate: () => void
   handleSocraticCoachAnswer: (questionId: string) => void
   handleApplyAllCoachRepairs: () => void
   handleApplyCoachRepair: (questionId: string) => void
   handleApplyCoachToOutline: (question: any, feedback: any) => void
   handleApplyCoachToManuscript: (question: any, feedback: any) => void
-  getRepairIssueByQuestionId: (questionId: string) => any
-  repairedIssueIds: Set<string>
+  getRepairIssueByQuestionId?: (questionId: string) => any
+  repairedIssueIds?: Set<string>
 }
 
 export default function WorkspaceRefineSection({
@@ -100,6 +101,20 @@ export default function WorkspaceRefineSection({
   getRepairIssueByQuestionId,
   repairedIssueIds,
 }: WorkspaceRefineSectionProps) {
+  const resolvedRepairedIssueIds = repairedIssueIds || new Set<string>(getLatestManuscriptRepairIssues(workspace))
+  const resolvedPendingCoachRepairPlan =
+    pendingCoachRepairPlan ||
+    (socraticCoachSession?.repairPlan || []).filter((item: any) => {
+      const issueId = String(item?.issueId || '').trim()
+      return issueId && !resolvedRepairedIssueIds.has(issueId)
+    })
+  const resolveRepairIssueByQuestionId =
+    getRepairIssueByQuestionId ||
+    ((questionId: string) => {
+      const plan = Array.isArray(socraticCoachSession?.repairPlan) ? socraticCoachSession.repairPlan : []
+      return plan.find((item: any) => String(item?.questionId || '').trim() === String(questionId || '').trim())
+    })
+
   return (
     <div className="space-y-4 relative min-h-full">
       <div className="flex items-center justify-between mb-4">
@@ -155,13 +170,13 @@ export default function WorkspaceRefineSection({
               <button
                 type="button"
                 onClick={handleApplyAllCoachRepairs}
-                disabled={actionLoading.includes('coach-repair-apply') || !!repairJob || pendingCoachRepairPlan.length === 0}
+                disabled={actionLoading.includes('coach-repair-apply') || !!repairJob || resolvedPendingCoachRepairPlan.length === 0}
                 className="cyber-button text-xs px-3 py-2 rounded-full disabled:opacity-60"
               >
                 {actionLoading.includes('coach-repair-apply')
                   ? 'Queueing...'
-                  : pendingCoachRepairPlan.length > 0
-                    ? `Repair All Pending Sections (${pendingCoachRepairPlan.length})`
+                  : resolvedPendingCoachRepairPlan.length > 0
+                    ? `Repair All Pending Sections (${resolvedPendingCoachRepairPlan.length})`
                     : 'All Actions Repaired'}
               </button>
             </div>
@@ -176,9 +191,9 @@ export default function WorkspaceRefineSection({
                 {repairJob.message ? ` · ${repairJob.message}` : ''}
               </div>
             ) : null}
-            {pendingCoachRepairPlan.length > 0 ? (
+            {resolvedPendingCoachRepairPlan.length > 0 ? (
               <div className="mt-4 flex flex-wrap gap-2">
-                {pendingCoachRepairPlan.map((item: any, idx: number) => (
+                {resolvedPendingCoachRepairPlan.map((item: any, idx: number) => (
                   <span
                     key={`${String(item?.issueId || 'pending')}-${idx}`}
                     className="px-2 py-1 rounded-md text-[10px] uppercase tracking-widest bg-red-500/10 text-red-200 border border-red-500/20"
@@ -197,9 +212,9 @@ export default function WorkspaceRefineSection({
           <div className="space-y-3">
             {(socraticCoachSession.questions || []).map((question: any, index: number) => {
               const feedback = coachFeedback?.[question.id]
-              const repairIssue = getRepairIssueByQuestionId(String(question.id || ''))
+              const repairIssue = resolveRepairIssueByQuestionId(String(question.id || ''))
               const repairIssueId = String(repairIssue?.issueId || '').trim()
-              const repairResolved = Boolean(repairIssueId) && repairedIssueIds.has(repairIssueId)
+              const repairResolved = Boolean(repairIssueId) && resolvedRepairedIssueIds.has(repairIssueId)
               const anchor = String(repairIssue?.targetAnchor || question?.sourceAnchor || workspace.mainPassage)
               const locked = repairLockedAnchors.includes(anchor)
               const answerLoading = actionLoading.includes(`coach-answer-${question.id}`)

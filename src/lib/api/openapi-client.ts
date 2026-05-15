@@ -1,3 +1,5 @@
+import type { WorkspaceStateResponse } from '../../../../../shared/workspace-state.contract'
+
 const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1'
 
 type JsonRecord = Record<string, unknown>
@@ -46,7 +48,7 @@ export const createWorkspaceApiClient = (options: WorkspaceApiClientOptions = {}
     getWorkspace: (workspaceId: string) =>
       request<JsonRecord>(`/workspaces/${workspaceId}`, {}, 'GET'),
     getWorkspaceState: (workspaceId: string) =>
-      request<JsonRecord>(`/workspaces/${workspaceId}/state`, {}, 'GET'),
+      request<WorkspaceStateResponse>(`/workspaces/${workspaceId}/state`, {}, 'GET'),
     getGenerationJobStatus: (workspaceId: string, jobId: string) =>
       request<JsonRecord>(`/workspaces/${workspaceId}/jobs/${jobId}`, {}, 'GET'),
     updateWorkspace: (workspaceId: string, payload: JsonRecord) =>
@@ -123,3 +125,5 @@ export const createWorkspaceApiClient = (options: WorkspaceApiClientOptions = {}
 }
 
 export const workspaceApiClient = createWorkspaceApiClient()
+export type { WorkspaceStateResponse } from '../../../../../shared/workspace-state.contract'
+export type { WorkspacePhase, WorkspaceSection } from '../../../../../shared/workspace-state.contract'

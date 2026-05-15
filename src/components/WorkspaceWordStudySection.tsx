@@ -1,4 +1,5 @@
 import React from 'react'
+import { renderSmartValue } from '@/components/workspace-render.helpers'
 
 type WordStudyResult = {
   lemma?: string
@@ -44,7 +45,6 @@ type Props = {
   wordStudyResult: WordStudyResult | null
   wordStudyInsights: WordStudyInsights | null
   handleWordStudyLookup: (options?: { word?: string; language?: string }) => void
-  renderSmartValue: (value: any) => React.ReactNode
 }
 
 export default function WorkspaceWordStudySection({
@@ -63,7 +63,6 @@ export default function WorkspaceWordStudySection({
   wordStudyResult,
   wordStudyInsights,
   handleWordStudyLookup,
-  renderSmartValue,
 }: Props) {
   return (
     <div className="space-y-4 relative min-h-full">

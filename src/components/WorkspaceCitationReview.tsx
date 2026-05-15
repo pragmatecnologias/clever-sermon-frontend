@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { AlertCircle, BookOpen, CheckCircle2 } from 'lucide-react'
 import WorkspaceCitationActionLane from '@/components/WorkspaceCitationActionLane'
+import { renderMarkdown } from '@/components/workspace-render.helpers'
 import type {
   WorkspaceCitationDraft,
   WorkspaceCitationItem,
@@ -32,7 +33,6 @@ interface WorkspaceCitationReviewProps {
   setEditingCitationId: (id: string | null) => void
   setCitationDraft: (draft: WorkspaceCitationDraft | null) => void
   handleCitationSave: () => Promise<void>
-  renderMarkdown: (content: string) => React.ReactNode
   onOpenRefine: () => void
   onRepairClaim: (claim: WorkspaceClaimLedgerEntry) => void
   onAcknowledgeClaim: (claim: WorkspaceClaimLedgerEntry) => void
@@ -77,7 +77,6 @@ export default function WorkspaceCitationReview({
   setEditingCitationId,
   setCitationDraft,
   handleCitationSave,
-  renderMarkdown,
   onOpenRefine,
   onRepairClaim,
   onAcknowledgeClaim,

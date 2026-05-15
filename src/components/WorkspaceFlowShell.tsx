@@ -2,74 +2,11 @@
 
 import PhaseNavigation, { Phase } from '@/components/PhaseNavigation'
 import WorkspaceStateSummary from '@/components/WorkspaceStateSummary'
-
-type WorkspaceSection =
-  | 'workspace'
-  | 'church-settings'
-  | 'outlines'
-  | 'manuscript'
-  | 'citations'
-  | 'scripture'
-  | 'word-study'
-  | 'cross-references'
-  | 'study-report'
-  | 'coach'
-  | 'dna'
-  | 'visualizations'
-  | 'media'
-
-type WorkspaceStateResponse = {
-  activePhase: Phase
-  activeSection: string
-  progress: {
-    themeConfigured: boolean
-    passageExplored: boolean
-    studyGenerated: boolean
-    outlineCreated: boolean
-    manuscriptWritten: boolean
-    refineCompleted: boolean
-    deliverPrepared: boolean
-  }
-  artifacts: {
-    outlines: number
-    manuscripts: number
-    studyReports: number
-    applications: number
-    illustrations: number
-    citations: number
-  }
-  workspace?: {
-    title: string
-    mainPassage: string
-    status: string
-    egwEnabled?: boolean
-    language?: string
-  }
-  nextAction?: {
-    label: string
-    description: string
-  }
-  activeOutline?: {
-    id: string
-    title: string
-    pointCount: number
-    isSelected: boolean
-  } | null
-  activeManuscript?: {
-    id: string
-    wordCount: number | null
-    estimatedMinutes: number | null
-  } | null
-  latestIntegrityReport?: {
-    overallScore?: number
-    issueCount?: number
-    strengthCount?: number
-  } | null
-}
+import type { WorkspaceSection, WorkspaceStateResponse } from '@/lib/api/openapi-client'
 
 interface WorkspaceFlowShellProps {
   workspaceId: string
-  state: any
+  state: WorkspaceStateResponse | null
   onPhaseChange: (phase: Phase) => void
   onSectionChange?: (section: WorkspaceSection) => void
 }
