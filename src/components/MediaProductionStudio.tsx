@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Sparkles, FileText, Image, Mic, Music, Video, Share2, Loader2, Calendar, Clock3 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
+import { createWorkspaceApiClient } from '@/lib/api/openapi-client'
 import {
   buildStructuredMediaPrompts,
   MAX_NARRATION_CHARACTERS,
@@ -543,38 +544,24 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
 
       const dedupe = (items: any[]) => Array.from(new Set(items.map((item) => String(item).trim()).filter(Boolean)))
 
-      const syncData = {
-        workspaceId: workspace.id,
-        title: sermonSummary.title,
-        seriesTitle: workspace.seriesTitle,
-        language: workspace.language || workspace.metadata?.language || 'en',
-        mainScriptureRef: sermonSummary.passage,
-        bigIdea: sermonSummary.theme,
-        mainPoints: normalizedPoints,
-        audienceContext: workspace.audienceProfile,
-        tone: sermonSummary.tone,
-        notes: [sermonSummary.manuscript, workspace.studyReports?.[0]?.sections?.summary].filter(Boolean).join('\n\n'),
-        outline: workspace.outlines?.[0],
-        manuscript: workspace.manuscripts?.[0],
-        applications: dedupe([
-          ...sermonSummary.applications.map((item: any) => item?.content || item?.text || item).filter(Boolean),
-          ...pointApplications,
-        ]),
-        questions: dedupe([
-          ...sermonSummary.discussionQuestions.map((item: any) => item?.question || item?.text || item).filter(Boolean),
-          ...pointQuestions,
-        ]),
-      }
-      const sermon = await slidesApi.syncWorkspace(syncData, token)
-      sermonId = sermon.id
+      const workspaceApi = createWorkspaceApiClient({ token })
+      const composeResult = await workspaceApi.composeMediaPack(String(workspace.id), {
+        includeDeck: true,
+        deckSize: 'long',
+      })
+      const sermon = (composeResult as any)?.sermon || composeResult
+      const deck = (composeResult as any)?.deck || (composeResult as any)?.deckResult || null
+      sermonId = String(sermon?.id || sermon?.sermonId || '')
       
       // Step 1: Generate Slides
       setCurrentStep('Generating slide deck...')
-      const deck = await slidesApi.generateDeck(sermonId!, undefined, token, 'long')
-      deckId = deck.id
+      deckId = deck?.id || null
       
       // Wait for deck to be ready
-      await pollDeckStatus(deckId!)
+      if (!deckId) {
+        throw new Error('Deck generation did not return a deck id')
+      }
+      await pollDeckStatus(deckId)
       setCompletedSteps(prev => [...prev, 'slides'])
       
       // Step 2: Generate Images

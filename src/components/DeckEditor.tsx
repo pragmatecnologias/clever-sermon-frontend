@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { slidesApi } from '@/lib/slides-api'
 
-const SLIDES_BACKEND_BASE_URL = (process.env.NEXT_PUBLIC_SLIDES_API_URL || 'http://localhost:3001/api/v1').replace(
+const SLIDES_BACKEND_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1').replace(
   /\/api\/v1\/?$/,
   '',
 )

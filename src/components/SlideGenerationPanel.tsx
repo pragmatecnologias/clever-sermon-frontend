@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { FileText, Loader2, Sparkles, Edit } from 'lucide-react'
-import { slidesApi, SyncWorkspaceData } from '@/lib/slides-api'
+import { slidesApi } from '@/lib/slides-api'
 import DeckEditor from './DeckEditor'
 import ReactMarkdown from 'react-markdown'
 import { ReactNode } from 'react'
+import { createWorkspaceApiClient } from '@/lib/api/openapi-client'
 
 interface SlideGenerationPanelProps {
   workspace: any
@@ -95,99 +96,14 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
     setError(null)
 
     try {
-      const selectedOutline = workspace?.outlines?.find((outline: any) => outline?.isSelected) || workspace?.outlines?.[0]
-      const rawPointNodes = Array.isArray(selectedOutline?.structure?.pointNodes)
-        ? selectedOutline.structure.pointNodes
-        : []
-      const canonicalPoints = Array.isArray(selectedOutline?.structure?.points)
-        ? selectedOutline.structure.points
-        : []
-      const pointNodes = (canonicalPoints.length ? canonicalPoints : rawPointNodes)
-        .map((point: any, index: number) => {
-          const canonicalTitle = typeof point === 'string' ? point : (point?.title || point?.content || '')
-          const node = rawPointNodes[index]
-          if (node && typeof node === 'object') {
-            return {
-              ...node,
-              title: node?.title || canonicalTitle,
-            }
-          }
-          if (typeof point === 'string') {
-            return { title: point }
-          }
-          return point
-        })
-        .filter(Boolean)
-
-      const normalizedPoints = (canonicalPoints.length ? canonicalPoints : pointNodes)
-        .map((point: any) => {
-          const title = typeof point === 'string' ? point : (point?.title || point?.content || '')
-          const summary = typeof point === 'string' ? '' : (point?.summary || point?.preachingInsight || '')
-          const subpoints = Array.isArray(point?.subpoints) ? point.subpoints : []
-          const supportingVerses = Array.isArray(point?.supportingVerses) ? point.supportingVerses : []
-          const lineParts = [title, summary, subpoints[0], supportingVerses[0]].filter(Boolean)
-          return lineParts.join(' — ')
-        })
-        .filter(Boolean)
-
-      const pointApplications = pointNodes.flatMap((point: any) =>
-        Array.isArray(point?.applications) ? point.applications : [],
-      )
-      const pointQuestions = pointNodes.flatMap((point: any) =>
-        Array.isArray(point?.discussionQuestions) ? point.discussionQuestions : [],
-      )
-
-      const mergedApplications = [
-        ...(workspace.applications || []).map((item: any) => item?.content || item?.text || item).filter(Boolean),
-        ...pointApplications,
-      ]
-
-      const mergedQuestions = [
-        ...(workspace.questions || workspace.discussionQuestions || [])
-          .map((item: any) => item?.question || item?.text || item)
-          .filter(Boolean),
-        ...pointQuestions,
-      ]
-
-      const unique = (items: any[]) => Array.from(new Set(items.map((item) => String(item).trim()).filter(Boolean)))
-
-      const manuscriptText = workspace.manuscripts?.[0]?.content?.text || ''
-      const studyReport = workspace.studyReports?.[0]?.sections
-      const studySummaryParts = [
-        studyReport?.summary,
-        studyReport?.interpretiveCenter,
-        studyReport?.mainTension,
-      ].filter(Boolean)
-
-      const syncData: SyncWorkspaceData = {
-        workspaceId: workspace.id,
-        title: workspace.title,
-        seriesTitle: workspace.seriesTitle,
-        language: workspace.language || workspace.metadata?.language || 'en',
-        mainScriptureRef: workspace.mainPassage,
-        bigIdea: workspace.theme || workspace.sermonGoals || 'Sermon presentation',
-        mainPoints: normalizedPoints,
-        audienceContext: workspace.audienceProfile,
-        tone: workspace.metadata?.tone,
-        notes: [manuscriptText, ...studySummaryParts].filter(Boolean).join('\n\n'),
-        outline: selectedOutline
-          ? {
-              ...selectedOutline,
-              structure: {
-                ...(selectedOutline.structure || {}),
-                points: normalizedPoints,
-                pointNodes,
-              },
-            }
-          : selectedOutline,
-        manuscript: workspace.manuscripts?.[0],
-        applications: unique(mergedApplications),
-        questions: unique(mergedQuestions),
-      }
-
-      const sermon = await slidesApi.syncWorkspace(syncData, token)
-      setSermonId(sermon.id)
-      return sermon.id
+      const workspaceApi = createWorkspaceApiClient({ token })
+      const result = await workspaceApi.composeMediaPack(String(workspace.id), {
+        includeDeck: false,
+      })
+      const sermon = (result as any)?.sermon || result
+      const resolved = String(sermon?.id || sermon?.sermonId || '')
+      setSermonId(resolved)
+      return resolved || null
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to sync workspace')
       return null
@@ -197,24 +113,29 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
   }
 
   const handleGenerateDeck = async () => {
-    // Always sync first so slide generation uses the latest outline/manuscript content.
-    const resolvedSermonId = await handleSyncWorkspace()
-    if (!resolvedSermonId) return
-
     setGenerating(true)
     setError(null)
     setProgress(0)
     setProgressMessage('Starting deck generation...')
 
     try {
-      const themeId = selectedTheme && selectedTheme.trim() !== '' ? selectedTheme : undefined
-      const deck = await slidesApi.generateDeck(resolvedSermonId, themeId, token, 'long', {
+      const workspaceApi = createWorkspaceApiClient({ token })
+      const result = await workspaceApi.composeMediaPack(String(workspace.id), {
+        includeDeck: true,
+        deckSize: 'long',
+        themeId: selectedTheme && selectedTheme.trim() !== '' ? selectedTheme : undefined,
         backgroundProvider,
         backgroundPreset: backgroundProvider === 'local' ? backgroundPreset : undefined,
       })
+      const sermon = (result as any)?.sermon || result
+      const deck = (result as any)?.deck || (result as any)?.deckResult || null
+      const resolvedSermonId = String(sermon?.id || sermon?.sermonId || sermonId || '')
+      if (!resolvedSermonId || !deck?.id) {
+        throw new Error('Deck generation did not return a sermon or deck id')
+      }
       
       // Track progress via SSE
-      const SLIDES_API_URL = process.env.NEXT_PUBLIC_SLIDES_API_URL || 'http://localhost:3001/api/v1'
+      const SLIDES_API_URL = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1'}/media`
       const eventSource = new EventSource(
         `${SLIDES_API_URL}/decks/${deck.id}/progress?token=${token}`
       )

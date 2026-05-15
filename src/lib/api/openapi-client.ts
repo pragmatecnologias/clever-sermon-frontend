@@ -121,6 +121,8 @@ export const createWorkspaceApiClient = (options: WorkspaceApiClientOptions = {}
       request<JsonRecord>(`/workspaces/discussion-questions/${questionId}`, { body: payload }, 'PATCH'),
     updateCitation: (citationId: string, payload: JsonRecord) =>
       request<JsonRecord>(`/workspaces/citations/${citationId}`, { body: payload }, 'PATCH'),
+    composeMediaPack: (workspaceId: string, payload: JsonRecord) =>
+      request<JsonRecord>(`/workspaces/${workspaceId}/media-pack/compose`, { body: payload }, 'POST'),
   }
 }
 

@@ -3,7 +3,6 @@
 import { useMemo, useState } from 'react'
 import { Download, Loader2, Package } from 'lucide-react'
 import { Document, HeadingLevel, Packer, Paragraph, TextRun } from 'docx'
-import { slidesApi } from '@/lib/slides-api'
 import { createWorkspaceApiClient } from '@/lib/api/openapi-client'
 
 type WorkspaceExportPanelProps = {
@@ -123,28 +122,15 @@ export default function WorkspaceExportPanel({ workspace, token }: WorkspaceExpo
         ? selectedOutline.structure.pointNodes.map((point: any) => asText(point?.title || point?.summary || point?.text || point?.content)).filter(Boolean)
         : []
 
-      const sermon = await slidesApi.syncWorkspace({
-        workspaceId: workspace.id,
-        title: asText(workspace.title || 'Sermon Workspace'),
-        seriesTitle: asText(workspace.seriesTitle || workspace.theme || ''),
-        language: asText(workspace.language || 'en'),
-        mainScriptureRef: asText(workspace.mainPassage || ''),
-        bigIdea: asText(workspace.sermonCore?.bigIdea || workspace.theme || workspace.title || ''),
-        mainPoints: mainPoints.length ? mainPoints : (workspace.outlines?.[0]?.points || []).map((item: any) => asText(item?.title || item?.claim || item)),
-        audienceContext: asText(workspace.audienceProfile || ''),
-        tone: asText(workspace.sermonStyle || ''),
-        notes: asText(workspace.metadata?.notes || ''),
-        outline: selectedOutline || undefined,
-        manuscript: selectedManuscript?.content || undefined,
-        applications: workspace.applications || [],
-        questions: workspace.discussionQuestions || [],
-      }, token)
-
-      setMessage('Generating slide deck...')
-      const deck = await slidesApi.generateDeck(String(sermon.id || sermon.sermonId), undefined, token, 'long')
-      setMessage('Downloading PPTX and PDF deck exports...')
-      await slidesApi.exportDeck(String(deck.id || deck.deckId), 'pptx', token)
-      await slidesApi.exportDeck(String(deck.id || deck.deckId), 'pdf', token)
+      setMessage('Generating slide deck and exports...')
+      const client = createWorkspaceApiClient({ token })
+      const result = await client.composeMediaPack(String(workspace.id), {
+        deckSize: 'long',
+        includeDeck: true,
+        exportTypes: ['pptx', 'pdf'],
+        backgroundProvider: 'local',
+        backgroundPreset: 'modern',
+      })
 
       setMessage('Building DOCX manuscript export...')
       const manuscriptText = asText(selectedManuscript?.content?.text || selectedManuscript?.content || '')
@@ -173,6 +159,8 @@ export default function WorkspaceExportPanel({ workspace, token }: WorkspaceExpo
         sourceOutlineId: selectedOutline?.id || null,
         sourceManuscriptId: selectedManuscript?.id || null,
         sourceStudyReportId: workspace?.studyReports?.[0]?.id || null,
+        deckId: (result as any)?.deck?.id || (result as any)?.deck?.deckId || null,
+        sermonId: (result as any)?.sermon?.id || (result as any)?.sermon?.sermonId || null,
         artifacts: artifacts.map((artifact) => ({
           ...artifact,
           status: 'downloaded' as const,

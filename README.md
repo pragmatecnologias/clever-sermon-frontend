@@ -36,8 +36,10 @@ cp .env.local.example .env.local
 
 Configure the API URL:
 ```
-NEXT_PUBLIC_API_URL=http://localhost:3001/api/v1
+NEXT_PUBLIC_API_URL=http://localhost:4001/api/v1
 ```
+
+The sermon backend now proxies media and slide orchestration through its `/media` routes, so the frontend only needs `NEXT_PUBLIC_API_URL`.
 
 ## Running the App
 
@@ -50,7 +52,7 @@ npm run build
 npm start
 ```
 
-The app will be available at `http://localhost:3000`
+The app will be available at `http://localhost:4000`
 
 ## Project Structure
 
@@ -92,7 +94,7 @@ After running the backend seed:
 - Quick access to recent work
 - Status indicators
 
-### Workspace (Coming Soon)
+### Workspace
 - Sermon outline generation
 - Manuscript creation
 - Application generation
