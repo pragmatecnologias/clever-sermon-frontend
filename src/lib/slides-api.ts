@@ -1,7 +1,8 @@
 import axios from 'axios';
 
 const SERMON_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1';
-const SLIDES_API_URL = `${SERMON_API_URL}/media`;
+const SLIDES_API_URL = process.env.NEXT_PUBLIC_SLIDES_API_URL || 'http://localhost:3001/api/v1';
+const MEDIA_API_URL = `${SLIDES_API_URL}`;
 
 const isNotFoundError = (error: unknown) =>
   axios.isAxiosError(error) && error.response?.status === 404;
@@ -70,28 +71,16 @@ export interface GenerateVideoRequest {
 }
 
 export const slidesApi = {
-  // Sync workspace to slides app
+  // Sync workspace to slides app (no such endpoint - workspace sync not implemented in slides backend)
+  // @Deprecated - syncWorkspace endpoint does not exist
   syncWorkspace: async (workspaceData: SyncWorkspaceData, token: string) => {
-    const response = await axios.post(
-      `${SERMON_API_URL}/media/sync-workspace`,
-      workspaceData,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      }
-    );
-    return response.data;
+    throw new Error('syncWorkspace not implemented - no such endpoint in slides backend');
   },
 
   // Images
   generateImage: async (request: GenerateImageRequest, token: string) => {
-    const response = await axios.post(
-      `${SERMON_API_URL}/media/images/generate`,
-      request,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      }
-    );
-    return response.data;
+    // @Deprecated - images endpoint does not exist in slides backend
+    throw new Error('generateImage not implemented - no such endpoint in slides backend');
   },
 
   getImage: (imageId: string, token: string) => {
@@ -138,7 +127,7 @@ export const slidesApi = {
     }
   ) => {
     const response = await axios.post(
-      `${SLIDES_API_URL}/sermons/${sermonId}/decks`,
+      `${SLIDES_API_URL}/decks/sermons/${sermonId}/decks`,
       {
         themeId,
         deckSize,
@@ -164,7 +153,7 @@ export const slidesApi = {
 
   getDecks: async (token: string) => {
     try {
-      const response = await axios.get(`${SERMON_API_URL}/media/decks`, {
+      const response = await axios.get(`${MEDIA_API_URL}/decks`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       return response.data;
@@ -183,7 +172,7 @@ export const slidesApi = {
 
   getSermons: async (token: string) => {
     try {
-      const response = await axios.get(`${SERMON_API_URL}/media/sermons`, {
+      const response = await axios.get(`${MEDIA_API_URL}/sermons`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       return response.data;
@@ -205,7 +194,7 @@ export const slidesApi = {
 
   getThemes: async (token: string) => {
     try {
-      const response = await axios.get(`${SERMON_API_URL}/media/themes`, {
+      const response = await axios.get(`${MEDIA_API_URL}/themes`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       return response.data;
@@ -288,7 +277,7 @@ export const slidesApi = {
   generateNarrationScript: async (request: GenerateNarrationRequest, token: string) => {
     try {
       const response = await axios.post(
-        `${SERMON_API_URL}/media/audio/narration-script`,
+        `${MEDIA_API_URL}/audio/narration-script`,
         request,
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -303,7 +292,7 @@ export const slidesApi = {
 
   generateAudio: async (request: GenerateAudioRequest, token: string) => {
     const response = await axios.post(
-      `${SERMON_API_URL}/media/audio/generate`,
+      `${MEDIA_API_URL}/audio/generate`,
       request,
       {
         headers: { Authorization: `Bearer ${token}` },
@@ -356,7 +345,7 @@ export const slidesApi = {
 
   getVoices: async (token: string, provider: string = 'local') => {
     try {
-      const response = await axios.get(`${SERMON_API_URL}/media/audio/voices`, {
+      const response = await axios.get(`${MEDIA_API_URL}/audio/voices`, {
         params: { provider },
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -370,7 +359,7 @@ export const slidesApi = {
   // Music
   generateMusic: async (request: GenerateMusicRequest, token: string) => {
     const response = await axios.post(
-      `${SERMON_API_URL}/media/music/generate`,
+      `${MEDIA_API_URL}/music/generate`,
       request,
       {
         headers: { Authorization: `Bearer ${token}` },
@@ -434,7 +423,7 @@ export const slidesApi = {
 
   getGenres: async (token: string) => {
     const response = await axios.get(
-      `${SERMON_API_URL}/media/music/genres`,
+      `${MEDIA_API_URL}/music/genres`,
       {
         headers: { Authorization: `Bearer ${token}` },
       }
@@ -445,7 +434,7 @@ export const slidesApi = {
   // Video
   generateVideo: async (request: GenerateVideoRequest, token: string) => {
     const response = await axios.post(
-      `${SERMON_API_URL}/media/video/generate`,
+      `${MEDIA_API_URL}/video/generate`,
       request,
       {
         headers: { Authorization: `Bearer ${token}` },
@@ -534,7 +523,7 @@ export const slidesApi = {
     };
   }, token: string) => {
     const response = await axios.post(
-      `${SERMON_API_URL}/media/social/generate`,
+      `${MEDIA_API_URL}/social/generate`,
       request,
       {
         headers: { Authorization: `Bearer ${token}` },
@@ -632,7 +621,7 @@ export const slidesApi = {
     language?: string;
   }, token: string) => {
     const response = await axios.post(
-      `${SERMON_API_URL}/media/music/sermon-song/preview`,
+      `${MEDIA_API_URL}/music/sermon-song/preview`,
       request,
       {
         headers: { Authorization: `Bearer ${token}` },
@@ -652,7 +641,7 @@ export const slidesApi = {
     language?: string;
   }, token: string) => {
     const response = await axios.post(
-      `${SERMON_API_URL}/media/music/sermon-song/generate`,
+      `${MEDIA_API_URL}/music/sermon-song/generate`,
       request,
       {
         headers: { Authorization: `Bearer ${token}` },
@@ -670,7 +659,7 @@ export const slidesApi = {
     language?: string;
   }, token: string) => {
     const response = await axios.post(
-      `${SERMON_API_URL}/media/music/sermon-song/lyrics`,
+      `${MEDIA_API_URL}/music/sermon-song/lyrics`,
       request,
       {
         headers: { Authorization: `Bearer ${token}` },
@@ -700,7 +689,7 @@ export const slidesApi = {
     };
   }, token: string) => {
     const response = await axios.post(
-      `${SERMON_API_URL}/media/music/sermon-song/lyrics-draft`,
+      `${MEDIA_API_URL}/music/sermon-song/lyrics-draft`,
       request,
       {
         headers: { Authorization: `Bearer ${token}` },
