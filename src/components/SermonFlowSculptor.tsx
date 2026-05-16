@@ -43,7 +43,14 @@ export default function SermonFlowSculptor({
     )
     camera.position.set(0, 20, 25)
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true })
+    let renderer: THREE.WebGLRenderer
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true })
+    } catch (error) {
+      console.warn('SermonFlowSculptor WebGL init failed', error)
+      setLoading(false)
+      return
+    }
     renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight)
     containerRef.current.appendChild(renderer.domElement)
 
@@ -153,7 +160,7 @@ export default function SermonFlowSculptor({
       setFlowData(data)
       setLoading(false)
     } catch (error) {
-      console.error('Error loading sermon flow:', error)
+      console.warn('Error loading sermon flow:', error)
       setLoading(false)
     }
   }

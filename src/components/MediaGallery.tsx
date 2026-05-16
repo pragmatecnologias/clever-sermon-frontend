@@ -233,9 +233,10 @@ interface MediaGalleryProps {
   onFilterChange?: (filter: 'all' | 'image' | 'slide' | 'audio' | 'music' | 'video' | 'social') => void
   optimisticItems?: Array<Pick<MediaItem, 'id' | 'type' | 'status' | 'createdAt'>>
   onMediaDeleted?: (payload: { id: string; type: MediaItem['type'] }) => void
+  showOptionalTypes?: boolean
 }
 
-export default function MediaGallery({ workspaceId, token, filter, onFilterChange, optimisticItems = [], onMediaDeleted }: MediaGalleryProps) {
+export default function MediaGallery({ workspaceId, token, filter, onFilterChange, optimisticItems = [], onMediaDeleted, showOptionalTypes = false }: MediaGalleryProps) {
   const [internalFilter, setInternalFilter] = useState<'all' | 'image' | 'slide' | 'audio' | 'music' | 'video' | 'social'>('all')
   const [media, setMedia] = useState<MediaItem[]>([])
   const [decks, setDecks] = useState<any[]>([])
@@ -277,18 +278,26 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
     ...mergedMedia,
   ]
 
-  const filteredItems = activeFilter === 'all' 
-    ? allItems 
-    : allItems.filter(item => item.type === activeFilter)
+  const visibleItems = showOptionalTypes
+    ? allItems
+    : allItems.filter((item) => item.type !== 'music' && item.type !== 'social')
+
+  const filteredItems = activeFilter === 'all'
+    ? visibleItems
+    : visibleItems.filter(item => item.type === activeFilter)
 
   const filters = [
     { value: 'all', label: 'All', icon: null },
     { value: 'image', label: 'Images', icon: Image },
     { value: 'slide', label: 'Slides', icon: FileText },
     { value: 'audio', label: 'Audio', icon: Mic },
-    { value: 'music', label: 'Music', icon: Music },
     { value: 'video', label: 'Video', icon: Video },
-    { value: 'social', label: 'Social', icon: Share2 },
+    ...(showOptionalTypes
+      ? [
+          { value: 'music', label: 'Music', icon: Music },
+          { value: 'social', label: 'Social', icon: Share2 },
+        ]
+      : []),
   ] as const
 
   const getStatusColor = (status: string) => {
@@ -608,8 +617,12 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
         </div>
       ) : filteredItems.length === 0 ? (
         <div className="text-center py-12 border border-white/10 rounded-xl bg-black/20">
-          <p className="text-gray-400">No {activeFilter !== 'all' ? activeFilter : ''} media generated yet</p>
-          <p className="text-sm text-gray-500 mt-2">Use the generation panels below to create media</p>
+          <p className="text-gray-400">
+            No {activeFilter !== 'all' ? activeFilter : ''} media generated yet. Create slides, images, audio, or video assets from the media panel above.
+          </p>
+          <p className="text-sm text-gray-500 mt-2">
+            Use the generation panels below to create media. Optional music and social assets appear when the extras section is open.
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

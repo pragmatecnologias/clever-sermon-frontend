@@ -1986,13 +1986,6 @@ export default function WorkspaceDetailPage() {
         setWorkspace(workspaceData)
         setWorkspaceDraft(workspaceData)
 
-        if (stateData?.activePhase) {
-          setActivePhase(stateData.activePhase)
-        }
-        if (stateData?.activeSection) {
-          setActiveSection(stateData.activeSection)
-        }
-
         const defaultReference = workspaceData?.mainPassage?.trim() || ''
         const defaultTranslation = workspaceData?.language === 'es' ? 'RVR1960' : 'KJV'
         if (defaultReference) {
@@ -2639,7 +2632,7 @@ export default function WorkspaceDetailPage() {
                 />
               </div>
               {latestManuscript ? (
-                <WorkspaceManuscriptCard
+              <WorkspaceManuscriptCard
                   manuscript={latestManuscript}
                   actionLoading={actionLoading}
                   lastRepairNotice={lastRepairNotice}
@@ -2675,10 +2668,15 @@ export default function WorkspaceDetailPage() {
                   sanitizeManuscriptForDisplay={sanitizeManuscriptForDisplay}
                   emptyManuscriptCues={emptyManuscriptCues}
                   handleManuscriptSave={handleManuscriptSave}
-                  handleRegenerateManuscriptCues={handleRegenerateManuscriptCues}
-                />
+                handleRegenerateManuscriptCues={handleRegenerateManuscriptCues}
+              />
               ) : (
-                <p className="text-gray-100/90">No manuscript yet.</p>
+                <div className="rounded-xl border border-dashed border-cyan-400/30 bg-black/20 p-4">
+                  <p className="text-gray-100/90">No manuscript yet.</p>
+                  <p className="mt-1 text-xs text-gray-400">
+                    Build an outline first, then draft the sermon or let the app help shape it section by section.
+                  </p>
+                </div>
               )}
             </WorkspaceManuscriptPhase>
           )}

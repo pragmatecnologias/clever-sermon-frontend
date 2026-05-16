@@ -34,7 +34,14 @@ export default function TimelineUniverse({ startYear = -4004, endYear = 100, cat
     )
     camera.position.set(0, 25, 40)
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true })
+    let renderer: THREE.WebGLRenderer
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true })
+    } catch (error) {
+      console.warn('TimelineUniverse WebGL init failed', error)
+      setLoading(false)
+      return
+    }
     renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight)
     containerRef.current.appendChild(renderer.domElement)
 
@@ -128,7 +135,7 @@ export default function TimelineUniverse({ startYear = -4004, endYear = 100, cat
       setTimelineData(data)
       setLoading(false)
     } catch (error) {
-      console.error('Error loading timeline:', error)
+      console.warn('Error loading timeline:', error)
       setLoading(false)
     }
   }

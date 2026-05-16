@@ -42,7 +42,7 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
         setSelectedTheme(themesData[0].id)
       }
     } catch (err) {
-      console.error('Failed to load themes:', err)
+      console.warn('Failed to load themes:', err)
     }
   }
 
@@ -63,7 +63,7 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
         }
       }
     } catch (err) {
-      console.error('Failed to load existing sermon context:', err)
+      console.warn('Failed to load existing sermon context:', err)
     }
 
     try {
@@ -87,7 +87,7 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
         }
       }
     } catch (err) {
-      console.error('Failed to load existing deck context:', err)
+      console.warn('Failed to load existing deck context:', err)
     }
   }
 

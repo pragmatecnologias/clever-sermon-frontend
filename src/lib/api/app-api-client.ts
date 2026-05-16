@@ -17,6 +17,18 @@ const buildUrl = (path: string, params?: RequestOptions['params']) => {
   return url.toString()
 }
 
+const parseJsonResponse = async <T>(response: Response) => {
+  const text = await response.text()
+  if (!text) {
+    return null as T
+  }
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    return text as unknown as T
+  }
+}
+
 export interface AppApiClientOptions {
   baseUrl?: string
   token?: string
@@ -40,7 +52,7 @@ export const createAppApiClient = (options: AppApiClientOptions = {}) => {
     if (!response.ok) {
       throw new Error(`Request failed: ${response.status}`)
     }
-    return response.json() as Promise<T>
+    return parseJsonResponse<T>(response)
   }
 
   const requestText = async (path: string, requestOptions: RequestOptions = {}, method = 'GET') => {

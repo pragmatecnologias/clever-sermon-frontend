@@ -19,8 +19,8 @@ export default function NextStepSuggestion({ progress, onAction }: NextStepSugge
   const getNextStep = () => {
     if (!progress.themeConfigured) {
       return {
-        label: 'Review workspace setup',
-        description: 'Confirm title, passage, language, and audience before building the sermon',
+        label: 'Finish sermon setup',
+        description: 'Confirm the title, passage, language, and audience before you begin',
         action: 'open-theme',
         icon: '🧭'
       }
@@ -28,8 +28,8 @@ export default function NextStepSuggestion({ progress, onAction }: NextStepSugge
 
     if (!progress.passageExplored) {
       return {
-        label: 'Explore the passage',
-        description: 'Use Scripture, word study, cross references, and passage tools first',
+        label: 'Study the passage',
+        description: 'Read Scripture first, then use study tools for context and meaning',
         action: 'open-passage',
         icon: '📖'
       }
@@ -37,8 +37,8 @@ export default function NextStepSuggestion({ progress, onAction }: NextStepSugge
 
     if (!progress.studyGenerated) {
       return {
-        label: 'Generate study report',
-        description: 'Compile passage intelligence into sermon-ready study material',
+        label: 'Prepare study notes',
+        description: 'Turn the passage findings into sermon-ready study material',
         action: 'generate-study-report',
         icon: '🔍'
       }
@@ -46,8 +46,8 @@ export default function NextStepSuggestion({ progress, onAction }: NextStepSugge
 
     if (!progress.outlineCreated) {
       return {
-        label: 'Create sermon outline',
-        description: 'Turn study material into point-by-point sermon structure',
+        label: 'Build the outline',
+        description: 'Turn the study material into a clear point-by-point sermon flow',
         action: 'open-outline',
         icon: '📝'
       }
@@ -55,8 +55,8 @@ export default function NextStepSuggestion({ progress, onAction }: NextStepSugge
 
     if (!progress.manuscriptWritten) {
       return {
-        label: 'Write the manuscript',
-        description: 'Draft the sermon body and speaking notes for delivery',
+        label: 'Draft the manuscript',
+        description: 'Write the sermon body and speaking notes for delivery',
         action: 'open-write',
         icon: '✍️'
       }
@@ -64,8 +64,8 @@ export default function NextStepSuggestion({ progress, onAction }: NextStepSugge
 
     if (!progress.refineCompleted) {
       return {
-        label: 'Run refinement tools',
-        description: 'Use DNA, integrity, and coaching tools to polish the sermon',
+        label: 'Review the sermon',
+        description: 'Check support, clarity, and balance before you finalize it',
         action: 'open-refine',
         icon: '✨'
       }
@@ -73,16 +73,16 @@ export default function NextStepSuggestion({ progress, onAction }: NextStepSugge
 
     if (!progress.deliverPrepared) {
       return {
-        label: 'Prepare deliver assets',
-        description: 'Generate slides, media, music, and social assets for presentation',
+        label: 'Prepare media and export',
+        description: 'Generate slides, downloads, and presentation extras',
         action: 'open-deliver',
         icon: '🎬'
       }
     }
 
     return {
-      label: 'Review deliver assets',
-      description: 'Everything is in place. Finalize the materials for service.',
+      label: 'Review media and export',
+      description: 'Everything is in place. Finalize the sermon materials for service.',
       action: 'open-deliver',
       icon: '✅'
     }
@@ -91,17 +91,18 @@ export default function NextStepSuggestion({ progress, onAction }: NextStepSugge
   const nextStep = getNextStep()
 
   return (
-    <div className="bg-gradient-to-r from-cyan-900/30 to-purple-900/30 border border-cyan-500/30 rounded-xl p-5">
-      <div className="flex items-start gap-4">
-        <div className="text-3xl">{nextStep.icon}</div>
+    <div className="bg-gradient-to-br from-cyan-900/40 via-slate-950 to-purple-900/35 border border-cyan-400/30 rounded-2xl p-6 shadow-[0_0_30px_rgba(34,211,238,0.08)]">
+      <div className="flex items-start gap-5">
+        <div className="text-4xl leading-none">{nextStep.icon}</div>
         <div className="flex-1">
-          <h3 className="text-lg font-semibold text-cyan-200 mb-1">
-            Suggested Next Step
+          <p className="text-[10px] uppercase tracking-[0.35em] text-cyan-200/70 mb-2">Next Action</p>
+          <h3 className="text-2xl font-semibold text-white mb-2">
+            {nextStep.label}
           </h3>
-          <p className="text-sm text-gray-300 mb-3">{nextStep.description}</p>
+          <p className="text-sm text-gray-200/80 mb-4 max-w-xl">{nextStep.description}</p>
           <button
             onClick={() => onAction(nextStep.action)}
-            className="cyber-button px-4 py-2 rounded-lg flex items-center gap-2"
+            className="cyber-button px-5 py-3 rounded-xl flex items-center gap-2 text-base shadow-lg shadow-cyan-500/20"
           >
             <span>{nextStep.label}</span>
             <ArrowRight className="w-4 h-4" />

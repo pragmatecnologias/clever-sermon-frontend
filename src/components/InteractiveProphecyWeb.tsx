@@ -25,6 +25,7 @@ export default function InteractiveProphecyWeb({ theme = 'all' }: ProphecyWebPro
   
   const [webData, setWebData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [webglError, setWebglError] = useState<string | null>(null)
   const [selectedNode, setSelectedNode] = useState<any | null>(null)
   const [hoveredNode, setHoveredNode] = useState<any | null>(null)
   const [hoveredConnection, setHoveredConnection] = useState<any | null>(null)
@@ -64,10 +65,19 @@ export default function InteractiveProphecyWeb({ theme = 'all' }: ProphecyWebPro
     camera.position.set(0, 20, 30)
     cameraRef.current = camera
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true })
-    renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight)
-    containerRef.current.appendChild(renderer.domElement)
-    rendererRef.current = renderer
+    let renderer: THREE.WebGLRenderer | null = null
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true })
+      renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight)
+      containerRef.current.appendChild(renderer.domElement)
+      rendererRef.current = renderer
+      setWebglError(null)
+    } catch (error) {
+      console.warn('InteractiveProphecyWeb WebGL init failed', error)
+      setWebglError('This visual map cannot start in the current browser. The sermon study tools still work.')
+      setLoading(false)
+      return
+    }
 
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
@@ -245,10 +255,12 @@ export default function InteractiveProphecyWeb({ theme = 'all' }: ProphecyWebPro
 
     return () => {
       window.removeEventListener('resize', handleResize)
-      renderer.domElement.removeEventListener('mousemove', handleMouseMove)
-      renderer.domElement.removeEventListener('click', handleClick)
-      renderer.dispose()
-      containerRef.current?.removeChild(renderer.domElement)
+      if (renderer) {
+        renderer.domElement.removeEventListener('mousemove', handleMouseMove)
+        renderer.domElement.removeEventListener('click', handleClick)
+        renderer.dispose()
+        containerRef.current?.removeChild(renderer.domElement)
+      }
     }
   }, [webData, filters.showLabels])
 
@@ -411,7 +423,7 @@ export default function InteractiveProphecyWeb({ theme = 'all' }: ProphecyWebPro
       setWebData(data)
       setLoading(false)
     } catch (error) {
-      console.error('Error loading prophecy web:', error)
+      console.warn('Error loading prophecy web:', error)
       setLoading(false)
     }
   }
@@ -443,6 +455,15 @@ export default function InteractiveProphecyWeb({ theme = 'all' }: ProphecyWebPro
   return (
     <div className="relative w-full h-[600px]">
       <div ref={containerRef} className="w-full h-full rounded-xl overflow-hidden" />
+      
+      {webglError && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-black/80 p-6">
+          <div className="max-w-md rounded-2xl border border-white/10 bg-black/60 p-4 text-center">
+            <p className="text-sm font-semibold text-cyan-200">Visual exploration unavailable</p>
+            <p className="mt-2 text-xs text-gray-300">{webglError}</p>
+          </div>
+        </div>
+      )}
       
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-xl">

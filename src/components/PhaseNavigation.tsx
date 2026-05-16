@@ -20,53 +20,53 @@ interface PhaseNavigationProps {
 
 export default function PhaseNavigation({ activePhase, onPhaseChange, progress }: PhaseNavigationProps) {
   const phases = [
-    { 
-      id: 'THEME' as Phase, 
-      label: 'Theme', 
+    {
+      id: 'THEME' as Phase,
+      label: 'Setup',
       icon: Compass,
-      description: 'What are we preaching?',
+      description: 'Set the passage, title, language, and audience',
       complete: progress.themeConfigured
     },
-    { 
-      id: 'PASSAGE' as Phase, 
-      label: 'Passage', 
+    {
+      id: 'PASSAGE' as Phase,
+      label: 'Scripture',
       icon: BookOpen,
-      description: 'What does it say?',
+      description: 'Read the passage and check the text',
       complete: progress.passageExplored
     },
-    { 
-      id: 'STUDY' as Phase, 
+    {
+      id: 'STUDY' as Phase,
       label: 'Study', 
       icon: Brain,
-      description: 'What does it mean?',
+      description: 'Gather study notes, cross references, and context',
       complete: progress.studyGenerated
     },
-    { 
-      id: 'OUTLINE' as Phase, 
+    {
+      id: 'OUTLINE' as Phase,
       label: 'Outline', 
       icon: PenTool,
-      description: 'What will I say?',
+      description: 'Shape the sermon points and flow',
       complete: progress.outlineCreated
     },
     { 
       id: 'WRITE' as Phase,
-      label: 'Write',
+      label: 'Manuscript',
       icon: FileText,
-      description: 'How will I say it?',
+      description: 'Draft the sermon words and speaking notes',
       complete: progress.manuscriptWritten
     },
     {
       id: 'REFINE' as Phase, 
-      label: 'Refine', 
+      label: 'Review', 
       icon: Sparkles,
-      description: 'How can it be stronger?',
+      description: 'Check support, clarity, and balance',
       complete: progress.refineCompleted
     },
     {
       id: 'DELIVER' as Phase,
-      label: 'Deliver',
+      label: 'Media & Export',
       icon: Layers,
-      description: 'How will it be presented?',
+      description: 'Prepare slides, downloads, and service materials',
       complete: progress.deliverPrepared
     },
   ]

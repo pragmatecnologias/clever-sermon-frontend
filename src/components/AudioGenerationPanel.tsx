@@ -150,7 +150,7 @@ export default function AudioGenerationPanel({
         setVoiceId(pickPreferredVoiceId(voicesData, text, nextProvider))
       }
     } catch (err) {
-      console.error('Failed to load voices:', err)
+      console.warn('Failed to load voices:', err)
       setVoices([])
       setVoiceId('')
     }
@@ -198,7 +198,7 @@ export default function AudioGenerationPanel({
       if (generated) return generated
       return clampNarrationText(sourceText, MAX_NARRATION_CHARACTERS)
     } catch (err) {
-      console.error('Failed to generate narration script:', err)
+      console.warn('Failed to generate narration script:', err)
       return clampNarrationText(sourceText, MAX_NARRATION_CHARACTERS)
     }
   }

@@ -19,6 +19,18 @@ const buildUrl = (path: string, params?: RequestOptions['params']) => {
   return url.toString()
 }
 
+const parseJsonResponse = async <T>(response: Response) => {
+  const text = await response.text()
+  if (!text) {
+    return null as T
+  }
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    return text as unknown as T
+  }
+}
+
 export interface WorkspaceApiClientOptions {
   baseUrl?: string
   token?: string
@@ -41,7 +53,7 @@ export const createWorkspaceApiClient = (options: WorkspaceApiClientOptions = {}
     if (!response.ok) {
       throw new Error(`Request failed: ${response.status}`)
     }
-    return response.json() as Promise<T>
+    return parseJsonResponse<T>(response)
   }
 
   return {

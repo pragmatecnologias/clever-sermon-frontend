@@ -36,7 +36,14 @@ type Props = {
 export function WorkspaceStudyReportView({ report, onJumpToWordStudy }: Props) {
   const sections = report?.sections || {}
   if (!report) {
-    return <p className="cyber-muted text-sm">No study report generated yet.</p>
+    return (
+      <div className="rounded-xl border border-dashed border-cyan-400/30 bg-black/20 p-4">
+        <p className="text-sm text-gray-100/90">No study notes yet.</p>
+        <p className="mt-1 text-xs text-gray-400">
+          Load the passage first, then generate study notes to see the main ideas, context, and themes.
+        </p>
+      </div>
+    )
   }
 
   const str = (value: unknown) => (typeof value === 'string' ? value.trim() : '')

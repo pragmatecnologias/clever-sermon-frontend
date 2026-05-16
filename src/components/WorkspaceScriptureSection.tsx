@@ -327,7 +327,12 @@ export function WorkspaceScriptureSection({
             })()}
           </div>
         ) : (
-          <p className="text-gray-200/80">No passage loaded yet.</p>
+          <div className="rounded-xl border border-dashed border-cyan-400/30 bg-black/20 p-4">
+            <p className="text-gray-200/80">No passage loaded yet.</p>
+            <p className="mt-1 text-xs text-gray-400">
+              Start with a passage reference, then load Scripture to begin study notes and supporting tools.
+            </p>
+          </div>
         )}
       </div>
     </div>

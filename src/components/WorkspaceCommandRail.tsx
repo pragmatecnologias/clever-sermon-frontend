@@ -67,6 +67,13 @@ export default function WorkspaceCommandRail({
     </button>
   )
 
+  const renderGroup = (title: string, items: Array<ReturnType<typeof sectionNavButton> | null>) => (
+    <div className="space-y-2">
+      <p className="text-[10px] uppercase tracking-widest text-cyan-200/70">{title}</p>
+      <div className="space-y-2">{items}</div>
+    </div>
+  )
+
   return (
     <div className="flex flex-col gap-4">
       <ProgressIndicator progress={progress} />
@@ -92,52 +99,57 @@ export default function WorkspaceCommandRail({
         <p className="text-xs cyber-muted">Language: {workspace.language || 'en'}</p>
       </div>
 
-      <div className="cyber-panel rounded-2xl p-4 space-y-2">
-        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70">Theme</p>
-        {sectionNavButton('workspace', 'Workspace')}
-        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70">Passage</p>
-        {sectionNavButton('scripture', 'Scripture')}
-        {sectionNavButton('word-study', 'Word Study')}
-        {sectionNavButton('cross-references', 'Cross References')}
-        {advancedMode ? sectionNavButton('visualizations', 'Visualizations') : null}
-        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Study</p>
-        {sectionNavButton('study-report', 'Study Report')}
-        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Outline</p>
-        {sectionNavButton('outlines', 'Outlines')}
-        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Write</p>
-        {sectionNavButton('manuscript', 'Manuscript')}
-        {sectionNavButton('citations', 'Citations')}
-        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Refine</p>
-        {sectionNavButton('coach', 'Socratic Coach')}
-        {sectionNavButton('dna', 'Sermon DNA')}
+      <div className="cyber-panel rounded-2xl p-4 space-y-4">
+        {renderGroup('Setup', [sectionNavButton('workspace', 'Sermon Setup'), sectionNavButton('church-settings', 'Church Details')])}
+        {renderGroup('Study', [sectionNavButton('scripture', 'Scripture'), sectionNavButton('study-report', 'Study Notes')])}
+        {renderGroup('Draft', [sectionNavButton('outlines', 'Outline'), sectionNavButton('manuscript', 'Manuscript')])}
+        {renderGroup('Review', [sectionNavButton('citations', 'Sources & Support')])}
+        {renderGroup('Media & Export', [sectionNavButton('media', 'Media & Export')])}
+
         {advancedMode ? (
-          <button
-            onClick={() => {
-              onPhaseChange('REFINE')
-              onVisualizationModeChange('refine')
-              onSectionChange('visualizations')
-              onCloseRail()
-            }}
-            className={
-              activeSection === 'visualizations' && activePhase === 'REFINE'
-                ? 'cyber-button text-xs px-3 py-2 rounded-xl w-full text-left'
-                : 'cyber-outline text-xs px-3 py-2 rounded-xl w-full text-left'
-            }
-          >
-            Flow Tools
-          </button>
+          <>
+            {renderGroup('Advanced Study Tools', [
+              sectionNavButton('word-study', 'Word Study'),
+              sectionNavButton('cross-references', 'Cross References'),
+            ])}
+            {renderGroup('Advanced Review Tools', [
+              sectionNavButton('coach', 'Coach'),
+              sectionNavButton('dna', 'Sermon DNA'),
+              (() => (
+                <button
+                  onClick={() => {
+                    onPhaseChange('REFINE')
+                    onVisualizationModeChange('refine')
+                    onSectionChange('visualizations')
+                    onCloseRail()
+                  }}
+                  className={
+                    activeSection === 'visualizations' && activePhase === 'REFINE'
+                      ? 'cyber-button text-xs px-3 py-2 rounded-xl w-full text-left'
+                      : 'cyber-outline text-xs px-3 py-2 rounded-xl w-full text-left'
+                  }
+                >
+                  Flow Tools
+                </button>
+              ))(),
+            ])}
+            {renderGroup('Visual Exploration', [
+              (() =>
+                sectionNavButton('visualizations', 'Visual Exploration'))(),
+            ])}
+          </>
         ) : (
-          <button
-            onClick={() => onToggleAdvancedMode(true)}
-            className="cyber-outline text-xs px-3 py-2 rounded-xl w-full text-left"
-          >
-            Enable Advanced Mode
-          </button>
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-3 space-y-2">
+            <p className="text-[10px] uppercase tracking-widest text-gray-400">Optional tools</p>
+            <p className="text-xs text-gray-400">Keep these tucked away unless you need deeper study or visual exploration.</p>
+            <button
+              onClick={() => onToggleAdvancedMode(true)}
+              className="cyber-outline text-xs px-3 py-2 rounded-xl w-full text-left"
+            >
+              Show optional tools
+            </button>
+          </div>
         )}
-        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Deliver</p>
-        {sectionNavButton('media', 'Media')}
-        <p className="text-[10px] uppercase tracking-widest text-cyan-200/70 pt-2">Settings</p>
-        {sectionNavButton('church-settings', 'Church Settings')}
       </div>
     </div>
   )

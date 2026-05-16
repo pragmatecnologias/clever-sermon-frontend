@@ -40,6 +40,7 @@ export default function InteractiveCanonicalConstellation({ focusPassage, onNode
   const [focusModeActive, setFocusModeActive] = useState(false)
   const [activeTheme, setActiveTheme] = useState<string | null>(null)
   const [suggestedPath, setSuggestedPath] = useState<string[] | null>(null)
+  const [webglError, setWebglError] = useState<string | null>(null)
   const [filters, setFilters] = useState({
     strongestOnly: false,
     directQuotation: true,
@@ -70,10 +71,19 @@ export default function InteractiveCanonicalConstellation({ focusPassage, onNode
     camera.position.set(0, 15, 30)
     cameraRef.current = camera
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true })
-    renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight)
-    containerRef.current.appendChild(renderer.domElement)
-    rendererRef.current = renderer
+    let renderer: THREE.WebGLRenderer | null = null
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true })
+      renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight)
+      containerRef.current.appendChild(renderer.domElement)
+      rendererRef.current = renderer
+      setWebglError(null)
+    } catch (error) {
+      console.warn('InteractiveCanonicalConstellation WebGL init failed', error)
+      setWebglError('This visual map cannot start in the current browser. The rest of the sermon workflow is still available.')
+      setLoading(false)
+      return
+    }
 
     // Controls
     const controls = new OrbitControls(camera, renderer.domElement)
@@ -169,10 +179,12 @@ export default function InteractiveCanonicalConstellation({ focusPassage, onNode
 
     return () => {
       window.removeEventListener('resize', handleResize)
-      renderer.domElement.removeEventListener('mousemove', handleMouseMove)
-      renderer.domElement.removeEventListener('click', handleClick)
-      renderer.dispose()
-      containerRef.current?.removeChild(renderer.domElement)
+      if (renderer) {
+        renderer.domElement.removeEventListener('mousemove', handleMouseMove)
+        renderer.domElement.removeEventListener('click', handleClick)
+        renderer.dispose()
+        containerRef.current?.removeChild(renderer.domElement)
+      }
     }
   }, [focusPassage])
 
@@ -391,7 +403,7 @@ export default function InteractiveCanonicalConstellation({ focusPassage, onNode
       })
       
       if (!response.ok) {
-        console.error('Failed to fetch constellation data:', response.status, response.statusText)
+        console.warn('Failed to fetch constellation data:', response.status, response.statusText)
         setLoading(false)
         return
       }
@@ -613,7 +625,7 @@ export default function InteractiveCanonicalConstellation({ focusPassage, onNode
 
       setLoading(false)
     } catch (error) {
-      console.error('Failed to load constellation data:', error)
+      console.warn('Failed to load constellation data:', error)
       setLoading(false)
     }
   }
@@ -626,7 +638,7 @@ export default function InteractiveCanonicalConstellation({ focusPassage, onNode
       const workspaceId = pathParts[pathParts.indexOf('workspace') + 1]
       
       if (!workspaceId) {
-        console.error('No workspace ID found')
+        console.warn('No workspace ID found')
         return
       }
       
@@ -647,10 +659,10 @@ export default function InteractiveCanonicalConstellation({ focusPassage, onNode
         console.log('Reference added successfully')
         setContextPanelVisible(false)
       } else {
-        console.error('Failed to add reference:', response.statusText)
+        console.warn('Failed to add reference:', response.statusText)
       }
     } catch (error) {
-      console.error('Error adding reference:', error)
+      console.warn('Error adding reference:', error)
     }
   }
 
@@ -748,6 +760,14 @@ export default function InteractiveCanonicalConstellation({ focusPassage, onNode
   return (
     <div className="relative w-full h-[600px]">
       <div ref={containerRef} className="w-full h-full rounded-xl overflow-hidden" />
+      {webglError && (
+        <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/80 p-6">
+          <div className="max-w-md rounded-2xl border border-white/10 bg-black/60 p-4 text-center">
+            <p className="text-sm font-semibold text-cyan-200">Visual exploration unavailable</p>
+            <p className="mt-2 text-xs text-gray-300">{webglError}</p>
+          </div>
+        </div>
+      )}
       
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-xl">

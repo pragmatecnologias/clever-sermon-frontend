@@ -16,13 +16,13 @@ interface ProgressIndicatorProps {
 
 export default function ProgressIndicator({ progress }: ProgressIndicatorProps) {
   const steps = [
-    { label: 'Theme configured', complete: progress.themeConfigured },
-    { label: 'Passage explored', complete: progress.passageExplored },
-    { label: 'Study report generated', complete: progress.studyGenerated },
-    { label: 'Outline created', complete: progress.outlineCreated },
-    { label: 'Manuscript written', complete: progress.manuscriptWritten },
-    { label: 'Refinement run', complete: progress.refineCompleted },
-    { label: 'Deliver assets created', complete: progress.deliverPrepared },
+    { label: 'Setup complete', complete: progress.themeConfigured },
+    { label: 'Scripture reviewed', complete: progress.passageExplored },
+    { label: 'Study notes ready', complete: progress.studyGenerated },
+    { label: 'Outline chosen', complete: progress.outlineCreated },
+    { label: 'Manuscript drafted', complete: progress.manuscriptWritten },
+    { label: 'Sermon reviewed', complete: progress.refineCompleted },
+    { label: 'Media ready', complete: progress.deliverPrepared },
   ]
 
   const completedCount = steps.filter(s => s.complete).length

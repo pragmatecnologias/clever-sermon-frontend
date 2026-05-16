@@ -3,6 +3,9 @@ import axios from 'axios';
 const SERMON_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1';
 const SLIDES_API_URL = `${SERMON_API_URL}/media`;
 
+const isNotFoundError = (error: unknown) =>
+  axios.isAxiosError(error) && error.response?.status === 404;
+
 export interface SyncWorkspaceData {
   workspaceId: string;
   title: string;
@@ -160,13 +163,15 @@ export const slidesApi = {
   },
 
   getDecks: async (token: string) => {
-    const response = await axios.get(
-      `${SERMON_API_URL}/media/decks`,
-      {
+    try {
+      const response = await axios.get(`${SERMON_API_URL}/media/decks`, {
         headers: { Authorization: `Bearer ${token}` },
-      }
-    );
-    return response.data;
+      });
+      return response.data;
+    } catch (error) {
+      if (isNotFoundError(error)) return [];
+      throw error;
+    }
   },
 
   deleteDeck: async (deckId: string, token: string) => {
@@ -177,13 +182,15 @@ export const slidesApi = {
   },
 
   getSermons: async (token: string) => {
-    const response = await axios.get(
-      `${SERMON_API_URL}/media/sermons`,
-      {
+    try {
+      const response = await axios.get(`${SERMON_API_URL}/media/sermons`, {
         headers: { Authorization: `Bearer ${token}` },
-      }
-    );
-    return response.data;
+      });
+      return response.data;
+    } catch (error) {
+      if (isNotFoundError(error)) return [];
+      throw error;
+    }
   },
 
   getSermon: async (sermonId: string, token: string) => {
@@ -197,13 +204,15 @@ export const slidesApi = {
   },
 
   getThemes: async (token: string) => {
-    const response = await axios.get(
-      `${SERMON_API_URL}/media/themes`,
-      {
+    try {
+      const response = await axios.get(`${SERMON_API_URL}/media/themes`, {
         headers: { Authorization: `Bearer ${token}` },
-      }
-    );
-    return response.data;
+      });
+      return response.data;
+    } catch (error) {
+      if (isNotFoundError(error)) return [];
+      throw error;
+    }
   },
 
   getSlides: async (deckId: string, token: string) => {
@@ -277,14 +286,19 @@ export const slidesApi = {
 
   // Audio
   generateNarrationScript: async (request: GenerateNarrationRequest, token: string) => {
-    const response = await axios.post(
-      `${SERMON_API_URL}/media/audio/narration-script`,
-      request,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      }
-    );
-    return response.data;
+    try {
+      const response = await axios.post(
+        `${SERMON_API_URL}/media/audio/narration-script`,
+        request,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      if (isNotFoundError(error)) return { text: '' };
+      throw error;
+    }
   },
 
   generateAudio: async (request: GenerateAudioRequest, token: string) => {
@@ -341,14 +355,16 @@ export const slidesApi = {
   },
 
   getVoices: async (token: string, provider: string = 'local') => {
-    const response = await axios.get(
-      `${SERMON_API_URL}/media/audio/voices`,
-      {
+    try {
+      const response = await axios.get(`${SERMON_API_URL}/media/audio/voices`, {
         params: { provider },
         headers: { Authorization: `Bearer ${token}` },
-      }
-    );
-    return response.data;
+      });
+      return response.data;
+    } catch (error) {
+      if (isNotFoundError(error)) return [];
+      throw error;
+    }
   },
 
   // Music

@@ -343,7 +343,12 @@ export default function WorkspaceOutlinePhase({
             })}
         </div>
       ) : (
-        <p className="text-gray-100/90">No outlines yet.</p>
+        <div className="rounded-xl border border-dashed border-cyan-400/30 bg-black/20 p-4">
+          <p className="text-gray-100/90">No outline yet.</p>
+          <p className="mt-1 text-xs text-gray-400">
+            Generate study notes first, then build an outline from the main passage movement.
+          </p>
+        </div>
       )}
     </div>
   )

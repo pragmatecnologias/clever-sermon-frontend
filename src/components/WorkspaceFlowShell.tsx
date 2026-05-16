@@ -29,7 +29,7 @@ export default function WorkspaceFlowShell({ workspaceId, state, onPhaseChange, 
           <div>
             <p className="text-xs uppercase tracking-[0.4em] text-cyan-400">Clever Sermon</p>
             <h1 className="text-2xl font-bold text-white">
-              {state?.workspace?.title || 'Workspace Core'}
+              {state?.workspace?.title || 'Sermon Workspace'}
             </h1>
           </div>
           <div className="text-right">
@@ -50,14 +50,14 @@ export default function WorkspaceFlowShell({ workspaceId, state, onPhaseChange, 
           <div className="mt-2 flex flex-wrap gap-2">
             {(
               [
-                { section: 'workspace', label: 'Workspace' },
+                { section: 'workspace', label: 'Setup' },
                 { section: 'scripture', label: 'Scripture' },
-                { section: 'study-report', label: 'Study Report' },
-                { section: 'outlines', label: 'Outlines' },
+                { section: 'study-report', label: 'Study Notes' },
+                { section: 'outlines', label: 'Outline' },
                 { section: 'manuscript', label: 'Manuscript' },
-                { section: 'citations', label: 'Citations' },
-                { section: 'dna', label: 'DNA' },
-                { section: 'media', label: 'Media' },
+                { section: 'citations', label: 'Review' },
+                { section: 'dna', label: 'Review Tools' },
+                { section: 'media', label: 'Media & Export' },
               ] as const
             ).map(({ section, label }) => (
               <button

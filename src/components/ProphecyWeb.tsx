@@ -33,7 +33,14 @@ export default function ProphecyWeb({ theme = 'all' }: ProphecyWebProps) {
     )
     camera.position.set(0, 20, 30)
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true })
+    let renderer: THREE.WebGLRenderer
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true })
+    } catch (error) {
+      console.warn('ProphecyWeb WebGL init failed', error)
+      setLoading(false)
+      return
+    }
     renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight)
     containerRef.current.appendChild(renderer.domElement)
 
@@ -137,7 +144,7 @@ export default function ProphecyWeb({ theme = 'all' }: ProphecyWebProps) {
       setWebData(data)
       setLoading(false)
     } catch (error) {
-      console.error('Error loading prophecy web:', error)
+      console.warn('Error loading prophecy web:', error)
       setLoading(false)
     }
   }
