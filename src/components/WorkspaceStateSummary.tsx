@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { ArrowRight, CheckCircle2, Layers3, Loader2, RotateCcw, Sparkles } from 'lucide-react'
 import { createWorkspaceApiClient } from '@/lib/api/openapi-client'
 import type { WorkspaceStateResponse } from '@/lib/api/openapi-client'
+import { getWorkspaceGuardrailProfile, getWorkspacePlanningSummary } from '@/components/workspace-metadata.helpers'
 
 const phaseLabels: Record<WorkspaceStateResponse['activePhase'], string> = {
   THEME: 'Setup',
@@ -163,6 +164,8 @@ export default function WorkspaceStateSummary({ workspaceId, state: initialState
   const claimsSupported = (state?.claimLedger || []).filter((item) => item.supportLevel === 'supported').length
   const latestArchiveLabel =
     manuscriptHistory[0]?.revisionLabel || outlineHistory[0]?.revisionLabel || 'No archived versions yet.'
+  const guardrail = getWorkspaceGuardrailProfile(state?.workspace as any)
+  const planningSummary = getWorkspacePlanningSummary(state?.workspace as any)
 
   if (loading) {
     return (
@@ -207,6 +210,22 @@ export default function WorkspaceStateSummary({ workspaceId, state: initialState
           <span className="cyber-tag">{state.workspace.status}</span>
         </div>
       </div>
+
+      {guardrail.active ? (
+        <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-50">
+          <p className="text-xs uppercase tracking-[0.25em] text-amber-200/80">{guardrail.label}</p>
+          <p className="mt-1 font-medium">{guardrail.message || 'Scripture first. Christ-centered. Historical context matters.'}</p>
+          <p className="mt-1 text-xs text-amber-100/70">{guardrail.reason}</p>
+        </div>
+      ) : null}
+
+      {planningSummary ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {planningSummary.split(' • ').map((item) => (
+            <span key={item} className="cyber-tag">{item}</span>
+          ))}
+        </div>
+      ) : null}
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
         <div className="rounded-2xl border border-cyan-400/20 bg-black/35 p-5 shadow-[0_0_24px_rgba(34,211,238,0.08)]">

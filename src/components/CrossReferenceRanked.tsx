@@ -21,9 +21,10 @@ interface CrossReferenceRankedProps {
   token: string
   onVerseClick?: (reference: string) => void
   onReferencesLoaded?: (count: number) => void
+  emptyStateMessage?: string
 }
 
-export default function CrossReferenceRanked({ verse, token, onReferencesLoaded }: CrossReferenceRankedProps) {
+export default function CrossReferenceRanked({ verse, token, onReferencesLoaded, emptyStateMessage }: CrossReferenceRankedProps) {
   const [references, setReferences] = useState<RankedCrossReference[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedReference, setSelectedReference] = useState<RankedCrossReference | null>(null)
@@ -405,7 +406,7 @@ export default function CrossReferenceRanked({ verse, token, onReferencesLoaded 
   }
 
   if (!references.length) {
-    return <p className="text-sm text-gray-300">No Scripture cross references found yet.</p>
+    return <p className="text-sm text-gray-300">{emptyStateMessage || 'No Scripture cross references found yet.'}</p>
   }
 
   return (

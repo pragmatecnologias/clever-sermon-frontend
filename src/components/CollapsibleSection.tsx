@@ -30,6 +30,8 @@ export default function CollapsibleSection({
     <div className={`border rounded-xl ${variantStyles[variant]}`}>
       <button
         onClick={() => setIsOpen(!isOpen)}
+        title={isOpen ? `Collapse ${title}` : `Expand ${title}`}
+        aria-label={isOpen ? `Collapse ${title}` : `Expand ${title}`}
         className="w-full px-5 py-4 flex items-center justify-between hover:bg-white/5 transition-colors"
       >
         <div className="text-left">

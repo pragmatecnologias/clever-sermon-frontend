@@ -140,4 +140,4 @@ export const createWorkspaceApiClient = (options: WorkspaceApiClientOptions = {}
 
 export const workspaceApiClient = createWorkspaceApiClient()
 export type { WorkspaceStateResponse } from '../../../../../shared/workspace-state.contract'
-export type { WorkspacePhase, WorkspaceSection } from '../../../../../shared/workspace-state.contract'
+export type { WorkspacePhase, WorkspaceSection, WorkspaceFeatureReadiness, WorkspaceFeatureReadinessMap, WorkspaceFeatureReadinessStatus } from '../../../../../shared/workspace-state.contract'

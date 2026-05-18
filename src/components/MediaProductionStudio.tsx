@@ -1,11 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Sparkles, FileText, Image, Mic, Music, Video, Share2, Loader2, Calendar, Clock3 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
 import { createWorkspaceApiClient } from '@/lib/api/openapi-client'
 import {
   buildStructuredMediaPrompts,
+  buildSocialCaption,
+  buildSocialHeadline,
   MAX_NARRATION_CHARACTERS,
   type ImagePromptFields,
 } from '@/lib/media-prompts'
@@ -143,6 +145,30 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     illustrations: workspace.illustrations || [],
   }
 
+  const socialLanguage = ((workspace?.language || workspace?.metadata?.language || 'en') as string).toLowerCase().startsWith('es')
+    ? 'es'
+    : 'en'
+  const socialHeadline = useMemo(
+    () =>
+      buildSocialHeadline({
+        title: sermonSummary.title,
+        passage: sermonSummary.passage,
+        theme: sermonSummary.theme,
+        language: socialLanguage,
+      }),
+    [sermonSummary.title, sermonSummary.passage, sermonSummary.theme, socialLanguage],
+  )
+  const socialCaptionFallback = useMemo(
+    () =>
+      buildSocialCaption({
+        title: sermonSummary.title,
+        passage: sermonSummary.passage,
+        theme: sermonSummary.theme,
+        language: socialLanguage,
+      }),
+    [sermonSummary.title, sermonSummary.passage, sermonSummary.theme, socialLanguage],
+  )
+
   const narrationKeyPoints = useMemo(() => {
     const fromPointNodes = Array.isArray(sermonSummary.pointNodes)
       ? sermonSummary.pointNodes
@@ -166,7 +192,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
       .slice(0, 4)
   }, [sermonSummary.applications])
 
-  function extractBestQuote(manuscript: string, applications: any[]): string {
+  const extractBestQuote = useCallback((manuscript: string, applications: any[]): string => {
     // Extract a powerful quote from manuscript or applications
     if (applications.length > 0 && applications[0].content) {
       const content = typeof applications[0].content === 'string' 
@@ -182,7 +208,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     }
     
     return sermonSummary.theme
-  }
+  }, [sermonSummary.theme])
 
   const studyMediaPrompts = useMemo(() => {
     const sections = workspace?.studyReports?.[0]?.sections || {}
@@ -306,7 +332,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
       social: pick('social'),
       quote,
     }
-  }, [workspace, sermonSummary, studyMediaPrompts])
+  }, [workspace, sermonSummary, studyMediaPrompts, extractBestQuote])
 
   const autoPrompts = {
     image: structuredPrompts.image?.prompt || '',
@@ -318,7 +344,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
       quote: structuredPrompts.quote,
       caption:
         structuredPrompts.social?.prompt ||
-        `${sermonSummary.title} | ${sermonSummary.passage}\n\n${sermonSummary.theme}`,
+        `${socialHeadline}\n\n${socialCaptionFallback}`,
     },
   }
 
@@ -371,9 +397,9 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     }
     if (!socialCaption) {
       const copy = resolvedSocialOptions.find((item: SocialPromptOption) => item.promptType === 'caption_copy')
-      setSocialCaption(sanitizeSocialCaptionCopy(copy?.prompt || autoPrompts.social.caption))
+      setSocialCaption(sanitizeSocialCaptionCopy(copy?.prompt || autoPrompts.social.caption || socialCaptionFallback))
     }
-  }, [resolvedSocialOptions, socialPromptId, socialQuote, socialCaption, socialVisualPrompt, autoPrompts.social.quote, autoPrompts.social.caption, autoPrompts.image, studyMediaPrompts.imageOptions])
+  }, [resolvedSocialOptions, socialPromptId, socialQuote, socialCaption, socialVisualPrompt, autoPrompts.social.quote, autoPrompts.social.caption, autoPrompts.image, studyMediaPrompts.imageOptions, socialCaptionFallback])
 
   useEffect(() => {
     let mounted = true
@@ -386,7 +412,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
         setChurchDefaults(normalized)
         setEventOverrides((prev) => ({
           ...prev,
-          eventTitle: sermonSummary.title || '',
+          eventTitle: prev.eventTitle?.trim() ? prev.eventTitle : socialHeadline,
           eventSubtitle: sermonSummary.passage || '',
           timezone: normalized.defaultTimezone || '',
         }))
@@ -400,7 +426,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     return () => {
       mounted = false
     }
-  }, [token, sermonSummary.title, sermonSummary.passage])
+  }, [token, sermonSummary.title, sermonSummary.passage, socialHeadline])
 
   const generatedSocialMeta = useMemo(() => {
     const sourcePrompt = [socialCaption, socialQuote, autoPrompts.social.caption].filter(Boolean).join(' ')
@@ -433,13 +459,10 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
   }, [
     socialCaption,
     socialQuote,
-    resolvedSocialOptions,
-    socialPromptId,
     autoPrompts.social.caption,
     workspace?.language,
     workspace?.metadata?.language,
     sermonSummary.title,
-    sermonSummary.passage,
     sermonSummary.theme,
   ])
 
@@ -470,9 +493,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
       const resolvedVisualPrompt = String(
         socialVisualPrompt || studyMediaPrompts.imageOptions[0]?.prompt || autoPrompts.image || '',
       ).trim()
-      const resolvedCaption = sanitizeSocialCaptionCopy(
-        socialCaption || autoPrompts.social.caption,
-      )
+      const resolvedCaption = sanitizeSocialCaptionCopy(socialCaption || autoPrompts.social.caption || socialCaptionFallback)
       await slidesApi.generateSocialKit(
         {
           workspaceId: workspace.id,
@@ -487,7 +508,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
           overlay: {
             ...eventOverrides,
             language: workspace.language || workspace.metadata?.language || 'en',
-            eventTitle: eventOverrides.eventTitle || sermonSummary.title,
+            eventTitle: eventOverrides.eventTitle || socialHeadline,
             eventSubtitle: eventOverrides.eventSubtitle || sermonSummary.passage,
             serviceDate: eventOverrides.serviceDate || '',
             serviceTime: eventOverrides.serviceTime || '',
@@ -551,6 +572,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
       const composeResult = await workspaceApi.composeMediaPack(String(workspace.id), {
         includeDeck: true,
         deckSize: 'long',
+        deckIntent: 'sermon_presentation',
       })
       const sermon = (composeResult as any)?.sermon || composeResult
       const deck = (composeResult as any)?.deck || (composeResult as any)?.deckResult || null
@@ -1067,6 +1089,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
         <div className="cyber-panel rounded-2xl p-6">
         <h3 className="text-lg font-semibold mb-4">Media Library</h3>
         <MediaGallery 
+          workspace={workspace}
           workspaceId={workspace.id} 
           token={token}
           key={refreshKey}

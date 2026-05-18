@@ -1,9 +1,14 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { Download, Loader2, Package } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Download, Loader2, Package, Play, RefreshCw } from 'lucide-react'
 import { Document, HeadingLevel, Packer, Paragraph, TextRun } from 'docx'
 import { createWorkspaceApiClient } from '@/lib/api/openapi-client'
+import { slidesApi } from '@/lib/slides-api'
+import {
+  getDeckIdentity,
+  selectPreferredDeck,
+} from '@/lib/deck-identity'
 
 type WorkspaceExportPanelProps = {
   workspace: any
@@ -37,18 +42,34 @@ const getSelectedOutline = (workspace: any) =>
 
 const getSelectedManuscript = (workspace: any) => workspace?.manuscripts?.[0] || null
 
+const getWorkspaceDecks = async (token: string, workspaceId: string) => {
+  const decks = await slidesApi.getDecks(token)
+  const normalizedDecks = Array.isArray(decks) ? decks : []
+  return normalizedDecks.filter((deck: any) => {
+    const deckWorkspaceId = String(
+      deck?.sermon?.workspaceId || deck?.sermon?.workspace?.id || deck?.workspaceId || deck?.workspace?.id || '',
+    ).trim()
+    return deckWorkspaceId === String(workspaceId)
+  })
+}
+
 const getExportReadiness = (workspace: any) => {
   const exportPack = workspace?.metadata?.exportPack || workspace?.metadata?.deliverables?.export || null
   const mediaPack = workspace?.metadata?.mediaPack || workspace?.metadata?.deliverables?.mediaPack || null
   const selectedOutline = getSelectedOutline(workspace)
   const selectedManuscript = getSelectedManuscript(workspace)
   const studyReport = workspace?.studyReports?.[0] || null
+  const activeSermonDeckId =
+    mediaPack?.activeSermonDeckId ||
+    mediaPack?.latestDeckByIntent?.sermon_presentation ||
+    exportPack?.deckId ||
+    null
 
   return {
     hasOutline: Boolean(selectedOutline),
     hasManuscript: Boolean(selectedManuscript),
     hasStudyReport: Boolean(studyReport),
-    deckReady: Boolean(exportPack?.deckId || mediaPack?.status === 'ready'),
+    deckReady: Boolean(activeSermonDeckId || exportPack?.deckId || mediaPack?.status === 'ready'),
     exportReady: Boolean(exportPack?.status === 'ready'),
     mediaReady: Boolean(mediaPack?.status === 'ready'),
     missing: [
@@ -61,6 +82,7 @@ const getExportReadiness = (workspace: any) => {
     studyReport,
     selectedOutline,
     selectedManuscript,
+    activeSermonDeckId,
   }
 }
 
@@ -141,9 +163,41 @@ const buildDocxBlob = async (title: string, sections: Array<{ heading: string; b
 export default function WorkspaceExportPanel({ workspace, token }: WorkspaceExportPanelProps) {
   const [status, setStatus] = useState<ExportStatus>('idle')
   const [message, setMessage] = useState<string>('')
+  const [workspaceDecks, setWorkspaceDecks] = useState<any[]>([])
+  const [deckLoading, setDeckLoading] = useState(false)
 
   const readiness = useMemo(() => getExportReadiness(workspace), [workspace])
   const artifacts = useMemo(() => buildExportArtifacts(workspace, readiness), [workspace, readiness])
+  useEffect(() => {
+    let mounted = true
+    const loadDecks = async () => {
+      if (!workspace?.id || !token) return
+      try {
+        setDeckLoading(true)
+        const decks = await getWorkspaceDecks(token, String(workspace.id))
+        if (mounted) setWorkspaceDecks(decks)
+      } catch (error) {
+        console.warn('Failed to load workspace decks for export panel:', error)
+      } finally {
+        if (mounted) setDeckLoading(false)
+      }
+    }
+    void loadDecks()
+    return () => {
+      mounted = false
+    }
+  }, [workspace?.id, token])
+
+  const sermonDeck = useMemo(() => selectPreferredDeck(workspaceDecks, workspace, 'sermon_presentation'), [workspaceDecks, workspace])
+  const socialDeck = useMemo(() => selectPreferredDeck(workspaceDecks, workspace, 'social_summary'), [workspaceDecks, workspace])
+  const legacyShortDeck = useMemo(
+    () =>
+      workspaceDecks.find((deck) => {
+        const identity = getDeckIdentity(deck, workspace)
+        return identity.qualityStatus === 'Legacy short deck'
+      }) || null,
+    [workspaceDecks, workspace],
+  )
 
   const updateExportMetadata = async (manifest: Record<string, unknown>) => {
     const client = createWorkspaceApiClient({ token })
@@ -159,6 +213,43 @@ export default function WorkspaceExportPanel({ workspace, token }: WorkspaceExpo
     })
   }
 
+  const refreshWorkspaceDecks = async () => {
+    if (!workspace?.id) return
+    const decks = await getWorkspaceDecks(token, String(workspace.id))
+    setWorkspaceDecks(decks)
+  }
+
+  const previewDeck = async (deck: any) => {
+    const slides = Array.isArray(deck?.slides) ? [...deck.slides] : []
+    const firstSlide = slides.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))[0]
+    if (!firstSlide?.id) return
+    const blob = await slidesApi.getSlideImageBlob(firstSlide.id, token)
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank', 'noopener,noreferrer')
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+
+  const generateDeckForIntent = async (deckIntent: 'sermon_presentation' | 'social_summary') => {
+    if (!workspace?.id) return
+    const client = createWorkspaceApiClient({ token })
+    const result = await client.composeMediaPack(String(workspace.id), {
+      deckSize: deckIntent === 'social_summary' ? 'short' : 'long',
+      deckIntent,
+      includeDeck: true,
+      exportTypes: deckIntent === 'sermon_presentation' ? ['pptx', 'pdf'] : [],
+      backgroundProvider: 'local',
+      backgroundPreset: 'modern',
+    })
+    const deckId = (result as any)?.deck?.id || (result as any)?.deck?.deckId || null
+    if (deckId) {
+      await refreshWorkspaceDecks()
+    }
+    return deckId
+  }
+
+  const sermonDeckInfo = sermonDeck ? getDeckIdentity(sermonDeck, workspace) : null
+  const socialDeckInfo = socialDeck ? getDeckIdentity(socialDeck, workspace) : null
+
   const handleExportAll = async () => {
     if (!workspace?.id) return
     setStatus('running')
@@ -171,6 +262,7 @@ export default function WorkspaceExportPanel({ workspace, token }: WorkspaceExpo
       const client = createWorkspaceApiClient({ token })
       const result = await client.composeMediaPack(String(workspace.id), {
         deckSize: 'long',
+        deckIntent: 'sermon_presentation',
         includeDeck: true,
         exportTypes: ['pptx', 'pdf'],
         backgroundProvider: 'local',
@@ -215,6 +307,7 @@ export default function WorkspaceExportPanel({ workspace, token }: WorkspaceExpo
         })),
       }
       await updateExportMetadata(manifest)
+      await refreshWorkspaceDecks()
       setStatus('done')
       setMessage('Export package complete.')
     } catch (error) {
@@ -231,7 +324,7 @@ export default function WorkspaceExportPanel({ workspace, token }: WorkspaceExpo
           <p className="text-xs uppercase tracking-[0.25em] text-cyan-300 mb-2">Export Pipeline</p>
           <h3 className="text-xl font-semibold text-white">Approved Sermon Package</h3>
           <p className="text-sm text-gray-200/80 mt-1">
-            Download the sermon package from the approved outline and manuscript.
+            Sermon Presentation Deck for worship use. Social Summary Deck for promo sharing.
           </p>
         </div>
         <Package className="w-5 h-5 text-cyan-200" />
@@ -250,12 +343,125 @@ export default function WorkspaceExportPanel({ workspace, token }: WorkspaceExpo
           <span className={`cyber-tag ${readiness.exportReady ? 'text-emerald-200' : 'text-amber-200'}`}>
             {readiness.exportReady ? 'Export ready' : 'Export pending'}
           </span>
+          <span className={`cyber-tag ${deckLoading ? 'text-amber-200' : 'text-emerald-200'}`}>
+            {deckLoading ? 'Deck history loading' : 'Deck history loaded'}
+          </span>
         </div>
         <p className="text-xs text-gray-300">
-          Slide export is {readiness.deckReady ? 'ready to preview or download' : 'not ready yet'}.
-          {readiness.missing.length ? ` Still needed: ${readiness.missing.join(', ')}.` : ' Everything needed is in place.'}
+          Sermon export uses the active sermon deck. Social sharing uses the active social deck.
         </p>
       </div>
+
+      <div className="space-y-3">
+        <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-4 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.25em] text-cyan-200">Current Sermon Presentation Deck</p>
+              <h4 className="text-lg font-semibold text-white">
+                {sermonDeck?.title || sermonDeck?.sermon?.title || 'No sermon deck yet'}
+              </h4>
+              <p className="text-xs text-cyan-50/80 mt-1">
+                {sermonDeckInfo
+                  ? `${sermonDeckInfo.slideCount} slides • ${sermonDeckInfo.qualityStatus} • ${sermonDeckInfo.generatedAtLabel}`
+                  : legacyShortDeck
+                    ? 'You have an older short deck. Generate a full sermon presentation deck for preaching.'
+                    : 'Generate a Sermon Presentation Deck for worship service use.'}
+              </p>
+            </div>
+            <span className="text-xs px-2 py-1 rounded-full border border-cyan-300/40 bg-cyan-500/15 text-cyan-100">
+              Sermon
+            </span>
+          </div>
+          {sermonDeckInfo?.warnings?.length ? (
+            <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+              {sermonDeckInfo.warnings.join(' ')}
+            </div>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => sermonDeck && void previewDeck(sermonDeck)}
+              disabled={!sermonDeck}
+              className="cyber-outline text-xs px-3 py-2 rounded-full inline-flex items-center gap-2 disabled:opacity-60"
+            >
+              <Play className="w-3 h-3" />
+              Open deck
+            </button>
+            <button
+              type="button"
+              onClick={() => sermonDeck && slidesApi.exportDeck(sermonDeck.id, 'pptx', token).catch((error) => console.error('Failed to export deck:', error))}
+              disabled={!sermonDeck}
+              className="cyber-outline text-xs px-3 py-2 rounded-full inline-flex items-center gap-2 disabled:opacity-60"
+            >
+              <Download className="w-3 h-3" />
+              Export PPTX
+            </button>
+            <button
+              type="button"
+              onClick={() => sermonDeck && slidesApi.exportDeck(sermonDeck.id, 'pdf', token).catch((error) => console.error('Failed to export deck:', error))}
+              disabled={!sermonDeck}
+              className="cyber-outline text-xs px-3 py-2 rounded-full inline-flex items-center gap-2 disabled:opacity-60"
+            >
+              <Download className="w-3 h-3" />
+              Export PDF
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void generateDeckForIntent('sermon_presentation')
+              }}
+              className="cyber-outline text-xs px-3 py-2 rounded-full inline-flex items-center gap-2"
+            >
+              <RefreshCw className="w-3 h-3" />
+              Regenerate sermon deck
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-pink-400/20 bg-pink-500/10 p-4 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.25em] text-pink-200">Current Social Summary Deck</p>
+              <h4 className="text-lg font-semibold text-white">
+                {socialDeck?.title || socialDeck?.sermon?.title || 'No social deck yet'}
+              </h4>
+              <p className="text-xs text-pink-50/80 mt-1">
+                {socialDeckInfo ? `${socialDeckInfo.slideCount} slides/cards • ${socialDeckInfo.qualityStatus} • ${socialDeckInfo.generatedAtLabel}` : 'Generate a Social Summary Deck for sharing.'}
+              </p>
+            </div>
+            <span className="text-xs px-2 py-1 rounded-full border border-pink-300/40 bg-pink-500/15 text-pink-100">
+              Social
+            </span>
+          </div>
+          {socialDeckInfo?.warnings?.length ? (
+            <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+              {socialDeckInfo.warnings.join(' ')}
+            </div>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => socialDeck && void previewDeck(socialDeck)}
+              disabled={!socialDeck}
+              className="cyber-outline text-xs px-3 py-2 rounded-full inline-flex items-center gap-2 disabled:opacity-60"
+            >
+              <Play className="w-3 h-3" />
+              Open social deck
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void generateDeckForIntent('social_summary')
+              }}
+              className="cyber-outline text-xs px-3 py-2 rounded-full inline-flex items-center gap-2"
+            >
+              <RefreshCw className="w-3 h-3" />
+              Regenerate social deck
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="grid gap-2 md:grid-cols-2">
         {artifacts.map((artifact) => (
           <div key={artifact.type} className="rounded-xl border border-white/10 bg-black/20 p-3">
@@ -279,7 +485,7 @@ export default function WorkspaceExportPanel({ workspace, token }: WorkspaceExpo
           {status === 'running' ? 'Exporting...' : 'Export All'}
         </button>
         <p className="text-xs text-gray-300">
-          {message || 'No export started yet. Finish the outline, manuscript, and study report to unlock export.'}
+          {message || 'No export started yet. Export uses the active sermon presentation deck.'}
         </p>
       </div>
       {status === 'done' && <p className="text-xs text-green-300">Export complete and workspace metadata updated.</p>}

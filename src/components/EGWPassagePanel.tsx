@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { Book, ChevronDown, ChevronUp, Loader2, ExternalLink } from 'lucide-react';
 import EGWCitationModal from './EGWCitationModal';
+import type { WorkspaceFeatureReadinessMap } from '@/lib/api/openapi-client'
+import { getFeatureReadiness } from '@/components/feature-readiness'
 
 interface PassageEGWInsight {
   paragraphId: string;
@@ -24,6 +26,9 @@ interface EGWPanelData {
   hasMore: boolean;
 }
 
+type EGWPassageFilter = 'most_relevant' | 'christ_centered' | 'doctrinal_support' | 'pastoral_application' | 'prophecy_context'
+type EGWPassageContentMode = 'quote' | 'summary'
+
 interface EGWPassagePanelProps {
   passage: string;
   book: string;
@@ -32,6 +37,7 @@ interface EGWPassagePanelProps {
   verseEnd?: number;
   language?: string;
   showHeader?: boolean;
+  featureReadiness?: WorkspaceFeatureReadinessMap | null;
 }
 
 function RankingBadge({ reason }: { reason: PassageEGWInsight['rankingReason'] }) {
@@ -65,16 +71,17 @@ function RankingBadge({ reason }: { reason: PassageEGWInsight['rankingReason'] }
 
 function InsightCard({ 
   insight, 
-  onClick
+  onClick,
+  excerpt,
+  filterLabel,
+  contentMode,
 }: { 
   insight: PassageEGWInsight; 
   onClick: () => void;
+  excerpt: string;
+  filterLabel: string;
+  contentMode: EGWPassageContentMode;
 }) {
-  // Create excerpt - first 150 chars
-  const excerpt = insight.content.length > 150 
-    ? insight.content.substring(0, 150) + '...' 
-    : insight.content;
-
   return (
     <button
       onClick={onClick}
@@ -89,6 +96,9 @@ function InsightCard({
             <span className="text-xs text-amber-400/60">
               {insight.reference}
             </span>
+            <span className="rounded-full border border-amber-400/30 bg-black/30 px-2 py-1 text-[10px] uppercase tracking-widest text-amber-100/75">
+              {filterLabel}
+            </span>
           </div>
           <RankingBadge reason={insight.rankingReason} />
         </div>
@@ -98,6 +108,12 @@ function InsightCard({
       <p className="text-sm text-gray-300 leading-relaxed mt-3 line-clamp-3">
         {excerpt}
       </p>
+
+      {contentMode === 'quote' ? (
+        <p className="mt-2 text-xs text-amber-300/70">
+          Open the card for the full quote. Summary mode is available above if you want a quicker scan.
+        </p>
+      ) : null}
 
       <p className="mt-2 text-xs text-amber-300/70">
         Related to: {insight.scriptureReference}
@@ -116,15 +132,19 @@ export default function EGWPassagePanel({
   book, 
   chapter, 
   verseStart, 
-  verseEnd,
+  verseEnd, 
   language = 'en',
   showHeader = true,
+  featureReadiness,
 }: EGWPassagePanelProps) {
   const [data, setData] = useState<EGWPanelData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showingAll, setShowingAll] = useState(false);
   const [selectedInsight, setSelectedInsight] = useState<PassageEGWInsight | null>(null);
+  const [filter, setFilter] = useState<EGWPassageFilter>('most_relevant');
+  const [contentMode, setContentMode] = useState<EGWPassageContentMode>('quote');
+  const readiness = getFeatureReadiness(featureReadiness, 'egw')
 
   useEffect(() => {
     fetchInsights();
@@ -172,6 +192,43 @@ export default function EGWPassagePanel({
     setShowingAll(true);
   };
 
+  const classifyInsight = (insight: PassageEGWInsight): EGWPassageFilter => {
+    const content = `${insight.content} ${insight.reference} ${insight.bookTitle}`.toLowerCase();
+    if (/christ|jesus|savior|salvation|grace|gospel/.test(content)) return 'christ_centered';
+    if (/command|law|judg|doctrine|truth|faith|worship|babylon|seal|covenant/.test(content)) return 'doctrinal_support';
+    if (/pastor|hope|comfort|encourag|application|practical|assurance|invitation/.test(content)) return 'pastoral_application';
+    if (/prophet|prophecy|apocalypse|end-time|end time|judgment|advent|second coming|revelation|daniel|beast|horn/.test(content)) return 'prophecy_context';
+    return 'most_relevant';
+  };
+
+  const filterLabels: Record<EGWPassageFilter, string> = {
+    most_relevant: 'Most relevant',
+    christ_centered: 'Christ-centered emphasis',
+    doctrinal_support: 'Doctrinal support',
+    pastoral_application: 'Pastoral application',
+    prophecy_context: 'Prophecy / end-time context',
+  };
+
+  const filterDescriptions: Record<EGWPassageFilter, string> = {
+    most_relevant: 'Show the closest related insights first.',
+    christ_centered: 'Highlight Christ, salvation, and the gospel center.',
+    doctrinal_support: 'Show doctrinally weighty support and theology.',
+    pastoral_application: 'Show material that helps with appeal and care.',
+    prophecy_context: 'Show end-time and prophetic context when relevant.',
+  };
+
+  const filteredInsights = (data?.insights || []).filter((insight) => {
+    if (filter === 'most_relevant') return true;
+    const bucket = classifyInsight(insight);
+    return bucket === filter;
+  });
+
+  const excerptFor = (insight: PassageEGWInsight) => (
+    contentMode === 'summary'
+      ? (insight.content.length > 140 ? `${insight.content.substring(0, 140)}...` : insight.content)
+      : insight.content
+  );
+
   if (loading && !data) {
     return (
       <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
@@ -199,15 +256,21 @@ export default function EGWPassagePanel({
   }
 
   if (!data || data.insights.length === 0) {
+    const emptyMessage =
+      readiness?.status === 'needs_data'
+        ? `${readiness.message} Developer action: load the EGW seed data.`
+        : readiness?.status === 'needs_prerequisite'
+          ? readiness.message
+          : readiness?.status === 'needs_service'
+            ? `${readiness.message} Developer action: configure the EGW service.`
+            : 'No Spirit of Prophecy insights found for this passage.'
     return (
       <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
         <div className="flex items-center gap-2 mb-4">
           <Book className="w-5 h-5 text-blue-400" />
           <h3 className="text-lg font-semibold text-white">🕊 Spirit of Prophecy</h3>
         </div>
-        <p className="text-gray-400 text-sm">
-          No Spirit of Prophecy insights found for this passage.
-        </p>
+        <p className="text-gray-400 text-sm">{emptyMessage}</p>
       </div>
     );
   }
@@ -220,26 +283,81 @@ export default function EGWPassagePanel({
     <>
       <div className={containerClassName}>
         {showHeader && (
-          <div className="flex items-center gap-2 mb-4">
-            <Book className="w-5 h-5 text-amber-400" />
-            <h3 className="text-lg font-semibold text-amber-100">🕊 Spirit of Prophecy</h3>
-            <span className="ml-auto text-xs text-amber-400/60">
-              {data.insights.length} insight{data.insights.length !== 1 ? 's' : ''}
-            </span>
+          <div className="mb-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Book className="w-5 h-5 text-amber-400" />
+              <h3 className="text-lg font-semibold text-amber-100">🕊 Spirit of Prophecy</h3>
+              <span className="ml-auto text-xs text-amber-400/60">
+                {filteredInsights.length} insight{filteredInsights.length !== 1 ? 's' : ''} shown
+              </span>
+            </div>
+            <p className="text-sm text-amber-50/80">
+              Scripture stays primary. Use filters to keep EGW supportive, readable, and pastorally useful.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {(Object.keys(filterLabels) as EGWPassageFilter[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setFilter(mode)}
+                  className={`rounded-full border px-3 py-2 text-xs transition-colors ${
+                    filter === mode
+                      ? 'border-amber-300/70 bg-amber-500/20 text-amber-50'
+                      : 'border-white/10 bg-black/20 text-amber-100/75 hover:border-amber-300/40 hover:bg-amber-500/10'
+                  }`}
+                  title={filterDescriptions[mode]}
+                >
+                  {filterLabels[mode]}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setContentMode('quote')}
+                className={`rounded-full border px-3 py-2 text-xs transition-colors ${
+                  contentMode === 'quote'
+                    ? 'border-cyan-300/70 bg-cyan-500/20 text-cyan-50'
+                    : 'border-white/10 bg-black/20 text-cyan-100/75 hover:border-cyan-300/40 hover:bg-cyan-500/10'
+                }`}
+              >
+                Quote
+              </button>
+              <button
+                type="button"
+                onClick={() => setContentMode('summary')}
+                className={`rounded-full border px-3 py-2 text-xs transition-colors ${
+                  contentMode === 'summary'
+                    ? 'border-cyan-300/70 bg-cyan-500/20 text-cyan-50'
+                    : 'border-white/10 bg-black/20 text-cyan-100/75 hover:border-cyan-300/40 hover:bg-cyan-500/10'
+                }`}
+              >
+                Summary
+              </button>
+            </div>
           </div>
         )}
 
         <div className="space-y-2">
-          {data.insights.map(insight => (
+          {filteredInsights.map(insight => (
             <InsightCard
               key={insight.paragraphId}
               insight={insight}
               onClick={() => setSelectedInsight(insight)}
+              excerpt={excerptFor(insight)}
+              filterLabel={filterLabels[classifyInsight(insight)]}
+              contentMode={contentMode}
             />
           ))}
         </div>
 
-        {data.hasMore && !showingAll && (
+        {filteredInsights.length === 0 && (
+          <div className="rounded-lg border border-dashed border-amber-400/30 bg-black/20 p-4">
+            <p className="text-sm text-amber-100/80">
+              No EGW insights match the current filter. Try a different emphasis or return to Most relevant.
+            </p>
+          </div>
+        )}
+
+        {data.hasMore && !showingAll && filter === 'most_relevant' && (
           <button
             onClick={handleViewMore}
             disabled={loading}

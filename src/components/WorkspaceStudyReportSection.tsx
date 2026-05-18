@@ -6,11 +6,14 @@ import SanctuaryProphecyMapper from '@/components/SanctuaryProphecyMapper'
 import InteractiveProphecyWeb from '@/components/InteractiveProphecyWeb'
 import BiblicalNarrativeMap from '@/components/BiblicalNarrativeMap'
 import { StudyAssetCard, StudyAssetBoxes } from '@/components/WorkspaceStudyReportCards'
+import type { WorkspaceFeatureReadinessMap } from '@/lib/api/openapi-client'
+import { getFeatureReadiness } from '@/components/feature-readiness'
 
 type StudyAssetEditor = 'applications' | 'questions' | 'illustrations' | null
 
 interface WorkspaceStudyReportSectionProps {
   workspace: any
+  featureReadiness?: WorkspaceFeatureReadinessMap | null
   hasGeneratedStudyReport: boolean
   onGenerate: (asset: 'applications' | 'questions' | 'illustrations' | 'media') => void
   onEditAsset: (asset: Exclude<StudyAssetEditor, null>) => void
@@ -23,6 +26,7 @@ interface WorkspaceStudyReportSectionProps {
 
 export default function WorkspaceStudyReportSection({
   workspace,
+  featureReadiness,
   hasGeneratedStudyReport,
   onGenerate,
   onEditAsset,
@@ -33,6 +37,7 @@ export default function WorkspaceStudyReportSection({
   onOpenFullView,
 }: WorkspaceStudyReportSectionProps) {
   const requireStudyReport = !hasGeneratedStudyReport
+  const studyReportReadiness = getFeatureReadiness(featureReadiness, 'studyReport')
   const workspaceMainPassage = String(workspace?.mainPassage || '').trim()
   const workspaceLanguage = String(workspace?.language || 'en').trim()
   const sections = workspace?.studyReports?.[0]?.sections || {}
@@ -146,6 +151,13 @@ export default function WorkspaceStudyReportSection({
         prompt,
       }))
 
+  const resolveAssetStatus = (count: number, loading: boolean) => {
+    if (loading) return 'Loading' as const
+    if (requireStudyReport) return 'Needs prerequisite' as const
+    if (count > 0) return 'Generated' as const
+    return 'Empty because no data exists' as const
+  }
+
   return (
     <>
       <p className="text-xs text-cyan-100/80">
@@ -173,6 +185,16 @@ export default function WorkspaceStudyReportSection({
           isLoading={isStudyAssetLoading('applications')}
           loadingLabel={getStudyAssetLoadingLabel('applications')}
           disableActions={isStudyAssetLoading('applications') || requireStudyReport}
+          readiness={!hasGeneratedStudyReport ? studyReportReadiness : null}
+          status={resolveAssetStatus(studyAssets.applications.length, isStudyAssetLoading('applications'))}
+          statusReason={
+            requireStudyReport
+              ? 'Generate a study report first. Applications are derived from the passage analysis.'
+              : studyAssets.applications.length > 0
+                ? 'Connected to the current workspace.'
+                : 'No applications have been generated yet.'
+          }
+          resultCount={studyAssets.applications.length}
         />
         <StudyAssetCard
           title="Discussion Questions"
@@ -195,6 +217,16 @@ export default function WorkspaceStudyReportSection({
           isLoading={isStudyAssetLoading('questions')}
           loadingLabel={getStudyAssetLoadingLabel('questions')}
           disableActions={isStudyAssetLoading('questions') || requireStudyReport}
+          readiness={!hasGeneratedStudyReport ? studyReportReadiness : null}
+          status={resolveAssetStatus(studyAssets.discussionQuestions.length, isStudyAssetLoading('questions'))}
+          statusReason={
+            requireStudyReport
+              ? 'Generate a study report first. Discussion questions are grounded in the report.'
+              : studyAssets.discussionQuestions.length > 0
+                ? 'Connected to the current workspace.'
+                : 'No discussion questions have been generated yet.'
+          }
+          resultCount={studyAssets.discussionQuestions.length}
         />
         <StudyAssetCard
           title="Illustration Ideas"
@@ -217,6 +249,16 @@ export default function WorkspaceStudyReportSection({
           isLoading={isStudyAssetLoading('illustrations')}
           loadingLabel={getStudyAssetLoadingLabel('illustrations')}
           disableActions={isStudyAssetLoading('illustrations') || requireStudyReport}
+          readiness={!hasGeneratedStudyReport ? studyReportReadiness : null}
+          status={resolveAssetStatus(studyAssets.illustrationIdeas.length, isStudyAssetLoading('illustrations'))}
+          statusReason={
+            requireStudyReport
+              ? 'Generate a study report first. Illustration ideas are derived from the report.'
+              : studyAssets.illustrationIdeas.length > 0
+                ? 'Connected to the current workspace.'
+                : 'No illustration ideas have been generated yet.'
+          }
+          resultCount={studyAssets.illustrationIdeas.length}
         />
         <StudyAssetCard
           title="Media Suggestions"
@@ -248,6 +290,16 @@ export default function WorkspaceStudyReportSection({
           isLoading={isStudyAssetLoading('media')}
           loadingLabel={getStudyAssetLoadingLabel('media')}
           disableActions={isStudyAssetLoading('media') || requireStudyReport}
+          readiness={!hasGeneratedStudyReport ? studyReportReadiness : null}
+          status={resolveAssetStatus(studyMediaPrompts.length, isStudyAssetLoading('media'))}
+          statusReason={
+            requireStudyReport
+              ? 'Generate a study report first. Media suggestions are derived from study assets.'
+              : studyMediaPrompts.length > 0
+                ? 'Connected to the current workspace.'
+                : 'No media suggestions have been generated yet.'
+          }
+          resultCount={studyMediaPrompts.length}
         />
       </div>
 

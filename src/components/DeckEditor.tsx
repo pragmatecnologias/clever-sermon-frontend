@@ -528,6 +528,15 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
         <div>
           <h2 className="text-2xl font-bold">{deck?.sermon?.title}</h2>
           <p className="text-sm text-gray-400">Theme: {deck?.theme?.name}</p>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+            <span className="cyber-tag text-cyan-200">
+              Deck mode: {String(deck?.deckIntent || 'sermon_presentation').replace(/_/g, ' ')}
+            </span>
+            <span className="cyber-tag text-emerald-200">Slides: {slides.length || '0'}</span>
+            {String(deck?.deckIntent || 'sermon_presentation') === 'sermon_presentation' && slides.length > 0 && slides.length < 8 ? (
+              <span className="cyber-tag text-amber-200">Too short for a full sermon presentation</span>
+            ) : null}
+          </div>
         </div>
         <div className="flex gap-2">
           {/* Column Layout Switcher */}

@@ -15,10 +15,12 @@ interface SermonCoreProps {
   workspaceId: string
   mainPassage: string
   theme?: string
+  theologicalLens?: string
   studyReport?: any
   initialData?: SermonCoreData
   onDataChange?: (data: SermonCoreData) => void
   onGenerate?: () => Promise<SermonCoreData | null>
+  onUseInOutline?: () => void
   isGenerating?: boolean
 }
 
@@ -34,10 +36,12 @@ export default function SermonCore({
   workspaceId,
   mainPassage,
   theme,
+  theologicalLens,
   studyReport,
   initialData,
   onDataChange,
   onGenerate,
+  onUseInOutline,
   isGenerating = false
 }: SermonCoreProps) {
   const [data, setData] = useState<SermonCoreData>(initialData || emptyCore)
@@ -129,10 +133,21 @@ export default function SermonCore({
           <Target className="w-5 h-5 text-cyan-400" />
           <div>
             <h3 className="text-lg font-semibold">Sermon Core</h3>
-            <p className="text-xs text-cyan-200/70">The DNA of your message</p>
+            <p className="text-xs text-cyan-200/70">The bridge between study and outline</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {expanded && onUseInOutline && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onUseInOutline()
+              }}
+              className="cyber-outline text-xs px-4 py-2 rounded-full flex items-center gap-2"
+            >
+              Use this to generate outline
+            </button>
+          )}
           {expanded && (
             <button
               onClick={(e) => {
@@ -163,6 +178,21 @@ export default function SermonCore({
       {/* Content */}
       {expanded && (
         <div className="p-4 pt-0 space-y-4">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-3">
+              <p className="text-[10px] uppercase tracking-widest text-cyan-200/70">Passage</p>
+              <p className="mt-1 text-sm text-cyan-50">{mainPassage || 'Passage not set yet.'}</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+              <p className="text-[10px] uppercase tracking-widest text-gray-300">Theological Lens</p>
+              <p className="mt-1 text-sm text-gray-100">{theologicalLens || 'Adventist / workspace default'}</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+              <p className="text-[10px] uppercase tracking-widest text-gray-300">Study Report</p>
+              <p className="mt-1 text-sm text-gray-100">{studyReport ? 'Available' : 'Generate study report for deeper Sermon Core results'}</p>
+            </div>
+          </div>
+
           {!hasContent && !isGenerating && (
             <div className="text-center py-6 text-gray-400">
               <Target className="w-12 h-12 mx-auto mb-3 opacity-30" />
@@ -177,7 +207,7 @@ export default function SermonCore({
             <div className="space-y-3 py-4">
               <div className="flex items-center justify-between text-xs uppercase tracking-widest text-cyan-200/80">
                 <span>Extracting Sermon Core</span>
-                <span>Analyzing study data...</span>
+                <span>Analyzing tension, restoration, invitation, and application...</span>
               </div>
               <div className="h-2 rounded-full bg-white/10 overflow-hidden">
                 <div className="h-full w-2/3 bg-gradient-to-r from-cyan-400 via-sky-300 to-cyan-500 animate-pulse rounded-full" />

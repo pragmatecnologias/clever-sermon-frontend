@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import type { WorkspaceFeatureReadiness } from '@/lib/api/openapi-client'
+import FeatureStatusBadge from '@/components/FeatureStatusBadge'
 
 export function StudyAssetBoxes<T>({
   items,
@@ -61,6 +63,10 @@ export function StudyAssetCard({
   isLoading,
   loadingLabel,
   disableActions,
+  status,
+  statusReason,
+  resultCount,
+  readiness,
 }: {
   title: string
   icon: ReactNode
@@ -72,13 +78,22 @@ export function StudyAssetCard({
   isLoading: boolean
   loadingLabel: string
   disableActions?: boolean
+  status?: 'Ready' | 'Needs prerequisite' | 'Loading' | 'Generated' | 'Empty because no data exists' | 'Unavailable because service/data is not configured' | 'Failed with retry'
+  statusReason?: string
+  resultCount?: number
+  readiness?: WorkspaceFeatureReadiness | null
 }) {
   return (
     <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="text-cyan-200">{icon}</div>
-          <p className="text-sm font-semibold text-white">{title}</p>
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-white">{title}</p>
+            {typeof resultCount === 'number' ? (
+              <p className="text-[11px] uppercase tracking-[0.25em] text-gray-400">{resultCount} item{resultCount === 1 ? '' : 's'}</p>
+            ) : null}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {secondaryActionLabel && onSecondaryAction ? (
@@ -99,6 +114,7 @@ export function StudyAssetCard({
           </button>
         </div>
       </div>
+      {status || readiness ? <FeatureStatusBadge status={status} reason={statusReason} readiness={readiness} /> : null}
       {isLoading ? (
         <div className="space-y-3">
           <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-cyan-200/80">

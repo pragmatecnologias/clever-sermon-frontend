@@ -5,6 +5,24 @@ type WorkspaceDeliverables = {
   hasMusic?: boolean
 }
 
+export type WorkspacePlanningProfile = {
+  sermonDate?: string
+  targetLengthMinutes?: number
+  serviceType?: string
+  appealStyle?: string
+  ministryMode?: string
+  bilingualMode?: string
+}
+
+export type WorkspaceGuardrailProfile = {
+  active: boolean
+  label: string
+  reason?: string
+  message?: string
+  focus?: string[]
+  scriptureAnchors?: string[]
+}
+
 type WorkspaceMetadataLike = {
   language?: string
   uiState?: WorkspaceUiState | null
@@ -13,6 +31,10 @@ type WorkspaceMetadataLike = {
   sermonDnaLastAnalysis?: unknown
   deliverables?: WorkspaceDeliverables
   claimReviews?: Array<{ claimId?: string; decision?: string; note?: string; updatedAt?: string }>
+  planning?: WorkspacePlanningProfile
+  guardrail?: WorkspaceGuardrailProfile
+  guardrailMode?: string
+  guardrailDetected?: boolean
 }
 
 export type WorkspaceUiState = {
@@ -28,6 +50,7 @@ export type WorkspaceCoachFeedback = {
 
 type WorkspaceLike = {
   language?: string
+  mainPassage?: string
   metadata?: WorkspaceMetadataLike
   manuscripts?: Array<{ content?: { metadata?: { quality?: { repairedIssues?: unknown[]; remainingIssues?: unknown[] }; repair?: { lastRepairedAt?: string } } } }>
 }
@@ -57,6 +80,69 @@ export const workspaceHasDeliverables = (workspace?: WorkspaceLike | null, keys:
 
 export const getWorkspaceClaimReviews = (workspace?: WorkspaceLike | null) =>
   Array.isArray(getWorkspaceMetadata(workspace).claimReviews) ? getWorkspaceMetadata(workspace).claimReviews || [] : []
+
+export const getWorkspacePlanningProfile = (workspace?: WorkspaceLike | null): WorkspacePlanningProfile => {
+  const metadata = getWorkspaceMetadata(workspace)
+  return metadata.planning || {}
+}
+
+const propheticPassagePatterns = [
+  /revelation\s*14(?::\s*6\s*-\s*12)?/i,
+  /revelation\s*(?:12\s*-\s*14|12|13|18)/i,
+  /daniel\s*(?:7|8)/i,
+  /matthew\s*24/i,
+  /exodus\s*20/i,
+]
+
+export const isPropheticAdventistPassage = (reference?: string | null) => {
+  const value = String(reference || '').trim()
+  if (!value) return false
+  return propheticPassagePatterns.some((pattern) => pattern.test(value))
+}
+
+export const getWorkspaceGuardrailProfile = (workspace?: WorkspaceLike | null): WorkspaceGuardrailProfile => {
+  const metadata = getWorkspaceMetadata(workspace)
+  const planning = getWorkspacePlanningProfile(workspace)
+  const manualMode = String(metadata.guardrailMode || '').toLowerCase()
+  const active = Boolean(metadata.guardrailDetected) || manualMode.includes('prophetic') || planning.ministryMode === 'prophetic' || isPropheticAdventistPassage(workspace?.mainPassage)
+
+  if (!active) {
+    return { active: false, label: '' }
+  }
+
+  return (
+    metadata.guardrail || {
+      active: true,
+      label: 'Prophetic / Adventist Guardrail Mode',
+      reason: isPropheticAdventistPassage(workspace?.mainPassage)
+        ? `${workspace?.mainPassage || 'This passage'} benefits from stronger prophetic guardrails.`
+        : 'Prophetic ministry mode was selected in workspace planning.',
+      message: 'Scripture first. Christ-centered. Non-sensational. Historical context matters.',
+      focus: [
+        'Scripture first',
+        'Christ-centered',
+        'historically responsible',
+        'non-sensational',
+        'hopeful and pastoral',
+      ],
+      scriptureAnchors: [],
+    }
+  )
+}
+
+export const getWorkspacePlanningSummary = (workspace?: WorkspaceLike | null) => {
+  const planning = getWorkspacePlanningProfile(workspace)
+  const items = [
+    planning.sermonDate ? `Date: ${planning.sermonDate}` : '',
+    planning.targetLengthMinutes ? `Length: ${planning.targetLengthMinutes} min` : '',
+    planning.serviceType ? `Service: ${planning.serviceType}` : '',
+    planning.appealStyle ? `Appeal: ${planning.appealStyle}` : '',
+    planning.ministryMode ? `Mode: ${planning.ministryMode}` : '',
+    planning.bilingualMode ? `Language mode: ${planning.bilingualMode}` : '',
+  ].filter(Boolean)
+
+  return items.join(' • ')
+}
 
 export const getLatestManuscriptRepairIssues = (workspace?: WorkspaceLike | null): string[] =>
   Array.isArray(workspace?.manuscripts?.[0]?.content?.metadata?.quality?.repairedIssues)

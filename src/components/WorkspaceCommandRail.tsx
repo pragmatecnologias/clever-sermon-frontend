@@ -45,10 +45,13 @@ export default function WorkspaceCommandRail({
   onCloseRail,
   onNextStepAction,
 }: Props) {
-  const sectionNavButton = (key: WorkspaceSection, label: string) => (
+  const sectionNavButton = (key: WorkspaceSection, label: string, options?: { disabled?: boolean; reason?: string }) => (
     <button
       key={key}
+      type="button"
+      disabled={options?.disabled}
       onClick={() => {
+        if (options?.disabled) return
         onSectionChange(key)
         const nextPhase = sectionPhaseMap[key]
         if (nextPhase) onPhaseChange(nextPhase)
@@ -58,10 +61,13 @@ export default function WorkspaceCommandRail({
         onCloseRail()
       }}
       className={
-        activeSection === key
+        options?.disabled
+          ? 'cyber-outline text-xs px-3 py-2 rounded-xl w-full text-left opacity-55 cursor-not-allowed'
+          : activeSection === key
           ? 'cyber-button text-xs px-3 py-2 rounded-xl w-full text-left'
           : 'cyber-outline text-xs px-3 py-2 rounded-xl w-full text-left'
       }
+      title={options?.reason}
     >
       {label}
     </button>
@@ -115,39 +121,43 @@ export default function WorkspaceCommandRail({
             {renderGroup('Advanced Review Tools', [
               sectionNavButton('coach', 'Coach'),
               sectionNavButton('dna', 'Sermon DNA'),
-              (() => (
-                <button
-                  onClick={() => {
-                    onPhaseChange('REFINE')
-                    onVisualizationModeChange('refine')
-                    onSectionChange('visualizations')
-                    onCloseRail()
-                  }}
-                  className={
-                    activeSection === 'visualizations' && activePhase === 'REFINE'
-                      ? 'cyber-button text-xs px-3 py-2 rounded-xl w-full text-left'
-                      : 'cyber-outline text-xs px-3 py-2 rounded-xl w-full text-left'
-                  }
-                >
-                  Flow Tools
-                </button>
-              ))(),
+              <button
+                key="flow-tools"
+                type="button"
+                onClick={() => {
+                  onPhaseChange('REFINE')
+                  onVisualizationModeChange('refine')
+                  onSectionChange('visualizations')
+                  onCloseRail()
+                }}
+                className={
+                  activeSection === 'visualizations' && activePhase === 'REFINE'
+                    ? 'cyber-button text-xs px-3 py-2 rounded-xl w-full text-left'
+                    : 'cyber-outline text-xs px-3 py-2 rounded-xl w-full text-left'
+                }
+              >
+                Flow Tools
+              </button>,
             ])}
-            {renderGroup('Visual Exploration', [
-              (() =>
-                sectionNavButton('visualizations', 'Visual Exploration'))(),
-            ])}
+            {renderGroup('Visual Exploration', [sectionNavButton('visualizations', 'Visual Exploration')])}
           </>
         ) : (
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-3 space-y-2">
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-3 space-y-3">
             <p className="text-[10px] uppercase tracking-widest text-gray-400">Optional tools</p>
             <p className="text-xs text-gray-400">Keep these tucked away unless you need deeper study or visual exploration.</p>
             <button
+              type="button"
               onClick={() => onToggleAdvancedMode(true)}
               className="cyber-outline text-xs px-3 py-2 rounded-xl w-full text-left"
             >
               Show optional tools
             </button>
+            {renderGroup('Visual Exploration', [
+              sectionNavButton('visualizations', 'Visual Exploration', {
+                disabled: true,
+                reason: 'Enable optional tools to open visual exploration.',
+              }),
+            ])}
           </div>
         )}
       </div>

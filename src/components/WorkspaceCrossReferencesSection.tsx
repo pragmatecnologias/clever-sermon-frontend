@@ -1,5 +1,7 @@
 import CrossReferenceRanked from '@/components/CrossReferenceRanked'
 import CrossReferenceSOPPanel from '@/components/CrossReferenceSOPPanel'
+import type { WorkspaceFeatureReadinessMap } from '@/lib/api/openapi-client'
+import { getFeatureReadiness } from '@/components/feature-readiness'
 
 type Props = {
   actionLoading: string[]
@@ -12,6 +14,7 @@ type Props = {
   handleCrossReferenceLookup: () => void
   workspaceLanguage?: string
   token: string
+  featureReadiness?: WorkspaceFeatureReadinessMap | null
 }
 
 export default function WorkspaceCrossReferencesSection({
@@ -25,7 +28,18 @@ export default function WorkspaceCrossReferencesSection({
   handleCrossReferenceLookup,
   workspaceLanguage,
   token,
+  featureReadiness,
 }: Props) {
+  const readiness = getFeatureReadiness(featureReadiness, 'crossReferences')
+  const emptyMessage =
+    readiness?.status === 'needs_data'
+      ? `${readiness.message} Developer action: load the cross-reference seed data.`
+      : readiness?.status === 'needs_service'
+        ? `${readiness.message} Developer action: configure the scripture service.`
+        : readiness?.status === 'needs_prerequisite'
+          ? readiness.message
+          : 'No Scripture cross references found yet.'
+
   return (
     <div className="space-y-4 relative min-h-full">
       <div className="flex items-center justify-between mb-4">
@@ -33,6 +47,7 @@ export default function WorkspaceCrossReferencesSection({
         <button
           onClick={handleCrossReferenceLookup}
           disabled={actionLoading.includes('cross-references')}
+          title={actionLoading.includes('cross-references') ? 'Loading cross references' : 'Lookup cross references for the selected verse'}
           className="cyber-outline text-xs px-3 py-2 rounded-full disabled:opacity-60"
         >
           {actionLoading.includes('cross-references') ? 'Looking up...' : 'Lookup'}
@@ -57,11 +72,12 @@ export default function WorkspaceCrossReferencesSection({
           </div>
         ) : crossRefLastLookup ? (
           <div className="space-y-4">
-            <CrossReferenceRanked
-              verse={crossRefLastLookup}
-              token={token}
-              onReferencesLoaded={(count) => setCrossRefHasScriptureResults(count > 0)}
-            />
+          <CrossReferenceRanked
+            verse={crossRefLastLookup}
+            token={token}
+            emptyStateMessage={emptyMessage}
+            onReferencesLoaded={(count) => setCrossRefHasScriptureResults(count > 0)}
+          />
             {crossRefHasScriptureResults ? (
               <CrossReferenceSOPPanel
                 verse={crossRefLastLookup}

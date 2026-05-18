@@ -1,18 +1,26 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { FileText, Loader2, Sparkles, Edit } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
 import DeckEditor from './DeckEditor'
 import ReactMarkdown from 'react-markdown'
 import { ReactNode } from 'react'
 import { createWorkspaceApiClient } from '@/lib/api/openapi-client'
+import { getDeckSlideCount, normalizeDeckIntent, selectPreferredDeck } from '@/lib/deck-identity'
 
 interface SlideGenerationPanelProps {
   workspace: any
   token: string
   onGenerated?: () => void
 }
+
+type DeckIntent =
+  | 'sermon_presentation'
+  | 'social_summary'
+  | 'teaching_study'
+  | 'youth_message'
+  | 'evangelistic_appeal'
 
 export default function SlideGenerationPanel({ workspace, token, onGenerated }: SlideGenerationPanelProps) {
   const [syncing, setSyncing] = useState(false)
@@ -24,17 +32,23 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
   const [progress, setProgress] = useState(0)
   const [progressMessage, setProgressMessage] = useState('')
   const [generatedDeckId, setGeneratedDeckId] = useState<string | null>(null)
+  const [generatedDeckIntent, setGeneratedDeckIntent] = useState<DeckIntent>('sermon_presentation')
+  const [generatedSlideCount, setGeneratedSlideCount] = useState<number | null>(null)
   const [showEditor, setShowEditor] = useState(false)
   const [existingDeckStatus, setExistingDeckStatus] = useState<string | null>(null)
   const [backgroundProvider, setBackgroundProvider] = useState<'local' | 'openai'>('local')
   const [backgroundPreset, setBackgroundPreset] = useState<'cyberpunk' | 'modern' | 'aurora' | 'minimal'>('modern')
+  const [deckIntent, setDeckIntent] = useState<DeckIntent>('sermon_presentation')
 
   useEffect(() => {
     loadThemes()
-    loadExistingDeckContext()
-  }, [workspace?.id, token])
+  }, [loadThemes])
 
-  const loadThemes = async () => {
+  useEffect(() => {
+    loadExistingDeckContext()
+  }, [loadExistingDeckContext])
+
+  const loadThemes = useCallback(async () => {
     try {
       const themesData = await slidesApi.getThemes(token)
       setThemes(themesData)
@@ -44,9 +58,9 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
     } catch (err) {
       console.warn('Failed to load themes:', err)
     }
-  }
+  }, [token])
 
-  const loadExistingDeckContext = async () => {
+  const loadExistingDeckContext = useCallback(async () => {
     if (!workspace?.id || !token) return
     try {
       // First restore synced sermon context, even when a deck was not generated yet.
@@ -72,24 +86,36 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
       const workspaceDecks = normalizedDecks.filter((deck: any) => deck?.sermon?.workspaceId === workspace.id)
       if (!workspaceDecks.length) return
 
-      workspaceDecks.sort(
-        (a: any, b: any) =>
-          new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime(),
+      const preferred = selectPreferredDeck(
+        workspaceDecks,
+        workspace,
+        deckIntent === 'social_summary' ? 'social_summary' : 'sermon_presentation',
       )
-      const latest = workspaceDecks[0]
-      if (latest?.id) {
-        setGeneratedDeckId(latest.id)
-        setSermonId(latest?.sermon?.id || null)
-        const status = String(latest?.status || '').toLowerCase() || null
-        setExistingDeckStatus(status)
-        if (status === 'ready' || status === 'completed') {
-          setShowEditor(true)
-        }
+
+      if (!preferred?.id) {
+        setGeneratedDeckId(null)
+        setGeneratedDeckIntent(deckIntent)
+        setGeneratedSlideCount(null)
+        setExistingDeckStatus(null)
+        setShowEditor(false)
+        return
+      }
+
+      const preferredIntent = normalizeDeckIntent(preferred?.deckIntent)
+      const slideCount = getDeckSlideCount(preferred)
+      setGeneratedDeckId(preferred.id)
+      setGeneratedDeckIntent((preferredIntent as DeckIntent) || 'sermon_presentation')
+      setSermonId(preferred?.sermon?.id || null)
+      const status = String(preferred?.status || '').toLowerCase() || null
+      setExistingDeckStatus(status)
+      setGeneratedSlideCount(slideCount)
+      if (status === 'ready' || status === 'completed') {
+        setShowEditor(true)
       }
     } catch (err) {
       console.warn('Failed to load existing deck context:', err)
     }
-  }
+  }, [deckIntent, token, workspace])
 
   const handleSyncWorkspace = async (): Promise<string | null> => {
     setSyncing(true)
@@ -123,6 +149,7 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
       const result = await workspaceApi.composeMediaPack(String(workspace.id), {
         includeDeck: true,
         deckSize: 'long',
+        deckIntent,
         themeId: selectedTheme && selectedTheme.trim() !== '' ? selectedTheme : undefined,
         backgroundProvider,
         backgroundPreset: backgroundProvider === 'local' ? backgroundPreset : undefined,
@@ -141,6 +168,8 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
       )
 
       setGeneratedDeckId(deck.id)
+      setGeneratedDeckIntent(deckIntent)
+      setGeneratedSlideCount(Array.isArray(deck?.slides) ? deck.slides.length : null)
       setExistingDeckStatus('generating')
       
       eventSource.onmessage = (event) => {
@@ -158,6 +187,13 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
           setProgressMessage('Deck generation complete!')
           setExistingDeckStatus('ready')
           setShowEditor(true)
+          setGeneratedDeckIntent(deckIntent)
+          slidesApi.getDeck(deck.id, token)
+            .then((freshDeck) => {
+              setGeneratedDeckIntent((freshDeck?.deckIntent as DeckIntent) || deckIntent)
+              setGeneratedSlideCount(Array.isArray(freshDeck?.slides) ? freshDeck.slides.length : null)
+            })
+            .catch((err) => console.warn('Failed to refresh generated deck metadata:', err))
           onGenerated?.()
         } else if (data.status === 'failed') {
           eventSource.close()
@@ -183,7 +219,37 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
     <div className="border border-white/10 rounded-xl p-6 bg-black/20 space-y-4">
       <div className="flex items-center gap-3 mb-4">
         <FileText className="w-6 h-6 text-purple-300" />
-        <h3 className="text-lg font-semibold">Generate Slide Deck</h3>
+        <h3 className="text-lg font-semibold">Sermon Slides</h3>
+      </div>
+      <div className="rounded-xl border border-purple-400/30 bg-purple-500/10 px-4 py-3 text-sm text-purple-100">
+        <p className="font-medium">Generate Sermon Presentation Deck</p>
+        <p className="text-xs text-purple-100/80 mt-1">
+          Best for worship services and Bible study presentations. Expected: 8-14 slides.
+        </p>
+      </div>
+      <div className="grid gap-2 md:grid-cols-2">
+        <label className="text-xs uppercase tracking-widest text-gray-400">
+          Deck mode
+          <select
+            className="mt-2 w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+            value={deckIntent}
+            onChange={(e) => setDeckIntent(e.target.value as DeckIntent)}
+          >
+            <option value="sermon_presentation">Sermon Presentation Deck</option>
+            <option value="teaching_study">Teaching Study Deck</option>
+            <option value="youth_message">Youth Message Deck</option>
+            <option value="evangelistic_appeal">Evangelistic Appeal Deck</option>
+            <option value="social_summary">Social Promo / Summary Deck</option>
+          </select>
+        </label>
+        <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-gray-300">
+          <p className="uppercase tracking-[0.25em] text-gray-400">Mode note</p>
+          <p className="mt-1">
+            {deckIntent === 'sermon_presentation'
+              ? 'Use this for a full sermon deck with points, support, application, appeal, and closing.'
+              : 'This is a shorter promo-style deck. It is not a full sermon presentation.'}
+          </p>
+        </div>
       </div>
 
       {/* Sync Status */}
@@ -204,7 +270,12 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
           </p>
           {generatedDeckId ? (
             <p className="text-xs text-green-200/80 mt-1">
-              Deck status: {existingDeckStatus || 'unknown'}.
+              Deck status: {existingDeckStatus || 'unknown'} · Deck mode: {generatedDeckIntent.replace(/_/g, ' ')}{generatedSlideCount ? ` · Slides: ${generatedSlideCount}` : ''}.
+            </p>
+          ) : null}
+          {generatedDeckIntent === 'sermon_presentation' && generatedSlideCount !== null && generatedSlideCount < 8 ? (
+            <p className="text-xs text-amber-200 mt-1">
+              This deck may be too short for a full sermon presentation.
             </p>
           ) : null}
         </div>
@@ -340,12 +411,16 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
           {generating ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              Generating Slides...
+              {deckIntent === 'social_summary' ? 'Generating Social Promo Deck...' : 'Generating Sermon Slides...'}
             </>
           ) : (
             <>
               <FileText className="w-4 h-4" />
-              {sermonId ? 'Generate Slide Deck' : 'Sync & Generate'}
+              {sermonId
+                ? deckIntent === 'social_summary'
+                  ? 'Generate Social Promo Deck'
+                  : 'Generate Sermon Presentation Deck'
+                : 'Sync & Generate'}
             </>
           )}
         </button>
@@ -362,7 +437,9 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
       )}
 
       <p className="text-xs text-gray-500 text-center">
-        Generates PowerPoint presentation from your outline
+        {deckIntent === 'social_summary'
+          ? 'Generates a short promo deck for sharing or announcements.'
+          : 'Generates a full sermon presentation deck from your outline and manuscript.'}
       </p>
 
       {showEditor && generatedDeckId && (

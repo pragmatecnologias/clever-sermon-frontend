@@ -17,6 +17,7 @@ interface WorkspaceOutlinePhaseProps {
     id?: string
     mainPassage?: string
     theme?: string
+    theologicalLens?: string
     egwEnabled?: boolean
     outlines?: WorkspaceOutlineItem[]
     studyReports?: Array<{ sections?: Record<string, unknown> }>
@@ -86,10 +87,12 @@ export default function WorkspaceOutlinePhase({
         workspaceId={workspace?.id || ''}
         mainPassage={workspace?.mainPassage || ''}
         theme={workspace?.theme}
+        theologicalLens={workspace?.theologicalLens}
         studyReport={workspace?.studyReports?.[0]?.sections}
         initialData={workspace?.sermonCore ?? undefined}
         onDataChange={onSermonCoreChange}
         onGenerate={onGenerateSermonCore}
+        onUseInOutline={onGenerateOutlines}
         isGenerating={sermonCoreGenerating}
       />
 

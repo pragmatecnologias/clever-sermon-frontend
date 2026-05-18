@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import axios from 'axios'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1'
+
 export default function Login() {
   const router = useRouter()
   const [email, setEmail] = useState('')
@@ -18,7 +20,7 @@ export default function Login() {
 
     try {
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/auth/login`,
+        `${API_URL}/auth/login`,
         { email, password }
       )
 
@@ -46,27 +48,29 @@ export default function Login() {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="login-email" className="block text-sm font-medium text-gray-700 mb-2">
               Email
             </label>
             <input
+              id="login-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-2 border border-white/10 rounded-lg bg-black/40 text-gray-100 focus:ring-2 focus:ring-cyan-400 focus:border-transparent"
+              className="w-full px-4 py-2 border border-white/10 rounded-lg bg-black/40 text-gray-100 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:border-transparent outline-none"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="login-password" className="block text-sm font-medium text-gray-700 mb-2">
               Password
             </label>
             <input
+              id="login-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2 border border-white/10 rounded-lg bg-black/40 text-gray-100 focus:ring-2 focus:ring-cyan-400 focus:border-transparent"
+              className="w-full px-4 py-2 border border-white/10 rounded-lg bg-black/40 text-gray-100 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:border-transparent outline-none"
               required
             />
           </div>
@@ -74,14 +78,14 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full cyber-button py-3 rounded-full disabled:opacity-50"
+            className="w-full cyber-button py-3 rounded-full disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black/40"
           >
             {loading ? 'Logging in...' : 'Login'}
           </button>
         </form>
 
         <p className="mt-6 text-center text-gray-200/80">
-          Don't have an account?{' '}
+          Don&apos;t have an account?{' '}
           <button
             onClick={() => router.push('/register')}
             className="text-cyan-300 hover:underline"

@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const SERMON_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1';
 const SLIDES_API_URL = process.env.NEXT_PUBLIC_SLIDES_API_URL || 'http://localhost:3001/api/v1';
-const MEDIA_API_URL = `${SLIDES_API_URL}`;
+const MEDIA_API_URL = `${SERMON_API_URL}/media`;
 
 const isNotFoundError = (error: unknown) =>
   axios.isAxiosError(error) && error.response?.status === 404;
@@ -71,25 +71,36 @@ export interface GenerateVideoRequest {
 }
 
 export const slidesApi = {
-  // Sync workspace to slides app (no such endpoint - workspace sync not implemented in slides backend)
-  // @Deprecated - syncWorkspace endpoint does not exist
   syncWorkspace: async (workspaceData: SyncWorkspaceData, token: string) => {
-    throw new Error('syncWorkspace not implemented - no such endpoint in slides backend');
+    const response = await axios.post(
+      `${MEDIA_API_URL}/sync-workspace`,
+      workspaceData,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
   },
 
   // Images
   generateImage: async (request: GenerateImageRequest, token: string) => {
-    // @Deprecated - images endpoint does not exist in slides backend
-    throw new Error('generateImage not implemented - no such endpoint in slides backend');
+    const response = await axios.post(
+      `${MEDIA_API_URL}/images/generate`,
+      request,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data;
   },
 
   getImage: (imageId: string, token: string) => {
-    return `${SLIDES_API_URL}/images/${imageId}/download?token=${token}`;
+    return `${MEDIA_API_URL}/images/${imageId}/download?token=${token}`;
   },
 
   getImageBlob: async (imageId: string, token: string) => {
     const response = await axios.get(
-      `${SLIDES_API_URL}/images/${imageId}/download`,
+      `${MEDIA_API_URL}/images/${imageId}/download`,
       {
         headers: { Authorization: `Bearer ${token}` },
         responseType: 'blob',
@@ -100,7 +111,7 @@ export const slidesApi = {
 
   listImages: async (workspaceId: string, token: string) => {
     const response = await axios.get(
-      `${SLIDES_API_URL}/images/list/${workspaceId}`,
+      `${MEDIA_API_URL}/images/list/${workspaceId}`,
       {
         headers: { Authorization: `Bearer ${token}` },
       }
@@ -109,7 +120,7 @@ export const slidesApi = {
   },
 
   deleteImage: async (imageId: string, token: string) => {
-    const response = await axios.delete(`${SLIDES_API_URL}/images/${imageId}`, {
+    const response = await axios.delete(`${MEDIA_API_URL}/images/${imageId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     return response.data;
@@ -122,15 +133,17 @@ export const slidesApi = {
     token: string,
     deckSize: 'short' | 'standard' | 'long' = 'long',
     options?: {
+      deckIntent?: 'sermon_presentation' | 'social_summary' | 'teaching_study' | 'youth_message' | 'evangelistic_appeal'
       backgroundProvider?: 'local' | 'openai'
       backgroundPreset?: string
     }
   ) => {
     const response = await axios.post(
-      `${SLIDES_API_URL}/decks/sermons/${sermonId}/decks`,
+      `${MEDIA_API_URL}/sermons/${sermonId}/decks`,
       {
         themeId,
         deckSize,
+        deckIntent: options?.deckIntent,
         backgroundProvider: options?.backgroundProvider,
         backgroundPreset: options?.backgroundPreset,
       },
@@ -164,7 +177,7 @@ export const slidesApi = {
   },
 
   deleteDeck: async (deckId: string, token: string) => {
-    const response = await axios.delete(`${SLIDES_API_URL}/decks/${deckId}`, {
+    const response = await axios.delete(`${MEDIA_API_URL}/decks/${deckId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     return response.data;
@@ -184,7 +197,7 @@ export const slidesApi = {
 
   getSermon: async (sermonId: string, token: string) => {
     const response = await axios.get(
-      `${SLIDES_API_URL}/sermons/${sermonId}`,
+      `${MEDIA_API_URL}/sermons/${sermonId}`,
       {
         headers: { Authorization: `Bearer ${token}` },
       }
@@ -206,7 +219,7 @@ export const slidesApi = {
 
   getSlides: async (deckId: string, token: string) => {
     const response = await axios.get(
-      `${SLIDES_API_URL}/decks/${deckId}/slides`,
+      `${MEDIA_API_URL}/decks/${deckId}/slides`,
       {
         headers: { Authorization: `Bearer ${token}` },
       }
@@ -223,7 +236,7 @@ export const slidesApi = {
     target: 'background' | 'content' = 'background',
   ) => {
     const response = await axios.post(
-      `${SLIDES_API_URL}/slides/${slideId}/image`,
+      `${MEDIA_API_URL}/slides/${slideId}/image`,
       { provider, prompt, preset, target },
       {
         headers: { Authorization: `Bearer ${token}` },
@@ -234,7 +247,7 @@ export const slidesApi = {
 
   updateSlide: async (slideId: string, data: any, token: string) => {
     const response = await axios.put(
-      `${SLIDES_API_URL}/slides/${slideId}`,
+      `${MEDIA_API_URL}/slides/${slideId}`,
       data,
       {
         headers: { Authorization: `Bearer ${token}` },
@@ -245,7 +258,7 @@ export const slidesApi = {
 
   getSlideImageBlob: async (slideId: string, token: string) => {
     const response = await axios.get(
-      `${SLIDES_API_URL}/slides/${slideId}/image`,
+      `${MEDIA_API_URL}/slides/${slideId}/image`,
       {
         headers: { Authorization: `Bearer ${token}` },
         responseType: 'blob',
@@ -256,7 +269,7 @@ export const slidesApi = {
 
   exportDeck: async (deckId: string, format: 'pptx' | 'pdf', token: string) => {
     const response = await axios.post(
-      `${SLIDES_API_URL}/decks/${deckId}/exports`,
+      `${MEDIA_API_URL}/decks/${deckId}/exports`,
       { type: format },
       {
         headers: { Authorization: `Bearer ${token}` },
@@ -303,7 +316,7 @@ export const slidesApi = {
 
   getAudio: async (audioId: string, token: string) => {
     const response = await axios.get(
-      `${SLIDES_API_URL}/audio/${audioId}`,
+      `${MEDIA_API_URL}/audio/${audioId}`,
       {
         headers: { Authorization: `Bearer ${token}` },
       }
@@ -312,12 +325,12 @@ export const slidesApi = {
   },
 
   getAudioDownloadUrl: (audioId: string, token: string) => {
-    return `${SLIDES_API_URL}/audio/${audioId}/download?token=${token}`;
+    return `${MEDIA_API_URL}/audio/${audioId}/download?token=${token}`;
   },
 
   getAudioBlob: async (audioId: string, token: string) => {
     const response = await axios.get(
-      `${SLIDES_API_URL}/audio/${audioId}/download`,
+      `${MEDIA_API_URL}/audio/${audioId}/download`,
       {
         headers: { Authorization: `Bearer ${token}` },
         responseType: 'blob',
@@ -328,7 +341,7 @@ export const slidesApi = {
 
   listAudio: async (workspaceId: string, token: string) => {
     const response = await axios.get(
-      `${SLIDES_API_URL}/audio/list/${workspaceId}`,
+      `${MEDIA_API_URL}/audio/list/${workspaceId}`,
       {
         headers: { Authorization: `Bearer ${token}` },
       }
@@ -337,7 +350,7 @@ export const slidesApi = {
   },
 
   deleteAudio: async (audioId: string, token: string) => {
-    const response = await axios.delete(`${SLIDES_API_URL}/audio/${audioId}`, {
+    const response = await axios.delete(`${MEDIA_API_URL}/audio/${audioId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     return response.data;
@@ -370,7 +383,7 @@ export const slidesApi = {
 
   getMusic: async (musicId: string, token: string) => {
     const response = await axios.get(
-      `${SLIDES_API_URL}/music/${musicId}`,
+      `${MEDIA_API_URL}/music/${musicId}`,
       {
         headers: { Authorization: `Bearer ${token}` },
       }
@@ -380,7 +393,7 @@ export const slidesApi = {
 
   selectMusicTrack: async (musicId: string, trackId: string, token: string) => {
     const response = await axios.post(
-      `${SLIDES_API_URL}/music/${musicId}/select-track`,
+      `${MEDIA_API_URL}/music/${musicId}/select-track`,
       { trackId },
       {
         headers: { Authorization: `Bearer ${token}` },
@@ -390,12 +403,12 @@ export const slidesApi = {
   },
 
   getMusicDownloadUrl: (musicId: string, token: string) => {
-    return `${SLIDES_API_URL}/music/${musicId}/download?token=${token}`;
+    return `${MEDIA_API_URL}/music/${musicId}/download?token=${token}`;
   },
 
   getMusicBlob: async (musicId: string, token: string) => {
     const response = await axios.get(
-      `${SLIDES_API_URL}/music/${musicId}/download`,
+      `${MEDIA_API_URL}/music/${musicId}/download`,
       {
         headers: { Authorization: `Bearer ${token}` },
         responseType: 'blob',
@@ -406,7 +419,7 @@ export const slidesApi = {
 
   listMusic: async (workspaceId: string, token: string) => {
     const response = await axios.get(
-      `${SLIDES_API_URL}/music/list/${workspaceId}`,
+      `${MEDIA_API_URL}/music/list/${workspaceId}`,
       {
         headers: { Authorization: `Bearer ${token}` },
       }
@@ -415,7 +428,7 @@ export const slidesApi = {
   },
 
   deleteMusic: async (musicId: string, token: string) => {
-    const response = await axios.delete(`${SLIDES_API_URL}/music/${musicId}`, {
+    const response = await axios.delete(`${MEDIA_API_URL}/music/${musicId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     return response.data;
@@ -445,7 +458,7 @@ export const slidesApi = {
 
   getVideo: async (videoId: string, token: string) => {
     const response = await axios.get(
-      `${SLIDES_API_URL}/video/${videoId}`,
+      `${MEDIA_API_URL}/video/${videoId}`,
       {
         headers: { Authorization: `Bearer ${token}` },
       }
@@ -454,12 +467,12 @@ export const slidesApi = {
   },
 
   getVideoDownloadUrl: (videoId: string, token: string) => {
-    return `${SLIDES_API_URL}/video/${videoId}/download?token=${token}`;
+    return `${MEDIA_API_URL}/video/${videoId}/download?token=${token}`;
   },
 
   getVideoBlob: async (videoId: string, token: string) => {
     const response = await axios.get(
-      `${SLIDES_API_URL}/video/${videoId}/download`,
+      `${MEDIA_API_URL}/video/${videoId}/download`,
       {
         headers: { Authorization: `Bearer ${token}` },
         responseType: 'blob',
@@ -470,7 +483,7 @@ export const slidesApi = {
 
   listVideo: async (workspaceId: string, token: string) => {
     const response = await axios.get(
-      `${SLIDES_API_URL}/video/list/${workspaceId}`,
+      `${MEDIA_API_URL}/video/list/${workspaceId}`,
       {
         headers: { Authorization: `Bearer ${token}` },
       }
@@ -479,7 +492,7 @@ export const slidesApi = {
   },
 
   deleteVideo: async (videoId: string, token: string) => {
-    const response = await axios.delete(`${SLIDES_API_URL}/video/${videoId}`, {
+    const response = await axios.delete(`${MEDIA_API_URL}/video/${videoId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     return response.data;
@@ -534,7 +547,7 @@ export const slidesApi = {
 
   getSocialMedia: async (socialId: string, token: string) => {
     const response = await axios.get(
-      `${SLIDES_API_URL}/social/${socialId}`,
+      `${MEDIA_API_URL}/social/${socialId}`,
       {
         headers: { Authorization: `Bearer ${token}` },
       }
@@ -544,7 +557,7 @@ export const slidesApi = {
 
   listSocial: async (workspaceId: string, token: string) => {
     const response = await axios.get(
-      `${SLIDES_API_URL}/social/list/${workspaceId}`,
+      `${MEDIA_API_URL}/social/list/${workspaceId}`,
       {
         headers: { Authorization: `Bearer ${token}` },
       }
@@ -553,7 +566,7 @@ export const slidesApi = {
   },
 
   deleteSocial: async (socialId: string, token: string) => {
-    const response = await axios.delete(`${SLIDES_API_URL}/social/${socialId}`, {
+    const response = await axios.delete(`${MEDIA_API_URL}/social/${socialId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     return response.data;
@@ -561,7 +574,7 @@ export const slidesApi = {
 
   getSocialBlob: async (socialId: string, token: string) => {
     const response = await axios.get(
-      `${SLIDES_API_URL}/social/${socialId}/download`,
+      `${MEDIA_API_URL}/social/${socialId}/download`,
       {
         headers: { Authorization: `Bearer ${token}` },
         responseType: 'blob',

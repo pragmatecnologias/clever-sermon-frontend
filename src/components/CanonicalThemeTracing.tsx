@@ -227,6 +227,18 @@ export default function CanonicalThemeTracing({ reference, token, workspaceId, o
         </span>
       </div>
 
+      <div className="rounded-xl border border-cyan-400/20 bg-black/25 p-4 space-y-2">
+        <p className="text-sm text-cyan-100">
+          What this does: traces the current passage across Scripture so you can see how the theme develops canonically.
+        </p>
+        <p className="text-xs text-gray-300">
+          Useful when you are building the sermon core, validating an outline, or looking for cross-testament connections.
+        </p>
+        <p className="text-xs text-gray-400">
+          Inputs used: current reference, cross-reference data, and any existing sermon workspace notes.
+        </p>
+      </div>
+
       {error && (
         <div className="border border-red-400/40 bg-red-500/10 text-red-100 text-sm rounded-xl px-4 py-3">
           {error}
@@ -234,7 +246,12 @@ export default function CanonicalThemeTracing({ reference, token, workspaceId, o
       )}
 
       {themes.length === 0 && !loading ? (
-        <p className="text-sm text-gray-400">No canonical themes found for this passage.</p>
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-gray-300">
+          <p>No canonical themes found for this passage.</p>
+          <p className="mt-2 text-xs text-gray-400">
+            If the passage is valid but still returns nothing, this can mean the dataset has no canonical links yet or the current sermon theme is too narrow.
+          </p>
+        </div>
       ) : themes.length > 0 ? (
         <div className="space-y-4">
           {themes.map((theme) => (

@@ -6,9 +6,11 @@ import EGWPassagePanel from '@/components/EGWPassagePanel'
 import SDASmartBoostBanner from '@/components/SDASmartBoostBanner'
 import StudyNotes from '@/components/StudyNotes'
 import WorkspaceScriptureAnalysisPanels from '@/components/WorkspaceScriptureAnalysisPanels'
+import type { WorkspaceFeatureReadinessMap } from '@/lib/api/openapi-client'
 
 type Props = {
   workspace: any
+  featureReadiness?: WorkspaceFeatureReadinessMap | null
   actionLoading: string[]
   scriptureQuery: string
   setScriptureQuery: (value: string) => void
@@ -62,6 +64,7 @@ type Props = {
 
 export function WorkspaceScriptureSection({
   workspace,
+  featureReadiness,
   actionLoading,
   scriptureQuery,
   setScriptureQuery,
@@ -275,11 +278,12 @@ export function WorkspaceScriptureSection({
               />
             )}
 
-            <WorkspaceScriptureAnalysisPanels
-              workspaceId={workspace?.id || ''}
-              language={String(workspace?.language || 'en')}
-              token={localStorage.getItem('token') || ''}
-              scriptureLastLookup={scriptureLastLookup}
+              <WorkspaceScriptureAnalysisPanels
+                workspaceId={workspace?.id || ''}
+                language={String(workspace?.language || 'en')}
+                token={localStorage.getItem('token') || ''}
+                featureReadiness={featureReadiness}
+                scriptureLastLookup={scriptureLastLookup}
               generatedScriptureSections={generatedScriptureSections}
               sectionRefreshKey={scriptureSectionRefreshKey}
               passageSummary={passageSummary}
@@ -322,6 +326,7 @@ export function WorkspaceScriptureSection({
                   verseStart={parsedVerseStart}
                   verseEnd={parsedVerseEnd}
                   language={workspace?.language || 'en'}
+                  featureReadiness={featureReadiness}
                 />
               )
             })()}

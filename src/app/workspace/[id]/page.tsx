@@ -2462,6 +2462,7 @@ export default function WorkspaceDetailPage() {
         <WorkspaceFlowShell
           workspaceId={workspaceId}
           state={workspaceState}
+          activePhase={activePhase}
           onPhaseChange={handlePhaseChange}
           onSectionChange={setActiveSection}
         />
@@ -2709,6 +2710,7 @@ export default function WorkspaceDetailPage() {
             <WorkspaceScripturePhase>
               <WorkspaceScriptureSection
                 workspace={workspace}
+                featureReadiness={workspaceState?.featureReadiness}
                 actionLoading={actionLoading}
                 scriptureQuery={scriptureQuery}
                 setScriptureQuery={setScriptureQuery}
@@ -2792,6 +2794,7 @@ export default function WorkspaceDetailPage() {
               handleCrossReferenceLookup={handleCrossReferenceLookup}
               workspaceLanguage={workspace?.language || 'en'}
               token={localStorage.getItem('token') || ''}
+              featureReadiness={workspaceState?.featureReadiness}
             />
           )}
           {activeSection === 'study-report' && (
@@ -2803,6 +2806,7 @@ export default function WorkspaceDetailPage() {
                       workspaceId={workspaceId}
                       language={workspace?.language || 'en'}
                       token={localStorage.getItem('token') || ''}
+                      featureReadiness={workspaceState?.featureReadiness}
                       scriptureLastLookup={scriptureLastLookup}
                       generatedScriptureSections={generatedScriptureSections}
                       sectionRefreshKey={scriptureSectionRefreshKey}
@@ -2888,6 +2892,7 @@ export default function WorkspaceDetailPage() {
               )}
               <WorkspaceStudyReportSection
                 workspace={workspace}
+                featureReadiness={workspaceState?.featureReadiness}
                 hasGeneratedStudyReport={hasGeneratedStudyReport(workspaceState || workspace)}
                 onGenerate={(asset) => handleGenerate(asset)}
                 onEditAsset={(asset) => setStudyAssetEditor(asset)}

@@ -1,6 +1,6 @@
 'use client'
 
-import type { Dispatch, SetStateAction } from 'react'
+import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { AlertCircle, BookOpen, Lightbulb, Layers, MessageSquare, Network, Rows } from 'lucide-react'
 import PassageSummary from '@/components/PassageSummary'
 import TranslationComparisonEnhanced from '@/components/TranslationComparisonEnhanced'
@@ -11,6 +11,9 @@ import InterpretiveChallengePanel from '@/components/InterpretiveChallengePanel'
 import CanonicalThemeTracing from '@/components/CanonicalThemeTracing'
 import StudySynthesis from '@/components/StudySynthesis'
 import { ScriptureSection } from '@/components/WorkspaceScripturePhase'
+import FeatureStatusBadge from '@/components/FeatureStatusBadge'
+import type { WorkspaceFeatureReadinessMap } from '@/lib/api/openapi-client'
+import { getFeatureReadiness } from '@/components/feature-readiness'
 import type {
   CanonicalThemesData,
   InterpretiveChallengeData,
@@ -36,6 +39,7 @@ interface WorkspaceScriptureAnalysisPanelsProps {
   workspaceId: string
   language: string
   token: string
+  featureReadiness?: WorkspaceFeatureReadinessMap | null
   scriptureLastLookup: string
   generatedScriptureSections: Record<string, boolean>
   sectionRefreshKey: Record<string, number>
@@ -64,6 +68,7 @@ export default function WorkspaceScriptureAnalysisPanels({
   workspaceId,
   language,
   token,
+  featureReadiness,
   scriptureLastLookup,
   generatedScriptureSections,
   sectionRefreshKey,
@@ -89,6 +94,35 @@ export default function WorkspaceScriptureAnalysisPanels({
 }: WorkspaceScriptureAnalysisPanelsProps) {
   if (!scriptureLastLookup) return null
 
+  const readinessFor = (key: keyof WorkspaceFeatureReadinessMap) => getFeatureReadiness(featureReadiness, key)
+
+  const renderEmptyState = (
+    title: string,
+    icon: ReactNode,
+    readinessKey: keyof WorkspaceFeatureReadinessMap,
+    defaultReason: string,
+  ) => {
+    const readiness = readinessFor(readinessKey)
+    const reason =
+      readiness?.status === 'needs_service'
+        ? `${readiness.message} Configure the service and try again.`
+        : readiness?.status === 'needs_data'
+          ? `${readiness.message} Load the seed data or continue without this tool.`
+          : readiness?.status === 'needs_prerequisite'
+            ? readiness.message
+            : defaultReason
+
+    return (
+      <div className="cyber-panel rounded-2xl p-6">
+        <div className="flex items-center gap-2 mb-1">
+          {icon}
+          <h3 className="text-lg font-semibold">{title}</h3>
+        </div>
+        <FeatureStatusBadge readiness={readiness} status={readiness ? undefined : 'Ready'} reason={reason} />
+      </div>
+    )
+  }
+
   return (
     <>
       <ScriptureSection title="Passage Context">
@@ -113,12 +147,7 @@ export default function WorkspaceScriptureAnalysisPanels({
               }}
             />
           ) : (
-            <div className="cyber-panel rounded-2xl p-6">
-              <div className="flex items-center gap-2 mb-1">
-                <BookOpen className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-lg font-semibold">Passage Summary</h3>
-              </div>
-            </div>
+            renderEmptyState('Passage Summary', <BookOpen className="w-5 h-5 text-cyan-400" />, 'passageSummary', 'Generate a summary from the selected passage. Best results need only the current scripture lookup.')
           )}
         </div>
 
@@ -143,12 +172,7 @@ export default function WorkspaceScriptureAnalysisPanels({
               }}
             />
           ) : (
-            <div className="cyber-panel rounded-2xl p-6">
-              <div className="flex items-center gap-2 mb-1">
-                <Layers className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-lg font-semibold">Historical Context</h3>
-              </div>
-            </div>
+            renderEmptyState('Historical Context', <Layers className="w-5 h-5 text-cyan-400" />, 'passageSummary', 'Generate background context, cultural notes, and passage setting from the current reference.')
           )}
         </div>
       </ScriptureSection>
@@ -175,12 +199,7 @@ export default function WorkspaceScriptureAnalysisPanels({
               }}
             />
           ) : (
-            <div className="cyber-panel rounded-2xl p-6">
-              <div className="flex items-center gap-2 mb-1">
-                <Rows className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-lg font-semibold">Translation Comparison</h3>
-              </div>
-            </div>
+            renderEmptyState('Translation Comparison', <Rows className="w-5 h-5 text-cyan-400" />, 'translationComparison', 'Compare translations for the current passage once you choose a lookup.')
           )}
         </div>
 
@@ -205,12 +224,12 @@ export default function WorkspaceScriptureAnalysisPanels({
               }}
             />
           ) : (
-            <div className="cyber-panel rounded-2xl p-6">
-              <div className="flex items-center gap-2 mb-1">
-                <MessageSquare className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-lg font-semibold">Verse Commentary</h3>
-              </div>
-            </div>
+            renderEmptyState(
+              'Verse Commentary',
+              <MessageSquare className="w-5 h-5 text-cyan-400" />,
+              'llmProvider',
+              'Generate verse-by-verse commentary for the current passage. This tool reads the passage and an LLM provider, not EGW data.',
+            )
           )}
         </div>
 
@@ -235,12 +254,7 @@ export default function WorkspaceScriptureAnalysisPanels({
               }}
             />
           ) : (
-            <div className="cyber-panel rounded-2xl p-6">
-              <div className="flex items-center gap-2 mb-1">
-                <Layers className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-lg font-semibold">Structural Analysis</h3>
-              </div>
-            </div>
+            renderEmptyState('Structural Analysis', <Layers className="w-5 h-5 text-cyan-400" />, 'passageSummary', 'Map the passage structure and argument flow from the current lookup.')
           )}
         </div>
 
@@ -265,12 +279,7 @@ export default function WorkspaceScriptureAnalysisPanels({
               }}
             />
           ) : (
-            <div className="cyber-panel rounded-2xl p-6">
-              <div className="flex items-center gap-2 mb-1">
-                <AlertCircle className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-lg font-semibold">Interpretive Challenges</h3>
-              </div>
-            </div>
+            renderEmptyState('Interpretive Challenges', <AlertCircle className="w-5 h-5 text-cyan-400" />, 'passageSummary', 'Show hard interpretive questions, options, and preaching guidance.')
           )}
         </div>
       </ScriptureSection>
@@ -299,12 +308,12 @@ export default function WorkspaceScriptureAnalysisPanels({
               onAddToOutline={onAddToOutline}
             />
           ) : (
-            <div className="cyber-panel rounded-2xl p-6">
-              <div className="flex items-center gap-2 mb-1">
-                <Network className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-lg font-semibold">Canonical Theme Tracing</h3>
-              </div>
-            </div>
+            renderEmptyState(
+              'Canonical Theme Tracing',
+              <Network className="w-5 h-5 text-cyan-400" />,
+              'crossReferences',
+              'Trace the passage across the canon and connect it to the sermon workspace. Best when cross-reference data has been loaded.',
+            )
           )}
         </div>
 
@@ -329,12 +338,12 @@ export default function WorkspaceScriptureAnalysisPanels({
               }}
             />
           ) : (
-            <div className="cyber-panel rounded-2xl p-6">
-              <div className="flex items-center gap-2 mb-1">
-                <Lightbulb className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-lg font-semibold">Study Synthesis</h3>
-              </div>
-            </div>
+            renderEmptyState(
+              'Study Synthesis',
+              <Lightbulb className="w-5 h-5 text-cyan-400" />,
+              'studyReport',
+              'Summarize the study trail into sermon-ready synthesis. Best after Scripture lookup and study report generation.',
+            )
           )}
         </div>
       </ScriptureSection>

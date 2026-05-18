@@ -3,6 +3,11 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Image, FileText, Music, Mic, Video, Download, Trash2, Loader2, Share2, Play, Pause } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
+import { createWorkspaceApiClient } from '@/lib/api/openapi-client'
+import {
+  getDeckIdentity,
+  groupDecksForWorkspace,
+} from '@/lib/deck-identity'
 
 interface MediaItem {
   id: string
@@ -227,6 +232,7 @@ function formatEtaFromProgress(current?: number, total?: number): string | null 
 }
 
 interface MediaGalleryProps {
+  workspace?: any
   workspaceId: string
   token: string
   filter?: 'all' | 'image' | 'slide' | 'audio' | 'music' | 'video' | 'social'
@@ -236,7 +242,9 @@ interface MediaGalleryProps {
   showOptionalTypes?: boolean
 }
 
-export default function MediaGallery({ workspaceId, token, filter, onFilterChange, optimisticItems = [], onMediaDeleted, showOptionalTypes = false }: MediaGalleryProps) {
+type DeckIntentGroup = 'sermon_presentation' | 'social_summary' | 'legacy'
+
+export default function MediaGallery({ workspace, workspaceId, token, filter, onFilterChange, optimisticItems = [], onMediaDeleted, showOptionalTypes = false }: MediaGalleryProps) {
   const [internalFilter, setInternalFilter] = useState<'all' | 'image' | 'slide' | 'audio' | 'music' | 'video' | 'social'>('all')
   const [media, setMedia] = useState<MediaItem[]>([])
   const [decks, setDecks] = useState<any[]>([])
@@ -266,25 +274,28 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
     return Array.from(byId.values()).sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
   }, [media, optimisticItems])
 
-  // Combine decks and media into single filtered list
-  const allItems = [
-    ...decks.map(deck => ({
-      id: deck.id,
-      type: 'slide' as const,
-      status: deck.status,
-      createdAt: deck.createdAt,
-      deck: deck,
-    })),
-    ...mergedMedia,
-  ]
+  const workspaceDecks = useMemo(
+    () =>
+      decks.filter((deck) => {
+        const deckWorkspaceId =
+          String(deck?.sermon?.workspaceId || deck?.sermon?.workspace?.id || deck?.workspaceId || deck?.workspace?.id || '').trim()
+        return Boolean(workspaceId) && deckWorkspaceId === String(workspaceId)
+      }),
+    [decks, workspaceId],
+  )
 
-  const visibleItems = showOptionalTypes
-    ? allItems
-    : allItems.filter((item) => item.type !== 'music' && item.type !== 'social')
+  const deckLibrary = useMemo(() => groupDecksForWorkspace(workspaceDecks, workspace), [workspaceDecks, workspace])
 
-  const filteredItems = activeFilter === 'all'
-    ? visibleItems
-    : visibleItems.filter(item => item.type === activeFilter)
+  const visibleMediaItems = showOptionalTypes
+    ? mergedMedia
+    : mergedMedia.filter((item) => item.type !== 'music' && item.type !== 'social')
+
+  const filteredMediaItems = activeFilter === 'all'
+    ? visibleMediaItems
+    : visibleMediaItems.filter((item) => item.type === activeFilter)
+
+  const showDeckSections = activeFilter === 'all' || activeFilter === 'slide'
+  const hasDecks = workspaceDecks.length > 0
 
   const filters = [
     { value: 'all', label: 'All', icon: null },
@@ -439,14 +450,14 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
   }, [loadMediaLibrary])
 
   const hasInFlightItems = useMemo(() => {
-    const hasPendingDeck = decks.some((deck) =>
+    const hasPendingDeck = workspaceDecks.some((deck) =>
       ['pending', 'processing', 'generating'].includes(String(deck?.status || '').toLowerCase()),
     )
     const hasPendingMedia = mergedMedia.some((item) =>
       ['pending', 'processing', 'generating'].includes(String(item?.status || '').toLowerCase()),
     )
     return hasPendingDeck || hasPendingMedia
-  }, [decks, mergedMedia])
+  }, [workspaceDecks, mergedMedia])
 
   useEffect(() => {
     if (!hasInFlightItems) return
@@ -572,6 +583,8 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
 
   const deleteDeckItem = async (deckId: string) => {
     try {
+      const confirmed = window.confirm('Delete this deck permanently? This cannot be undone.')
+      if (!confirmed) return
       setDeletingIds((prev) => ({ ...prev, [deckId]: true }))
       await slidesApi.deleteDeck(deckId, token)
       setDecks((prev) => prev.filter((entry) => entry.id !== deckId))
@@ -586,6 +599,259 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
         return next
       })
     }
+  }
+
+  const updateWorkspaceMediaPack = useCallback(
+    async (patch: Record<string, unknown>) => {
+      const client = createWorkspaceApiClient({ token })
+      const currentMediaPack = (workspace?.metadata?.mediaPack || {}) as Record<string, unknown>
+      const currentDeliverables = (workspace?.metadata?.deliverables || {}) as Record<string, unknown>
+      await client.updateWorkspace(String(workspaceId), {
+        metadata: {
+          ...(workspace?.metadata || {}),
+          mediaPack: {
+            ...currentMediaPack,
+            ...patch,
+          },
+          deliverables: {
+            ...currentDeliverables,
+            hasSlides: true,
+          },
+        },
+      })
+    },
+    [token, workspace, workspaceId],
+  )
+
+  const setDeckAsActive = async (deck: any) => {
+    if (!deck?.id) return
+    const identity = getDeckIdentity(deck, workspace)
+    const deckIntent = identity.intent || (identity.slideCount <= 5 ? 'social_summary' : 'sermon_presentation')
+    const currentMediaPack = (workspace?.metadata?.mediaPack || {}) as Record<string, unknown>
+    const latestDeckByIntent = {
+      ...(currentMediaPack.latestDeckByIntent || {}),
+      [deckIntent || 'sermon_presentation']: deck.id,
+    } as Record<string, string | null>
+
+    const nextPatch: Record<string, unknown> = {
+      latestDeckByIntent,
+      archivedDeckIds: Array.from(new Set((currentMediaPack.archivedDeckIds || []).map((id: unknown) => String(id)).filter(Boolean).filter((id: string) => id !== String(deck.id)))),
+    }
+
+    if (deckIntent === 'social_summary') {
+      nextPatch.activeSocialDeckId = deck.id
+    } else {
+      nextPatch.activeSermonDeckId = deck.id
+    }
+
+    await updateWorkspaceMediaPack(nextPatch)
+    await loadMediaLibrary({ silent: true })
+  }
+
+  const archiveDeck = async (deck: any) => {
+    if (!deck?.id) return
+    const currentMediaPack = (workspace?.metadata?.mediaPack || {}) as Record<string, unknown>
+    const currentlyArchived = new Set(
+      (currentMediaPack.archivedDeckIds || []).map((id: unknown) => String(id)).filter(Boolean),
+    )
+    const isAlreadyArchived = currentlyArchived.has(String(deck.id))
+    const confirmed = window.confirm(
+      isAlreadyArchived
+        ? 'Unarchive this deck? It will return to the main library sections.'
+        : 'Archive this deck? It will stay in history but move out of the active deck sections.',
+    )
+    if (!confirmed) return
+    if (isAlreadyArchived) {
+      currentlyArchived.delete(String(deck.id))
+    } else {
+      currentlyArchived.add(String(deck.id))
+    }
+    const archivedDeckIds = Array.from(currentlyArchived)
+    const nextPatch: Record<string, unknown> = { archivedDeckIds }
+    if (String(currentMediaPack.activeSermonDeckId || '') === String(deck.id)) {
+      nextPatch.activeSermonDeckId = null
+    }
+    if (String(currentMediaPack.activeSocialDeckId || '') === String(deck.id)) {
+      nextPatch.activeSocialDeckId = null
+    }
+    await updateWorkspaceMediaPack(nextPatch)
+    await loadMediaLibrary({ silent: true })
+  }
+
+  const previewDeck = async (deck: any) => {
+    const slides = Array.isArray(deck?.slides) ? [...deck.slides] : []
+    const firstSlide = slides.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))[0]
+    if (!firstSlide?.id) return
+    try {
+      const blob = await slidesApi.getSlideImageBlob(firstSlide.id, token)
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank', 'noopener,noreferrer')
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (error) {
+      console.error('Failed to open deck preview:', error)
+    }
+  }
+
+  const deckSections = useMemo(
+    () => [
+      {
+        key: 'sermon_presentation' as DeckIntentGroup,
+        title: 'Sermon Presentation Decks',
+        description: 'Best for worship services and Bible study presentations. Expected: 8-14 slides.',
+        items: deckLibrary.grouped.sermon_presentation,
+      },
+      {
+        key: 'social_summary' as DeckIntentGroup,
+        title: 'Social Summary Decks',
+        description: 'Best for social sharing and short announcements. Expected: 3-5 slides.',
+        items: deckLibrary.grouped.social_summary,
+      },
+      {
+        key: 'legacy' as DeckIntentGroup,
+        title: 'Legacy / Older Decks',
+        description: 'Generated before deck modes. Still accessible, but not the primary sermon deck.',
+        items: deckLibrary.grouped.legacy,
+      },
+    ],
+    [deckLibrary],
+  )
+
+  const visibleDeckSections = deckSections.filter((section) => {
+    if (!showDeckSections) return false
+    if (activeFilter === 'slide' || activeFilter === 'all') return true
+    return false
+  })
+  const hasVisibleDecks = visibleDeckSections.some((section) => section.items.length > 0)
+
+  const renderDeckCard = (deck: any, identity: ReturnType<typeof getDeckIdentity>, sectionKey: DeckIntentGroup) => {
+    const deckStatus = String(deck?.status || '').toLowerCase()
+    const isDeletingDeck = Boolean(deletingIds[deck.id])
+    const activeDeckId =
+      sectionKey === 'social_summary'
+        ? deckLibrary.activeSocialDeckId
+        : deckLibrary.activeSermonDeckId
+    const isActive = String(activeDeckId || '') === String(deck.id)
+    const canExport = deckStatus === 'ready' || deckStatus === 'completed'
+    const activeActionLabel =
+      sectionKey === 'social_summary' || (sectionKey === 'legacy' && identity.slideCount <= 5)
+        ? 'Set as Social Deck'
+        : 'Set as Sermon Deck'
+    return (
+      <div
+        key={deck.id}
+        className={`border rounded-xl p-4 transition-all ${
+          isActive ? 'border-cyan-300/60 bg-cyan-500/10' : 'border-white/10 bg-black/30 hover:bg-black/40'
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <FileText className="w-5 h-5 text-cyan-200" />
+              <span className="text-sm font-medium text-white">{deck.sermon?.title || deck.title || 'Untitled deck'}</span>
+              {isActive ? (
+                <span className="text-[10px] px-2 py-1 rounded-full border border-cyan-300/40 bg-cyan-500/15 text-cyan-100">
+                  Active
+                </span>
+              ) : null}
+              {identity.isArchived ? (
+                <span className="text-[10px] px-2 py-1 rounded-full border border-white/20 bg-white/10 text-gray-200">
+                  Archived
+                </span>
+              ) : null}
+            </div>
+            <p className="text-xs text-gray-400">
+              {identity.intentLabel} · {identity.slideCount} slides · {identity.generatedAtLabel}
+            </p>
+          </div>
+          <span className={`text-xs px-2 py-1 rounded-full border ${getStatusColor(deckStatus)}`}>
+            {deckStatus || 'unknown'}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap gap-2 mb-3">
+          <span className="text-[11px] px-2 py-1 rounded-full border border-white/20 bg-white/5 text-gray-200">
+            {identity.qualityStatus}
+          </span>
+          <span className="text-[11px] px-2 py-1 rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-100">
+            {identity.sourceWorkspaceTitle}
+          </span>
+          {identity.sourceOutlineId ? (
+            <span className="text-[11px] px-2 py-1 rounded-full border border-white/20 bg-white/5 text-gray-300">
+              Outline linked
+            </span>
+          ) : null}
+          {identity.sourceManuscriptId ? (
+            <span className="text-[11px] px-2 py-1 rounded-full border border-white/20 bg-white/5 text-gray-300">
+              Manuscript linked
+            </span>
+          ) : null}
+        </div>
+
+        {identity.warnings.length ? (
+          <div className="mb-3 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 space-y-1">
+            {identity.warnings.map((warning) => (
+              <p key={`${deck.id}-${warning}`}>{warning}</p>
+            ))}
+          </div>
+        ) : null}
+
+        <DeckFirstSlidePreview deck={deck} token={token} />
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              void previewDeck(deck)
+            }}
+            className="cyber-outline text-xs px-3 py-2 rounded-full flex items-center justify-center gap-2"
+          >
+            <Play className="w-3 h-3" />
+            Preview
+          </button>
+          {canExport ? (
+            <button
+              onClick={() =>
+                slidesApi.exportDeck(deck.id, 'pptx', token).catch((error) =>
+                  console.error('Failed to export deck:', error),
+                )
+              }
+              className="cyber-outline text-xs px-3 py-2 rounded-full flex items-center justify-center gap-2"
+            >
+              <Download className="w-3 h-3" />
+              Export PPTX
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              void setDeckAsActive(deck)
+            }}
+            className="cyber-outline text-xs px-3 py-2 rounded-full flex items-center justify-center gap-2"
+          >
+            {activeActionLabel}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void archiveDeck(deck)
+            }}
+            className="cyber-outline text-xs px-3 py-2 rounded-full flex items-center justify-center gap-2 text-amber-200 border-amber-400/40 hover:bg-amber-500/10"
+          >
+            {identity.isArchived ? 'Unarchive' : 'Archive'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void deleteDeckItem(deck.id)
+            }}
+            disabled={isDeletingDeck}
+            className="cyber-outline text-xs px-3 py-2 rounded-full text-red-300 border-red-400/40 hover:bg-red-500/10 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isDeletingDeck ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -615,242 +881,206 @@ export default function MediaGallery({ workspaceId, token, filter, onFilterChang
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-cyan-300" />
         </div>
-      ) : filteredItems.length === 0 ? (
-        <div className="text-center py-12 border border-white/10 rounded-xl bg-black/20">
-          <p className="text-gray-400">
-            No {activeFilter !== 'all' ? activeFilter : ''} media generated yet. Create slides, images, audio, or video assets from the media panel above.
-          </p>
-          <p className="text-sm text-gray-500 mt-2">
-            Use the generation panels below to create media. Optional music and social assets appear when the extras section is open.
-          </p>
-        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredItems.map((item) => {
-            // Render deck card
-            if ('deck' in item && item.deck) {
-              const deck = item.deck
-              const deckStatus = String(deck.status || '').toLowerCase()
-              const canEditDeck = deckStatus === 'ready' || deckStatus === 'completed'
-              const canDeleteDeck = true
-              const isDeletingDeck = Boolean(deletingIds[deck.id])
-              return (
-                <div
-                  key={item.id}
-                  className="border border-white/10 rounded-xl p-4 bg-black/30 hover:bg-black/40 transition-all"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-5 h-5" />
-                      <span className="text-sm font-medium">Slide Deck</span>
+        <div className="space-y-6">
+          {hasVisibleDecks ? (
+            visibleDeckSections.map((section) => (
+              section.items.length > 0 ? (
+                <section key={section.key} className="space-y-3">
+                  <div className="flex items-end justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-semibold text-white">{section.title}</h4>
+                      <p className="text-xs text-gray-400">{section.description}</p>
                     </div>
-                    <span className={`text-xs px-2 py-1 rounded-full border ${getStatusColor(deckStatus)}`}>
-                      {deckStatus}
-                    </span>
+                    <span className="text-xs text-gray-400">{section.items.length} deck(s)</span>
                   </div>
-
-                  <p className="text-sm text-gray-300 mb-2">{deck.sermon?.title || 'Untitled'}</p>
-                  <p className="text-xs text-gray-500 mb-3">
-                    {deck.slides?.length || 0} slides • {deck.theme?.name || 'Default Theme'}
-                  </p>
-                  <DeckFirstSlidePreview deck={deck} token={token} />
-
-                  {canEditDeck || canDeleteDeck ? (
-                    <div className="flex gap-2">
-                      {canEditDeck ? (
-                        <button
-                          onClick={() =>
-                            slidesApi.exportDeck(deck.id, 'pptx', token).catch((error) =>
-                              console.error('Failed to export deck:', error),
-                            )
-                          }
-                          className="flex-1 cyber-outline text-xs px-3 py-2 rounded-full flex items-center justify-center gap-2"
-                        >
-                          <Download className="w-3 h-3" />
-                          Export PPTX
-                        </button>
-                      ) : null}
-                      {canDeleteDeck ? (
-                        <button
-                          onClick={() => {
-                            void deleteDeckItem(deck.id)
-                          }}
-                          disabled={isDeletingDeck}
-                          className="cyber-outline text-xs px-3 py-2 rounded-full text-red-300 border-red-400/40 hover:bg-red-500/10 disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                          {isDeletingDeck ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-3 h-3" />
-                          )}
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  <p className="text-xs text-gray-500 mt-2">
-                    {new Date(deck.createdAt).toLocaleString()}
-                  </p>
-                </div>
-              )
-            }
-
-            // Render regular media card
-            const mediaItem = item as MediaItem
-            const canDeleteMedia =
-              mediaItem.type === 'audio' || mediaItem.status === 'completed' || mediaItem.status === 'failed'
-            return (
-              <div
-                key={mediaItem.id}
-                onClick={() => {
-                  if (mediaItem.status === 'completed' && (mediaItem.type === 'image' || mediaItem.type === 'music' || mediaItem.type === 'video' || mediaItem.type === 'social')) {
-                    openAssetInNewTab(mediaItem)
-                  }
-                }}
-                className={`border border-white/10 rounded-xl p-4 bg-black/30 hover:bg-black/40 transition-all ${
-                  mediaItem.status === 'completed' && (mediaItem.type === 'image' || mediaItem.type === 'music' || mediaItem.type === 'video' || mediaItem.type === 'social')
-                    ? 'cursor-pointer'
-                    : ''
-                }`}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    {getTypeIcon(mediaItem.type)}
-                    <span className="text-sm font-medium capitalize">
-                      {mediaItem.type === 'social' ? 'Social Asset' : mediaItem.type}
-                    </span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {section.items.map(({ deck, identity }) => renderDeckCard(deck, identity, section.key))}
                   </div>
-                  <span className={`text-xs px-2 py-1 rounded-full border ${getStatusColor(mediaItem.status)}`}>
-                    {mediaItem.status}
-                  </span>
-                </div>
+                </section>
+              ) : null
+            ))
+          ) : showDeckSections ? (
+            <div className="text-center py-12 border border-white/10 rounded-xl bg-black/20">
+              <p className="text-gray-400">
+                No decks in this workspace yet. Generate a Sermon Presentation Deck or Social Summary Deck from the media panel above.
+              </p>
+              <p className="text-sm text-gray-500 mt-2">
+                Legacy decks will appear here after generation and stay clearly labeled.
+              </p>
+            </div>
+          ) : null}
 
-                {mediaItem.type === 'social' ? (
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {mediaItem.label?.split('•').map((part, idx) => {
-                      const token = formatSocialToken(part.trim())
-                      if (!token) return null
-                      return (
-                        <span
-                          key={`${mediaItem.id}-social-tag-${idx}`}
-                          className="text-[11px] px-2 py-1 rounded-full border border-cyan-400/40 bg-cyan-500/10 text-cyan-200"
-                        >
-                          {token}
-                        </span>
-                      )
-                    })}
-                    {mediaItem.dimensions ? (
-                      <span className="text-[11px] px-2 py-1 rounded-full border border-white/20 bg-white/5 text-gray-300">
-                        {mediaItem.dimensions}
-                      </span>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {mediaItem.status === 'processing' && (
-                  <div className="mb-3 space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px] text-gray-300">
-                      <span>{mediaItem.progressLabel || 'Processing'}</span>
-                      {typeof mediaItem.progressCurrent === 'number' && typeof mediaItem.progressTotal === 'number' ? (
-                        <span>
-                          {mediaItem.progressCurrent}/{mediaItem.progressTotal}
-                          {typeof mediaItem.progressPercent === 'number' ? ` • ${mediaItem.progressPercent}%` : ''}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                      {typeof mediaItem.progressPercent === 'number' ? (
-                        <div
-                          className="h-full rounded-full bg-cyan-300 transition-all duration-500"
-                          style={{
-                            width: `${Math.max(6, Math.min(100, Number(mediaItem.progressPercent)))}%`,
-                          }}
-                        />
-                      ) : (
-                        <div className="media-indeterminate-bar h-full w-1/3 rounded-full bg-cyan-300" />
-                      )}
-                    </div>
-                    {formatEtaFromProgress(mediaItem.progressCurrent, mediaItem.progressTotal) ? (
-                      <p className="text-[11px] text-gray-400">
-                        {formatEtaFromProgress(mediaItem.progressCurrent, mediaItem.progressTotal)}
-                      </p>
-                    ) : null}
-                  </div>
-                )}
-
-                {mediaItem.status === 'failed' && mediaItem.errorMessage && (
-                  <p className="text-xs text-red-300 mb-3">{mediaItem.errorMessage}</p>
-                )}
-
-                {mediaItem.type === 'music' && Number(mediaItem.tracksCount || 0) > 1 ? (
-                  <p className="text-[11px] text-cyan-200 mb-2">
-                    {mediaItem.tracksCount} tracks available
-                  </p>
-                ) : null}
-
-                {mediaItem.type === 'music' && mediaItem.status === 'completed' ? (
-                  <MusicTrackSelector
-                    musicId={mediaItem.id}
-                    token={token}
-                    selectedTrackId={mediaItem.selectedTrackId}
-                    onTrackSelected={loadMediaLibrary}
-                  />
-                ) : null}
-
-                {mediaItem.type === 'audio' && mediaItem.status === 'completed' ? (
-                  <InlineAudioPlayer audioId={mediaItem.id} token={token} />
-                ) : null}
-
-                {canDeleteMedia && (
-                  <div className="flex gap-2 mt-3">
-                    {mediaItem.status === 'completed' ? (
-                      <button
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          triggerDownload(mediaItem)
-                        }}
-                        className="flex-1 cyber-outline text-xs px-3 py-2 rounded-full flex items-center justify-center gap-2"
-                      >
-                        <Download className="w-3 h-3" />
-                        Download
-                      </button>
-                    ) : null}
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        deleteMediaItem(mediaItem)
-                      }}
-                      disabled={Boolean(deletingIds[mediaItem.id])}
-                      className="cyber-outline text-xs px-3 py-2 rounded-full text-red-300 border-red-400/40 hover:bg-red-500/10 disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {deletingIds[mediaItem.id] ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-3 h-3" />
-                      )}
-                    </button>
-                  </div>
-                )}
-
-                {mediaItem.type === 'image' && mediaItem.status === 'completed' ? (
-                  <GeneratedImagePreview imageId={mediaItem.id} token={token} />
-                ) : mediaItem.type === 'social' && mediaItem.status === 'completed' ? (
-                  <GeneratedSocialPreview socialId={mediaItem.id} token={token} />
-                ) : null}
-
-                {mediaItem.label && mediaItem.type !== 'social' ? (
-                  <p className="text-xs text-cyan-100/80 mt-2">{mediaItem.label}</p>
-                ) : null}
-                {mediaItem.dimensions && mediaItem.type !== 'social' ? (
-                  <p className="text-[11px] text-gray-400 mt-1">{mediaItem.dimensions}</p>
-                ) : null}
-
-                <p className="text-xs text-gray-500 mt-2">
-                  {new Date(mediaItem.createdAt).toLocaleString()}
+          {activeFilter !== 'slide' ? (
+            filteredMediaItems.length === 0 ? (
+              <div className="text-center py-12 border border-white/10 rounded-xl bg-black/20">
+                <p className="text-gray-400">
+                  No {activeFilter !== 'all' ? activeFilter : ''} media generated yet. Create slides, images, audio, or video assets from the media panel above.
+                </p>
+                <p className="text-sm text-gray-500 mt-2">
+                  Use the generation panels below to create media. Optional music and social assets appear when the extras section is open.
                 </p>
               </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredMediaItems.map((mediaItem) => {
+                  const canDeleteMedia =
+                    mediaItem.type === 'audio' || mediaItem.status === 'completed' || mediaItem.status === 'failed'
+                  return (
+                    <div
+                      key={mediaItem.id}
+                      onClick={() => {
+                        if (mediaItem.status === 'completed' && (mediaItem.type === 'image' || mediaItem.type === 'music' || mediaItem.type === 'video' || mediaItem.type === 'social')) {
+                          openAssetInNewTab(mediaItem)
+                        }
+                      }}
+                      className={`border border-white/10 rounded-xl p-4 bg-black/30 hover:bg-black/40 transition-all ${
+                        mediaItem.status === 'completed' && (mediaItem.type === 'image' || mediaItem.type === 'music' || mediaItem.type === 'video' || mediaItem.type === 'social')
+                          ? 'cursor-pointer'
+                          : ''
+                      }`}
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          {getTypeIcon(mediaItem.type)}
+                          <span className="text-sm font-medium capitalize">
+                            {mediaItem.type === 'social' ? 'Social Asset' : mediaItem.type}
+                          </span>
+                        </div>
+                        <span className={`text-xs px-2 py-1 rounded-full border ${getStatusColor(mediaItem.status)}`}>
+                          {mediaItem.status}
+                        </span>
+                      </div>
+
+                      {mediaItem.type === 'social' ? (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {mediaItem.label?.split('•').map((part, idx) => {
+                            const token = formatSocialToken(part.trim())
+                            if (!token) return null
+                            return (
+                              <span
+                                key={`${mediaItem.id}-social-tag-${idx}`}
+                                className="text-[11px] px-2 py-1 rounded-full border border-cyan-400/40 bg-cyan-500/10 text-cyan-200"
+                              >
+                                {token}
+                              </span>
+                            )
+                          })}
+                          {mediaItem.dimensions ? (
+                            <span className="text-[11px] px-2 py-1 rounded-full border border-white/20 bg-white/5 text-gray-300">
+                              {mediaItem.dimensions}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      {mediaItem.status === 'processing' && (
+                        <div className="mb-3 space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px] text-gray-300">
+                            <span>{mediaItem.progressLabel || 'Processing'}</span>
+                            {typeof mediaItem.progressCurrent === 'number' && typeof mediaItem.progressTotal === 'number' ? (
+                              <span>
+                                {mediaItem.progressCurrent}/{mediaItem.progressTotal}
+                                {typeof mediaItem.progressPercent === 'number' ? ` • ${mediaItem.progressPercent}%` : ''}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                            {typeof mediaItem.progressPercent === 'number' ? (
+                              <div
+                                className="h-full rounded-full bg-cyan-300 transition-all duration-500"
+                                style={{
+                                  width: `${Math.max(6, Math.min(100, Number(mediaItem.progressPercent)))}%`,
+                                }}
+                              />
+                            ) : (
+                              <div className="media-indeterminate-bar h-full w-1/3 rounded-full bg-cyan-300" />
+                            )}
+                          </div>
+                          {formatEtaFromProgress(mediaItem.progressCurrent, mediaItem.progressTotal) ? (
+                            <p className="text-[11px] text-gray-400">
+                              {formatEtaFromProgress(mediaItem.progressCurrent, mediaItem.progressTotal)}
+                            </p>
+                          ) : null}
+                        </div>
+                      )}
+
+                      {mediaItem.status === 'failed' && mediaItem.errorMessage && (
+                        <p className="text-xs text-red-300 mb-3">{mediaItem.errorMessage}</p>
+                      )}
+
+                      {mediaItem.type === 'music' && Number(mediaItem.tracksCount || 0) > 1 ? (
+                        <p className="text-[11px] text-cyan-200 mb-2">
+                          {mediaItem.tracksCount} tracks available
+                        </p>
+                      ) : null}
+
+                      {mediaItem.type === 'music' && mediaItem.status === 'completed' ? (
+                        <MusicTrackSelector
+                          musicId={mediaItem.id}
+                          token={token}
+                          selectedTrackId={mediaItem.selectedTrackId}
+                          onTrackSelected={loadMediaLibrary}
+                        />
+                      ) : null}
+
+                      {mediaItem.type === 'audio' && mediaItem.status === 'completed' ? (
+                        <InlineAudioPlayer audioId={mediaItem.id} token={token} />
+                      ) : null}
+
+                      {canDeleteMedia && (
+                        <div className="flex gap-2 mt-3">
+                          {mediaItem.status === 'completed' ? (
+                            <button
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                triggerDownload(mediaItem)
+                              }}
+                              className="flex-1 cyber-outline text-xs px-3 py-2 rounded-full flex items-center justify-center gap-2"
+                            >
+                              <Download className="w-3 h-3" />
+                              Download
+                            </button>
+                          ) : null}
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              deleteMediaItem(mediaItem)
+                            }}
+                            disabled={Boolean(deletingIds[mediaItem.id])}
+                            className="cyber-outline text-xs px-3 py-2 rounded-full text-red-300 border-red-400/40 hover:bg-red-500/10 disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            {deletingIds[mediaItem.id] ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3 h-3" />
+                            )}
+                          </button>
+                        </div>
+                      )}
+
+                      {mediaItem.type === 'image' && mediaItem.status === 'completed' ? (
+                        <GeneratedImagePreview imageId={mediaItem.id} token={token} />
+                      ) : mediaItem.type === 'social' && mediaItem.status === 'completed' ? (
+                        <GeneratedSocialPreview socialId={mediaItem.id} token={token} />
+                      ) : null}
+
+                      {mediaItem.label && mediaItem.type !== 'social' ? (
+                        <p className="text-xs text-cyan-100/80 mt-2">{mediaItem.label}</p>
+                      ) : null}
+                      {mediaItem.dimensions && mediaItem.type !== 'social' ? (
+                        <p className="text-[11px] text-gray-400 mt-1">{mediaItem.dimensions}</p>
+                      ) : null}
+
+                      <p className="text-xs text-gray-500 mt-2">
+                        {new Date(mediaItem.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
             )
-          })}
+          ) : null}
         </div>
       )}
 
@@ -1068,7 +1298,11 @@ function DeckFirstSlidePreview({ deck, token }: { deck: any; token: string }) {
       <div className="aspect-video w-full relative">
         {imageSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageSrc} alt="First slide preview" className="absolute inset-0 w-full h-full object-cover" />
+          <img
+            src={imageSrc}
+            alt={`${deck.sermon?.title || deck.title || 'Deck'} first slide preview`}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
         ) : (
           <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/40 via-slate-900/80 to-cyan-900/30" />
         )}

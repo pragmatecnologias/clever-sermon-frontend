@@ -21,6 +21,55 @@ export interface MediaPromptEntry {
 
 export const MAX_NARRATION_CHARACTERS = 5000
 
+function cleanHeadline(text: string, maxWords = 8): string {
+  const words = String(text || '')
+    .replace(/[“”"]/g, '')
+    .replace(/[|/\\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+  return words.slice(0, maxWords).join(' ')
+}
+
+export function buildSocialHeadline(input: {
+  title?: string
+  passage?: string
+  theme?: string
+  language?: string
+}): string {
+  const isSpanish = String(input.language || '').toLowerCase().startsWith('es')
+  const source = `${input.title || ''} ${input.passage || ''} ${input.theme || ''}`.toLowerCase()
+
+  if (/john\s*3:16|juan\s*3:16/.test(source) || /love|grace|salvat|salvaci[oó]n|eternal life|vida eterna/.test(source)) {
+    return isSpanish ? 'El amor de Dios da vida eterna' : 'God’s love gives eternal life'
+  }
+
+  if (/revelation\s*14:6-12|apocalipsis\s*14:6-12|three angels|tres a[nñ]geles|everlasting gospel|evangelio eterno/.test(source)) {
+    return isSpanish ? 'El evangelio eterno sigue llamando' : 'The everlasting gospel still calls'
+  }
+
+  if (/daniel\s*7|revelation\s*12|revelation\s*18|matthew\s*24|exodus\s*20/.test(source)) {
+    return isSpanish ? 'Dios llama a la fidelidad' : 'God calls His people to faithfulness'
+  }
+
+  const fallback = cleanHeadline(input.theme || input.title || input.passage || (isSpanish ? 'Mensaje del sermón' : 'Sermon message'), 7)
+  return fallback || (isSpanish ? 'Mensaje del sermón' : 'Sermon message')
+}
+
+export function buildSocialCaption(input: {
+  title?: string
+  passage?: string
+  theme?: string
+  language?: string
+}): string {
+  const isSpanish = String(input.language || '').toLowerCase().startsWith('es')
+  const headline = buildSocialHeadline(input)
+  return isSpanish
+    ? `${headline}. Únase a nosotros para escuchar la Palabra y responder con fe.`
+    : `${headline}. Join us to hear the Word and respond in faith.`
+}
+
 export function buildFallbackImagePrompt(input: {
   theme?: string
   scripture: string
@@ -82,6 +131,8 @@ interface BuildParams {
 
 export function buildStructuredMediaPrompts(params: BuildParams): MediaPromptEntry[] {
   const { isSpanish, title, passage, theme, quoteSeed, source } = params
+  const socialHeadline = buildSocialHeadline({ title, passage, theme, language: isSpanish ? 'es' : 'en' })
+  const socialCaption = buildSocialCaption({ title, passage, theme, language: isSpanish ? 'es' : 'en' })
 
   const imageFields: ImagePromptFields = isSpanish
     ? {
@@ -194,9 +245,10 @@ export function buildStructuredMediaPrompts(params: BuildParams): MediaPromptEnt
           type: 'Social / Promoción',
           intent: 'Prompt para pieza promocional',
           prompt: [
-            `Pieza social para "${title}" (${passage}).`,
+            `Pieza social para "${socialHeadline}" (${passage}).`,
             `Cita central: "${String(quoteSeed).slice(0, 220)}"`,
             `Tema: ${theme}`,
+            `Caption sugerido: ${socialCaption}`,
             'Formato: gráfico 4:5, tipografía legible, jerarquía clara, CTA al final.',
             sourceSocial,
           ].filter(Boolean).join('\n'),
@@ -275,9 +327,10 @@ export function buildStructuredMediaPrompts(params: BuildParams): MediaPromptEnt
           type: 'Social / Promo',
           intent: 'Quote graphic or promo asset',
           prompt: [
-            `Social promo for "${title}" (${passage}).`,
+            `Social promo for "${socialHeadline}" (${passage}).`,
             `Main quote: "${String(quoteSeed).slice(0, 220)}"`,
             `Theme: ${theme}`,
+            `Suggested caption: ${socialCaption}`,
             'Format: 4:5 quote graphic, strong hierarchy, clear CTA.',
             sourceSocial,
           ].filter(Boolean).join('\n'),

@@ -104,7 +104,7 @@ export default function WorkspaceCitationReview({
         <div>
           <h3 className="text-xl font-semibold">Citations</h3>
           <p className="text-sm text-gray-300 mt-1">
-            Draft here. Review support in the ledger. Validate before delivery.
+            Draft here. Review support in the ledger. Validate before preaching.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -244,7 +244,7 @@ export default function WorkspaceCitationReview({
                         ) : (
                           <AlertCircle className="w-4 h-4 text-amber-300" />
                         )}
-                        <span>{citation.isVerified ? 'Supported by citation review' : 'Needs review before delivery'}</span>
+                        <span>{citation.isVerified ? 'Supported by citation review' : 'Needs pastoral review before preaching'}</span>
                       </div>
                     </div>
                   </div>
@@ -255,7 +255,7 @@ export default function WorkspaceCitationReview({
           })}
         </div>
       ) : (
-        <p className="text-gray-100/90">No citations yet.</p>
+        <p className="text-gray-100/90">No citations yet. Generate them to check support and strengthen the sermon.</p>
       )}
 
       {filteredClaims.length > 0 && (
