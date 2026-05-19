@@ -1,3 +1,14 @@
+import {
+  APPEAL_STYLE_OPTIONS,
+  BILINGUAL_SUPPORT_OPTIONS,
+  LANGUAGE_OPTIONS,
+  MINISTRY_MODE_OPTIONS,
+  SERVICE_TYPE_OPTIONS,
+  SERMON_STYLE_OPTIONS,
+  MESSAGE_FLOW_OPTIONS,
+  labelForValue,
+} from '@/constants/workspace-form-options'
+
 type WorkspaceDeliverables = {
   hasSlides?: boolean
   hasMedia?: boolean
@@ -25,6 +36,7 @@ export type WorkspaceGuardrailProfile = {
 
 type WorkspaceMetadataLike = {
   language?: string
+  additionalPassages?: string[]
   uiState?: WorkspaceUiState | null
   socraticCoachLastSession?: unknown
   socraticCoachLastFeedback?: WorkspaceCoachFeedback | null
@@ -51,6 +63,10 @@ export type WorkspaceCoachFeedback = {
 type WorkspaceLike = {
   language?: string
   mainPassage?: string
+  planning?: WorkspacePlanningProfile
+  guardrail?: WorkspaceGuardrailProfile
+  guardrailMode?: string
+  guardrailDetected?: boolean
   metadata?: WorkspaceMetadataLike
   manuscripts?: Array<{ content?: { metadata?: { quality?: { repairedIssues?: unknown[]; remainingIssues?: unknown[] }; repair?: { lastRepairedAt?: string } } } }>
 }
@@ -83,7 +99,7 @@ export const getWorkspaceClaimReviews = (workspace?: WorkspaceLike | null) =>
 
 export const getWorkspacePlanningProfile = (workspace?: WorkspaceLike | null): WorkspacePlanningProfile => {
   const metadata = getWorkspaceMetadata(workspace)
-  return metadata.planning || {}
+  return (metadata.planning as WorkspacePlanningProfile) || workspace?.planning || {}
 }
 
 const propheticPassagePatterns = [
@@ -103,15 +119,21 @@ export const isPropheticAdventistPassage = (reference?: string | null) => {
 export const getWorkspaceGuardrailProfile = (workspace?: WorkspaceLike | null): WorkspaceGuardrailProfile => {
   const metadata = getWorkspaceMetadata(workspace)
   const planning = getWorkspacePlanningProfile(workspace)
-  const manualMode = String(metadata.guardrailMode || '').toLowerCase()
-  const active = Boolean(metadata.guardrailDetected) || manualMode.includes('prophetic') || planning.ministryMode === 'prophetic' || isPropheticAdventistPassage(workspace?.mainPassage)
+  const manualMode = String(metadata.guardrailMode || workspace?.guardrailMode || '').toLowerCase()
+  const active =
+    Boolean(metadata.guardrailDetected || workspace?.guardrailDetected) ||
+    manualMode.includes('prophetic') ||
+    planning.ministryMode === 'prophetic' ||
+    isPropheticAdventistPassage(workspace?.mainPassage)
 
   if (!active) {
     return { active: false, label: '' }
   }
 
   return (
-    metadata.guardrail || {
+    metadata.guardrail ||
+    workspace?.guardrail ||
+    {
       active: true,
       label: 'Prophetic / Adventist Guardrail Mode',
       reason: isPropheticAdventistPassage(workspace?.mainPassage)
@@ -142,6 +164,45 @@ export const getWorkspacePlanningSummary = (workspace?: WorkspaceLike | null) =>
   ].filter(Boolean)
 
   return items.join(' • ')
+}
+
+export type WorkspacePlanningDetail = {
+  label: string
+  value: string
+}
+
+export const getWorkspacePlanningDetails = (workspace?: WorkspaceLike | null): WorkspacePlanningDetail[] => {
+  const planning = getWorkspacePlanningProfile(workspace)
+  const metadata = getWorkspaceMetadata(workspace)
+  const guardrail = getWorkspaceGuardrailProfile(workspace)
+  const additionalPassages = Array.isArray((workspace as WorkspaceLike | null)?.metadata?.additionalPassages)
+    ? ((workspace as WorkspaceLike | null)?.metadata?.additionalPassages as string[])
+    : Array.isArray((workspace as any)?.additionalPassages)
+      ? (workspace as any).additionalPassages
+      : []
+
+  const items: WorkspacePlanningDetail[] = [
+    { label: 'Title', value: String((workspace as any)?.title || '').trim() },
+    { label: 'Series', value: String((workspace as any)?.seriesTitle || '').trim() },
+    { label: 'Main Passage', value: String((workspace as any)?.mainPassage || '').trim() },
+    { label: 'Additional Passages', value: additionalPassages.filter(Boolean).join(', ') },
+    { label: 'Language', value: labelForValue(LANGUAGE_OPTIONS, String((workspace as any)?.language || metadata.language || 'en')) },
+    { label: 'Style', value: labelForValue(SERMON_STYLE_OPTIONS, String((workspace as any)?.style || '')) },
+    { label: 'Message Flow', value: labelForValue(MESSAGE_FLOW_OPTIONS, String((workspace as any)?.storyArc || '')) },
+    { label: 'Theme', value: String((workspace as any)?.theme || '').trim() },
+    { label: 'Audience Profile', value: String((workspace as any)?.audienceProfile || '').trim() },
+    { label: 'Sermon Goals', value: String((workspace as any)?.sermonGoals || '').trim() },
+    { label: 'Service Type', value: labelForValue(SERVICE_TYPE_OPTIONS, String(planning.serviceType || '')) },
+    { label: 'Ministry Mode', value: labelForValue(MINISTRY_MODE_OPTIONS, String(planning.ministryMode || '')) },
+    { label: 'Appeal Style', value: labelForValue(APPEAL_STYLE_OPTIONS, String(planning.appealStyle || '')) },
+    { label: 'Bilingual Support', value: labelForValue(BILINGUAL_SUPPORT_OPTIONS, String(planning.bilingualMode || '')) },
+    { label: 'Sermon Date', value: String(planning.sermonDate || '').trim() },
+    { label: 'Target Length', value: planning.targetLengthMinutes ? `${planning.targetLengthMinutes} min` : '' },
+    { label: 'EGW Enabled', value: (workspace as any)?.egwEnabled === false ? 'No' : 'Yes' },
+    { label: 'Guardrail Mode', value: guardrail.active ? guardrail.label : String(metadata.guardrailMode || '').trim() },
+  ]
+
+  return items.filter((item) => item.value)
 }
 
 export const getLatestManuscriptRepairIssues = (workspace?: WorkspaceLike | null): string[] =>

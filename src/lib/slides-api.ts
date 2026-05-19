@@ -273,10 +273,23 @@ export const slidesApi = {
       { type: format },
       {
         headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    const exportEntity = response.data as { id?: string; fileUrl?: string; status?: string; type?: string }
+    const exportId = String(exportEntity?.id || '').trim()
+    if (!exportId) {
+      throw new Error('Export record was not created')
+    }
+
+    const downloadResponse = await axios.get(
+      `${MEDIA_API_URL}/exports/${exportId}/download`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
         responseType: 'blob',
       }
     );
-    const blobUrl = URL.createObjectURL(response.data);
+
+    const blobUrl = URL.createObjectURL(downloadResponse.data);
     const link = document.createElement('a');
     link.href = blobUrl;
     link.download = `deck-${deckId}.${format}`;

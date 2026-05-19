@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Sparkles, FileText, Image, Mic, Music, Video, Share2, Loader2, Calendar, Clock3 } from 'lucide-react'
+import { Sparkles, FileText, Image as ImageIcon, Mic, Music, Video, Share2, Loader2, Calendar, Clock3 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
 import { createWorkspaceApiClient } from '@/lib/api/openapi-client'
 import {
@@ -55,6 +55,8 @@ const US_TIMEZONES = [
 
 export default function MediaProductionStudio({ workspace, token }: MediaProductionStudioProps) {
   const sermonBaseUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1').replace(/\/api\/v1\/?$/, '')
+  const planning = workspace?.metadata?.planning || {}
+  const guardrail = workspace?.metadata?.guardrail || null
   const [generatingAll, setGeneratingAll] = useState(false)
   const [currentStep, setCurrentStep] = useState<string>('')
   const [completedSteps, setCompletedSteps] = useState<string[]>([])
@@ -87,9 +89,9 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     defaultTimezone: '',
   })
   const [eventOverrides, setEventOverrides] = useState({
-    eventTitle: '',
-    eventSubtitle: '',
-    serviceDate: '',
+    eventTitle: workspace?.title || '',
+    eventSubtitle: workspace?.mainPassage || '',
+    serviceDate: planning.sermonDate || '',
     serviceTime: '',
     timezone: '',
     showLogo: true,
@@ -110,6 +112,16 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     }, 5_000)
     return () => clearTimeout(timer)
   }, [optimisticMediaItems])
+
+  useEffect(() => {
+    setEventOverrides((prev) => ({
+      ...prev,
+      eventTitle: prev.eventTitle || workspace?.title || '',
+      eventSubtitle: prev.eventSubtitle || workspace?.mainPassage || '',
+      serviceDate: prev.serviceDate || planning.sermonDate || '',
+      timezone: prev.timezone || churchDefaults.defaultTimezone || '',
+    }))
+  }, [workspace?.title, workspace?.mainPassage, planning.sermonDate, churchDefaults.defaultTimezone])
 
   const normalizeChurchDefaults = (data: any) => ({
     churchName: data?.churchName ?? '',
@@ -132,18 +144,36 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
   }
 
   // Auto-generate sermon summary for prompts
-  const sermonSummary = {
-    title: workspace.title || 'Untitled Sermon',
-    passage: workspace.mainPassage || '',
-    theme: workspace.theme || workspace.sermonGoals || '',
-    tone: workspace.metadata?.tone || 'encouraging',
-    outline: workspace.outlines?.[0]?.structure?.points || [],
-    pointNodes: workspace.outlines?.[0]?.structure?.pointNodes || [],
-    manuscript: workspace.manuscripts?.[0]?.content?.text || '',
-    applications: workspace.applications || [],
-    discussionQuestions: workspace.questions || workspace.discussionQuestions || [],
-    illustrations: workspace.illustrations || [],
-  }
+  const sermonSummary = useMemo(
+    () => ({
+      title: workspace.title || 'Untitled Sermon',
+      seriesTitle: workspace.seriesTitle || '',
+      passage: workspace.mainPassage || '',
+      additionalPassages: Array.isArray(workspace.additionalPassages) ? workspace.additionalPassages : [],
+      language: workspace.language || workspace.metadata?.language || 'en',
+      style: workspace.style || '',
+      storyArc: workspace.storyArc || '',
+      theme: workspace.theme || workspace.sermonGoals || '',
+      audienceProfile: workspace.audienceProfile || '',
+      sermonGoals: workspace.sermonGoals || '',
+      serviceType: planning.serviceType || '',
+      ministryMode: planning.ministryMode || '',
+      appealStyle: planning.appealStyle || '',
+      bilingualMode: planning.bilingualMode || '',
+      sermonDate: planning.sermonDate || '',
+      targetLengthMinutes: planning.targetLengthMinutes || null,
+      egwEnabled: workspace.egwEnabled !== false,
+      guardrailMode: planning.guardrailMode || workspace.metadata?.guardrailMode || '',
+      tone: workspace.metadata?.tone || 'encouraging',
+      outline: workspace.outlines?.[0]?.structure?.points || [],
+      pointNodes: workspace.outlines?.[0]?.structure?.pointNodes || [],
+      manuscript: workspace.manuscripts?.[0]?.content?.text || '',
+      applications: workspace.applications || [],
+      discussionQuestions: workspace.questions || workspace.discussionQuestions || [],
+      illustrations: workspace.illustrations || [],
+    }),
+    [workspace, planning.serviceType, planning.ministryMode, planning.appealStyle, planning.bilingualMode, planning.sermonDate],
+  )
 
   const socialLanguage = ((workspace?.language || workspace?.metadata?.language || 'en') as string).toLowerCase().startsWith('es')
     ? 'es'
@@ -155,8 +185,15 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
         passage: sermonSummary.passage,
         theme: sermonSummary.theme,
         language: socialLanguage,
+        planning: {
+          serviceType: sermonSummary.serviceType,
+          ministryMode: sermonSummary.ministryMode,
+          appealStyle: sermonSummary.appealStyle,
+          bilingualMode: sermonSummary.bilingualMode,
+          sermonDate: sermonSummary.sermonDate,
+        },
       }),
-    [sermonSummary.title, sermonSummary.passage, sermonSummary.theme, socialLanguage],
+    [sermonSummary.title, sermonSummary.passage, sermonSummary.theme, socialLanguage, sermonSummary.serviceType, sermonSummary.ministryMode, sermonSummary.appealStyle, sermonSummary.bilingualMode, sermonSummary.sermonDate],
   )
   const socialCaptionFallback = useMemo(
     () =>
@@ -165,8 +202,15 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
         passage: sermonSummary.passage,
         theme: sermonSummary.theme,
         language: socialLanguage,
+        planning: {
+          serviceType: sermonSummary.serviceType,
+          ministryMode: sermonSummary.ministryMode,
+          appealStyle: sermonSummary.appealStyle,
+          bilingualMode: sermonSummary.bilingualMode,
+          sermonDate: sermonSummary.sermonDate,
+        },
       }),
-    [sermonSummary.title, sermonSummary.passage, sermonSummary.theme, socialLanguage],
+    [sermonSummary.title, sermonSummary.passage, sermonSummary.theme, socialLanguage, sermonSummary.serviceType, sermonSummary.ministryMode, sermonSummary.appealStyle, sermonSummary.bilingualMode, sermonSummary.sermonDate],
   )
 
   const narrationKeyPoints = useMemo(() => {
@@ -314,6 +358,18 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
       passage: sermonSummary.passage,
       theme: sermonSummary.theme || (isSpanish ? 'mensaje central del sermón' : 'main sermon message'),
       quoteSeed: String(quote).slice(0, 220),
+      planning: {
+        title: sermonSummary.title,
+        seriesTitle: sermonSummary.seriesTitle,
+        serviceType: sermonSummary.serviceType,
+        ministryMode: sermonSummary.ministryMode,
+        appealStyle: sermonSummary.appealStyle,
+        bilingualMode: sermonSummary.bilingualMode,
+        sermonDate: sermonSummary.sermonDate,
+        targetLengthMinutes: sermonSummary.targetLengthMinutes || undefined,
+        guardrailMode: sermonSummary.guardrailMode,
+        guardrailActive: Boolean(guardrail?.active),
+      },
       source: {
         slides: undefined,
         image: studyMediaPrompts.imageOptions[0]?.prompt || undefined,
@@ -447,13 +503,34 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     if (!normalizedHashtags.length) {
       const titleWords = clean(sermonSummary.title).slice(0, 2)
       const themeWords = clean(sermonSummary.theme).slice(0, 2)
-      const base = language === 'es' ? ['#sermon', '#iglesia', '#fe'] : ['#sermon', '#church', '#faith']
+      const serviceWords = clean(sermonSummary.serviceType).slice(0, 1)
+      const modeWords = clean(sermonSummary.ministryMode).slice(0, 1)
+      const base =
+        language === 'es'
+          ? ['#sermon', '#iglesia', '#fe']
+          : ['#sermon', '#church', '#faith']
       const dynamic = [...titleWords, ...themeWords].map((word) => `#${word}`)
-      normalizedHashtags.push(...Array.from(new Set([...dynamic, ...base])).slice(0, 6))
+      const planningTags = [...serviceWords, ...modeWords].map((word) => `#${word}`)
+      normalizedHashtags.push(...Array.from(new Set([...dynamic, ...planningTags, ...base])).slice(0, 6))
     }
 
+    const ctaText =
+      sermonSummary.appealStyle === 'repentance_return'
+        ? (language === 'es' ? 'Vuelve al Padre' : 'Come home to the Father')
+        : sermonSummary.appealStyle === 'mission_service'
+          ? (language === 'es' ? 'Sirve con propósito' : 'Serve with purpose')
+          : sermonSummary.appealStyle === 'doctrinal_clarity'
+            ? (language === 'es' ? 'Aférrate a la verdad' : 'Stand on the truth')
+            : sermonSummary.serviceType === 'evangelistic_meeting'
+              ? (language === 'es' ? 'Invita a alguien hoy' : 'Invite someone today')
+              : sermonSummary.serviceType === 'sabbath_school'
+                ? (language === 'es' ? 'Únete al estudio bíblico' : 'Join the Bible study')
+                : sermonSummary.serviceType === 'prayer_meeting'
+                  ? (language === 'es' ? 'Oremos juntos' : 'Let us pray together')
+                  : (language === 'es' ? 'Únase a escuchar la Palabra' : 'Join us to hear the Word')
+
     return {
-      ctaText: '',
+      ctaText,
       hashtags: normalizedHashtags.join(' '),
     }
   }, [
@@ -464,6 +541,9 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     workspace?.metadata?.language,
     sermonSummary.title,
     sermonSummary.theme,
+    sermonSummary.serviceType,
+    sermonSummary.ministryMode,
+    sermonSummary.appealStyle,
   ])
 
   const sanitizeSocialCaptionCopy = (input: string) => {
@@ -510,7 +590,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
             language: workspace.language || workspace.metadata?.language || 'en',
             eventTitle: eventOverrides.eventTitle || socialHeadline,
             eventSubtitle: eventOverrides.eventSubtitle || sermonSummary.passage,
-            serviceDate: eventOverrides.serviceDate || '',
+            serviceDate: eventOverrides.serviceDate || sermonSummary.sermonDate || '',
             serviceTime: eventOverrides.serviceTime || '',
             timezone: eventOverrides.timezone || churchDefaults.defaultTimezone,
             ctaText: generatedSocialMeta.ctaText,
@@ -571,7 +651,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
       const workspaceApi = createWorkspaceApiClient({ token })
       const composeResult = await workspaceApi.composeMediaPack(String(workspace.id), {
         includeDeck: true,
-        deckSize: 'long',
+        deckSize: undefined,
         deckIntent: 'sermon_presentation',
       })
       const sermon = (composeResult as any)?.sermon || composeResult
@@ -670,7 +750,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
 
   const mediaTypes = [
     { id: 'slides', label: 'Slide Deck', icon: FileText, color: 'purple', description: 'PowerPoint presentation' },
-    { id: 'images', label: 'Images', icon: Image, color: 'blue', description: 'Sermon visuals' },
+    { id: 'images', label: 'Images', icon: ImageIcon, color: 'blue', description: 'Sermon visuals' },
     { id: 'audio', label: 'Audio', icon: Mic, color: 'green', description: 'Narration & podcast' },
     { id: 'video', label: 'Video', icon: Video, color: 'orange', description: 'Full sermon video' },
   ]

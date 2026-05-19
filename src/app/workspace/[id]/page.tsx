@@ -865,7 +865,9 @@ export default function WorkspaceDetailPage() {
   const themeConfigured =
     Boolean(String(workspace?.title || '').trim()) &&
     Boolean(String(workspace?.mainPassage || '').trim()) &&
-    Boolean(String(workspace?.language || workspaceMetadata.language || '').trim())
+    Boolean(String(workspace?.language || workspaceMetadata.language || '').trim()) &&
+    Boolean(String(workspace?.style || '').trim()) &&
+    Boolean(String(workspace?.storyArc || '').trim())
   const refineCompleted =
     Boolean(dnaIntegrityReport) ||
     Boolean(socraticCoachSession) ||
@@ -874,15 +876,26 @@ export default function WorkspaceDetailPage() {
   const deliverPrepared =
     workspaceHasDeliverables(workspace, ['hasSlides', 'hasMedia', 'hasSocial', 'hasMusic'])
 
-  const progress = {
-    themeConfigured,
-    passageExplored: !!scriptureResult,
-    studyGenerated: !!latestStudyReport,
-    outlineCreated: !!workspace?.outlines?.length,
-    manuscriptWritten: !!latestManuscript,
-    refineCompleted,
-    deliverPrepared,
-  }
+  const backendProgress = workspaceState?.progress || null
+  const progress = backendProgress
+    ? {
+        themeConfigured: backendProgress.themeConfigured || themeConfigured,
+        passageExplored: backendProgress.passageExplored || !!scriptureResult,
+        studyGenerated: backendProgress.studyGenerated || !!latestStudyReport,
+        outlineCreated: backendProgress.outlineCreated || !!workspace?.outlines?.some((item) => item?.isSelected),
+        manuscriptWritten: backendProgress.manuscriptWritten || !!latestManuscript,
+        refineCompleted: backendProgress.refineCompleted || refineCompleted,
+        deliverPrepared: backendProgress.deliverPrepared || deliverPrepared,
+      }
+    : {
+        themeConfigured,
+        passageExplored: !!scriptureResult,
+        studyGenerated: !!latestStudyReport,
+        outlineCreated: !!workspace?.outlines?.some((item) => item?.isSelected),
+        manuscriptWritten: !!latestManuscript,
+        refineCompleted,
+        deliverPrepared,
+      }
 
   // Handle phase change
   const handlePhaseChange = (phase: Phase) => {

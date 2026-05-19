@@ -140,6 +140,18 @@ export function useWorkspaceUiState({ workspaceId, workspace, loading, router }:
       navStatePersistTimer.current = null
       navStatePersistHash.current = ''
     }, 0)
+
+    // Persist uiState to backend
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+    if (token && workspaceId) {
+      fetch(`/api/v1/workspaces/${workspaceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ metadata: { uiState: { phase: activePhase, section: activeSection } } }),
+      }).catch(() => {
+        // ignore persistence errors - localStorage already succeeded
+      })
+    }
   }, [activePhase, activeSection, workspace, workspaceId, loading, searchParams, router, navStateStorageKey])
 
   return {

@@ -34,7 +34,28 @@ type WorkspaceStateSummary = {
 const PHASE_SEQUENCE = ['THEME', 'PASSAGE', 'STUDY', 'OUTLINE', 'WRITE', 'REFINE', 'DELIVER'] as const;
 type WorkspaceFilter = 'active' | 'demo-test' | 'archived' | 'all';
 
+const CANONICAL_DEMO_TITLE = 'Demo Sermon: John 3:16';
 const isDemoOrTestWorkspace = (workspace: WorkspaceSummary) => /test|demo|validation|ux|probe/i.test(workspace.title);
+const isPrimaryDemoWorkspace = (workspace: WorkspaceSummary) => String(workspace.title || '').trim().toLowerCase() === CANONICAL_DEMO_TITLE.toLowerCase();
+
+const selectCanonicalDemoWorkspace = (workspaces: WorkspaceSummary[]) => {
+  const candidates = workspaces.filter((workspace) => isPrimaryDemoWorkspace(workspace) && workspace.status !== 'archived');
+  const completedCandidates = candidates.filter((workspace) => workspace.status === 'completed');
+  const orderedCompleted = [...completedCandidates].sort((left, right) => {
+    const leftTime = new Date(left.createdAt || left.updatedAt || 0).getTime();
+    const rightTime = new Date(right.createdAt || right.updatedAt || 0).getTime();
+    return leftTime - rightTime;
+  });
+  if (orderedCompleted[0]) {
+    return orderedCompleted[0];
+  }
+  const orderedCandidates = [...candidates].sort((left, right) => {
+    const leftTime = new Date(left.createdAt || left.updatedAt || 0).getTime();
+    const rightTime = new Date(right.createdAt || right.updatedAt || 0).getTime();
+    return leftTime - rightTime;
+  });
+  return orderedCandidates[0] || null;
+};
 
 const getWorkspaceTone = (workspace: WorkspaceSummary) => {
   if (workspace.status === 'archived') return 'archived';
@@ -108,10 +129,17 @@ export default function Dashboard() {
         const right = new Date(a.updatedAt || a.createdAt || 0).getTime();
         return left - right;
       });
-      setWorkspaces(sorted);
       const recent = sorted.slice(0, 8);
+      const primaryDemo = selectCanonicalDemoWorkspace(sorted);
+      const demoAwareWorkspaces = primaryDemo && !sorted.some((workspace) => workspace.id === primaryDemo.id)
+        ? [...sorted, primaryDemo]
+        : sorted;
+      setWorkspaces(demoAwareWorkspaces);
+      const stateTargets = primaryDemo && !recent.some((workspace) => workspace.id === primaryDemo.id)
+        ? [...recent, primaryDemo]
+        : recent;
       const stateEntries = await Promise.all(
-        recent.map(async (workspace) => {
+        stateTargets.map(async (workspace) => {
           try {
             const stateResponse = await axios.get(`${apiUrl}/workspaces/${workspace.id}/state`, {
               headers: { Authorization: `Bearer ${token}` },
@@ -157,33 +185,68 @@ export default function Dashboard() {
     router.push('/workspace/new');
   };
 
+  const demoWorkspace = useMemo(
+    () => selectCanonicalDemoWorkspace(workspaces),
+    [workspaces],
+  );
+  const demoWorkspaceState = demoWorkspace ? workspaceStates[demoWorkspace.id] : null;
+  const demoProgress = progressPercent(demoWorkspaceState);
+  const demoReady = Boolean(demoWorkspace && demoProgress === 100);
+  const demoButtonLabel = demoBusy
+    ? 'Preparing demo sermon...'
+    : demoReady
+      ? 'Open demo sermon'
+      : demoWorkspace
+        ? 'Finish preparing demo sermon'
+        : 'Prepare demo sermon';
+
+  const waitForDemoCompletion = useCallback(async (workspaceId: string, token: string) => {
+    const deadline = Date.now() + 15 * 60 * 1000;
+    while (Date.now() < deadline) {
+      try {
+        const stateResponse = await axios.get(`${apiUrl}/workspaces/${workspaceId}/state`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const state = stateResponse.data as WorkspaceStateSummary;
+        if (progressPercent(state) === 100) {
+          await fetchWorkspaces(token);
+          return true;
+        }
+      } catch (error) {
+        console.error('Failed to poll demo workspace state', error);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 4000));
+    }
+    return false;
+  }, [apiUrl, fetchWorkspaces]);
+
   const createDemoWorkspace = async () => {
     const token = localStorage.getItem('token');
     if (!token) return;
+    if (demoReady && demoWorkspace) {
+      router.push(`/workspace/${demoWorkspace.id}`);
+      return;
+    }
     setDemoBusy(true);
     setActionError('');
     try {
       const response = await axios.post(
-        `${apiUrl}/workspaces`,
-        {
-          title: 'Demo Sermon: John 3:16',
-          seriesTitle: 'Demo Sermon Path',
-          mainPassage: 'John 3:16',
-          additionalPassages: ['Romans 5:8', '1 John 4:9-10'],
-          theme: 'Demo only - salvation and grace',
-          audienceProfile: 'Demo congregation',
-          sermonGoals: 'Guide a new pastor through the real sermon workflow.',
-          theologicalLens: 'adventist',
-          style: 'expository',
-          storyArc: 'problem_truth_response',
-          language: 'en',
-          egwEnabled: true,
-        },
+        `${apiUrl}/workspaces/demo-sermon/prepare`,
+        {},
         { headers: { Authorization: `Bearer ${token}` } },
       );
-      const workspaceId = response.data?.id || response.data?.workspace?.id;
+      const workspaceId = response.data?.workspaceId || response.data?.workspace?.id || response.data?.id;
       if (!workspaceId) throw new Error('Demo workspace did not return an id.');
-      router.push(`/workspace/${workspaceId}?demo=1`);
+      const prepared = Boolean(response.data?.prepared);
+      if (!prepared) {
+        const ready = await waitForDemoCompletion(workspaceId, token);
+        if (!ready) {
+          throw new Error('Demo sermon is still preparing. Please try again in a moment.');
+        }
+      } else {
+        await fetchWorkspaces(token);
+      }
+      router.push(`/workspace/${workspaceId}`);
     } catch (error: any) {
       console.error('Demo workspace creation failed', error);
       setActionError(error?.response?.data?.message || error?.message || 'Unable to create demo workspace.');
@@ -224,7 +287,7 @@ export default function Dashboard() {
           <div>
             <p className="text-xs uppercase tracking-[0.4em] text-cyan-400">Clever Sermon</p>
             <h1 className="text-2xl font-bold text-white">Mission Control</h1>
-            <p className="mt-1 text-sm text-gray-300">Start here. Continue a sermon, create a new one, or try the John 3:16 demo path.</p>
+            <p className="mt-1 text-sm text-gray-300">Start here. Continue a sermon, create a new one, or open the complete John 3:16 demo sermon.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-cyan-200/80 text-sm">
@@ -256,7 +319,7 @@ export default function Dashboard() {
             </div>
             <div className="flex flex-wrap gap-3">
               <button onClick={createDemoWorkspace} className="cyber-outline rounded-full px-5 py-3 text-sm" disabled={demoBusy}>
-                {demoBusy ? 'Creating demo...' : 'Try a demo sermon with John 3:16'}
+                {demoButtonLabel}
               </button>
               <button onClick={createWorkspace} className="cyber-button rounded-full px-5 py-3 text-sm">
                 <Plus className="mr-2 inline-block h-4 w-4" />
@@ -312,7 +375,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="mt-4 rounded-2xl border border-dashed border-white/15 bg-black/15 p-4 text-sm text-gray-300">
-                No workspace yet. Create one or try the demo sermon to begin.
+                No workspace yet. Create one or open the complete demo sermon to begin.
               </div>
             )}
           </div>
@@ -376,13 +439,13 @@ export default function Dashboard() {
               <div className="cyber-panel rounded-2xl p-8 text-center">
                 <FileText className="mx-auto mb-4 h-16 w-16 text-cyan-300" />
                 <h3 className="mb-2 text-xl font-semibold text-white">No workspaces found</h3>
-                <p className="mb-6 text-gray-200/80">Create your first sermon workspace or try the demo sermon path.</p>
+                <p className="mb-6 text-gray-200/80">Create your first sermon workspace or open the complete demo sermon example.</p>
                 <div className="flex flex-wrap justify-center gap-3">
                   <button onClick={createWorkspace} className="cyber-button rounded-full px-6 py-3">
                     Create Workspace
                   </button>
                   <button onClick={createDemoWorkspace} className="cyber-outline rounded-full px-6 py-3">
-                    Try demo sermon
+                    {demoButtonLabel}
                   </button>
                 </div>
               </div>

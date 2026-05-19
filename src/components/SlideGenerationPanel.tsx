@@ -40,14 +40,6 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
   const [backgroundPreset, setBackgroundPreset] = useState<'cyberpunk' | 'modern' | 'aurora' | 'minimal'>('modern')
   const [deckIntent, setDeckIntent] = useState<DeckIntent>('sermon_presentation')
 
-  useEffect(() => {
-    loadThemes()
-  }, [loadThemes])
-
-  useEffect(() => {
-    loadExistingDeckContext()
-  }, [loadExistingDeckContext])
-
   const loadThemes = useCallback(async () => {
     try {
       const themesData = await slidesApi.getThemes(token)
@@ -117,6 +109,14 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
     }
   }, [deckIntent, token, workspace])
 
+  useEffect(() => {
+    loadThemes()
+  }, [loadThemes])
+
+  useEffect(() => {
+    loadExistingDeckContext()
+  }, [loadExistingDeckContext])
+
   const handleSyncWorkspace = async (): Promise<string | null> => {
     setSyncing(true)
     setError(null)
@@ -148,7 +148,7 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
       const workspaceApi = createWorkspaceApiClient({ token })
       const result = await workspaceApi.composeMediaPack(String(workspace.id), {
         includeDeck: true,
-        deckSize: 'long',
+        deckSize: deckIntent === 'social_summary' ? 'short' : undefined,
         deckIntent,
         themeId: selectedTheme && selectedTheme.trim() !== '' ? selectedTheme : undefined,
         backgroundProvider,

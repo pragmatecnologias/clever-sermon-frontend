@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Image, FileText, Music, Mic, Video, Download, Trash2, Loader2, Share2, Play, Pause } from 'lucide-react'
+import { Image as ImageIcon, FileText, Music, Mic, Video, Download, Trash2, Loader2, Share2, Play, Pause } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
 import { createWorkspaceApiClient } from '@/lib/api/openapi-client'
 import {
@@ -299,7 +299,7 @@ export default function MediaGallery({ workspace, workspaceId, token, filter, on
 
   const filters = [
     { value: 'all', label: 'All', icon: null },
-    { value: 'image', label: 'Images', icon: Image },
+    { value: 'image', label: 'Images', icon: ImageIcon },
     { value: 'slide', label: 'Slides', icon: FileText },
     { value: 'audio', label: 'Audio', icon: Mic },
     { value: 'video', label: 'Video', icon: Video },
@@ -325,7 +325,7 @@ export default function MediaGallery({ workspace, workspaceId, token, filter, on
 
   const getTypeIcon = (type: string) => {
     switch (type) {
-      case 'image': return <Image className="w-5 h-5" />
+      case 'image': return <ImageIcon className="w-5 h-5" />
       case 'slide': return <FileText className="w-5 h-5" />
       case 'audio': return <Mic className="w-5 h-5" />
       case 'music': return <Music className="w-5 h-5" />
@@ -632,10 +632,20 @@ export default function MediaGallery({ workspace, workspaceId, token, filter, on
       ...(currentMediaPack.latestDeckByIntent || {}),
       [deckIntent || 'sermon_presentation']: deck.id,
     } as Record<string, string | null>
+    const archivedDeckIds = Array.isArray(currentMediaPack.archivedDeckIds)
+      ? currentMediaPack.archivedDeckIds
+      : []
 
     const nextPatch: Record<string, unknown> = {
       latestDeckByIntent,
-      archivedDeckIds: Array.from(new Set((currentMediaPack.archivedDeckIds || []).map((id: unknown) => String(id)).filter(Boolean).filter((id: string) => id !== String(deck.id)))),
+      archivedDeckIds: Array.from(
+        new Set(
+          archivedDeckIds
+            .map((id: unknown) => String(id))
+            .filter(Boolean)
+            .filter((id: string) => id !== String(deck.id)),
+        ),
+      ),
     }
 
     if (deckIntent === 'social_summary') {
@@ -651,8 +661,11 @@ export default function MediaGallery({ workspace, workspaceId, token, filter, on
   const archiveDeck = async (deck: any) => {
     if (!deck?.id) return
     const currentMediaPack = (workspace?.metadata?.mediaPack || {}) as Record<string, unknown>
+    const archivedDeckIdList = Array.isArray(currentMediaPack.archivedDeckIds)
+      ? currentMediaPack.archivedDeckIds
+      : []
     const currentlyArchived = new Set(
-      (currentMediaPack.archivedDeckIds || []).map((id: unknown) => String(id)).filter(Boolean),
+      archivedDeckIdList.map((id: unknown) => String(id)).filter(Boolean),
     )
     const isAlreadyArchived = currentlyArchived.has(String(deck.id))
     const confirmed = window.confirm(
@@ -666,8 +679,8 @@ export default function MediaGallery({ workspace, workspaceId, token, filter, on
     } else {
       currentlyArchived.add(String(deck.id))
     }
-    const archivedDeckIds = Array.from(currentlyArchived)
-    const nextPatch: Record<string, unknown> = { archivedDeckIds }
+    const nextArchivedDeckIds = Array.from(currentlyArchived)
+    const nextPatch: Record<string, unknown> = { archivedDeckIds: nextArchivedDeckIds }
     if (String(currentMediaPack.activeSermonDeckId || '') === String(deck.id)) {
       nextPatch.activeSermonDeckId = null
     }

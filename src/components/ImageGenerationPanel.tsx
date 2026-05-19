@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Image, Sparkles, Loader2 } from 'lucide-react'
+import { Image as ImageIcon, Sparkles, Loader2 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
 import { buildFallbackImagePrompt, composeImagePrompt, type ImagePromptFields } from '@/lib/media-prompts'
 
@@ -139,7 +139,7 @@ export default function ImageGenerationPanel({
   return (
     <div className="border border-white/10 rounded-xl p-6 bg-black/20 space-y-4">
       <div className="flex items-center gap-3 mb-4">
-        <Image className="w-6 h-6 text-cyan-300" />
+        <ImageIcon className="w-6 h-6 text-cyan-300" />
         <h3 className="text-lg font-semibold">Generate Image</h3>
       </div>
 
@@ -296,7 +296,7 @@ export default function ImageGenerationPanel({
           </>
         ) : (
           <>
-            <Image className="w-4 h-4" />
+            <ImageIcon className="w-4 h-4" />
             Generate Image
           </>
         )}

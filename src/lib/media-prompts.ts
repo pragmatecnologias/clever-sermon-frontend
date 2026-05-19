@@ -37,6 +37,13 @@ export function buildSocialHeadline(input: {
   passage?: string
   theme?: string
   language?: string
+  planning?: {
+    serviceType?: string
+    ministryMode?: string
+    appealStyle?: string
+    bilingualMode?: string
+    sermonDate?: string
+  }
 }): string {
   const isSpanish = String(input.language || '').toLowerCase().startsWith('es')
   const source = `${input.title || ''} ${input.passage || ''} ${input.theme || ''}`.toLowerCase()
@@ -62,12 +69,64 @@ export function buildSocialCaption(input: {
   passage?: string
   theme?: string
   language?: string
+  planning?: {
+    serviceType?: string
+    ministryMode?: string
+    appealStyle?: string
+    bilingualMode?: string
+    sermonDate?: string
+  }
 }): string {
   const isSpanish = String(input.language || '').toLowerCase().startsWith('es')
+  const planning = input.planning || {}
   const headline = buildSocialHeadline(input)
-  return isSpanish
-    ? `${headline}. Únase a nosotros para escuchar la Palabra y responder con fe.`
-    : `${headline}. Join us to hear the Word and respond in faith.`
+  const serviceLine = planning.serviceType
+    ? isSpanish
+      ? {
+          sabbath_worship: 'Únase a nosotros este sábado.',
+          sabbath_school: 'Únase al estudio bíblico.',
+          evangelistic_meeting: 'Traiga a alguien con usted.',
+          bible_study: 'Venga a estudiar la Palabra.',
+          devotional: 'Reciba ánimo para el día.',
+          youth: 'Jóvenes, únanse a la conversación.',
+          prayer_meeting: 'Oremos juntos.',
+          funeral_memorial: 'Oramos con ustedes en este momento.',
+          wedding_family: 'Celebremos juntos.',
+        }[planning.serviceType] || 'Únase a nosotros.'
+      : {
+          sabbath_worship: 'Join us this Sabbath.',
+          sabbath_school: 'Join us for Bible study.',
+          evangelistic_meeting: 'Bring someone with you.',
+          bible_study: 'Come and study the Word.',
+          devotional: 'Receive encouragement for the day.',
+          youth: 'Young people, join the conversation.',
+          prayer_meeting: 'Let us pray together.',
+          funeral_memorial: 'We are praying with you.',
+          wedding_family: 'Come celebrate with us.',
+        }[planning.serviceType] || 'Join us in the Word.'
+    : ''
+  const appealLine = planning.appealStyle
+    ? isSpanish
+      ? {
+          invitation: 'Responda con fe.',
+          commitment: 'Tome una decisión firme.',
+          reflection: 'Reflexione con oración.',
+          doctrinal_clarity: 'Aférrate a la verdad.',
+          pastoral_encouragement: 'Reciba ánimo y esperanza.',
+          repentance_return: 'Vuelva al Padre.',
+          mission_service: 'Sirva con propósito.',
+        }[planning.appealStyle] || 'Responda con fe.'
+      : {
+          invitation: 'Respond in faith.',
+          commitment: 'Make a firm decision.',
+          reflection: 'Reflect prayerfully.',
+          doctrinal_clarity: 'Stand on the truth.',
+          pastoral_encouragement: 'Receive hope and encouragement.',
+          repentance_return: 'Return to the Father.',
+          mission_service: 'Serve with purpose.',
+        }[planning.appealStyle] || 'Respond in faith.'
+    : ''
+  return `${headline}. ${serviceLine} ${appealLine}`.replace(/\s+/g, ' ').trim()
 }
 
 export function buildFallbackImagePrompt(input: {
@@ -119,6 +178,18 @@ interface BuildParams {
   passage: string
   theme: string
   quoteSeed: string
+  planning?: {
+    title?: string
+    seriesTitle?: string
+    serviceType?: string
+    ministryMode?: string
+    appealStyle?: string
+    bilingualMode?: string
+    sermonDate?: string
+    targetLengthMinutes?: number
+    guardrailMode?: string
+    guardrailActive?: boolean
+  }
   source?: {
     image?: string
     audio?: string
@@ -130,9 +201,21 @@ interface BuildParams {
 }
 
 export function buildStructuredMediaPrompts(params: BuildParams): MediaPromptEntry[] {
-  const { isSpanish, title, passage, theme, quoteSeed, source } = params
-  const socialHeadline = buildSocialHeadline({ title, passage, theme, language: isSpanish ? 'es' : 'en' })
-  const socialCaption = buildSocialCaption({ title, passage, theme, language: isSpanish ? 'es' : 'en' })
+  const { isSpanish, title, passage, theme, quoteSeed, planning, source } = params
+  const planningBlock = planning
+    ? [
+        planning.serviceType ? `Service type: ${planning.serviceType}` : '',
+        planning.ministryMode ? `Ministry mode: ${planning.ministryMode}` : '',
+        planning.appealStyle ? `Appeal style: ${planning.appealStyle}` : '',
+        planning.bilingualMode ? `Bilingual support: ${planning.bilingualMode}` : '',
+        planning.sermonDate ? `Sermon date: ${planning.sermonDate}` : '',
+        planning.targetLengthMinutes ? `Target length: ${planning.targetLengthMinutes} minutes` : '',
+        planning.guardrailMode ? `Guardrail mode: ${planning.guardrailMode}` : '',
+        planning.guardrailActive ? 'Guardrail active: yes' : '',
+      ].filter(Boolean).join('\n')
+    : ''
+  const socialHeadline = buildSocialHeadline({ title, passage, theme, language: isSpanish ? 'es' : 'en', planning })
+  const socialCaption = buildSocialCaption({ title, passage, theme, language: isSpanish ? 'es' : 'en', planning })
 
   const imageFields: ImagePromptFields = isSpanish
     ? {
@@ -180,6 +263,7 @@ export function buildStructuredMediaPrompts(params: BuildParams): MediaPromptEnt
           prompt: [
             `Objetivo: presentación del sermón "${title}" sobre ${passage}.`,
             `Enfoque teológico: ${theme}.`,
+            planningBlock,
             'Estructura sugerida:',
             '- Título',
             '- Lectura bíblica',
@@ -249,6 +333,7 @@ export function buildStructuredMediaPrompts(params: BuildParams): MediaPromptEnt
             `Cita central: "${String(quoteSeed).slice(0, 220)}"`,
             `Tema: ${theme}`,
             `Caption sugerido: ${socialCaption}`,
+            planningBlock,
             'Formato: gráfico 4:5, tipografía legible, jerarquía clara, CTA al final.',
             sourceSocial,
           ].filter(Boolean).join('\n'),
@@ -262,6 +347,7 @@ export function buildStructuredMediaPrompts(params: BuildParams): MediaPromptEnt
           prompt: [
             `Goal: sermon deck for "${title}" on ${passage}.`,
             `Theological focus: ${theme}.`,
+            planningBlock,
             'Suggested structure:',
             '- Title',
             '- Scripture reading',
@@ -331,6 +417,7 @@ export function buildStructuredMediaPrompts(params: BuildParams): MediaPromptEnt
             `Main quote: "${String(quoteSeed).slice(0, 220)}"`,
             `Theme: ${theme}`,
             `Suggested caption: ${socialCaption}`,
+            planningBlock,
             'Format: 4:5 quote graphic, strong hierarchy, clear CTA.',
             sourceSocial,
           ].filter(Boolean).join('\n'),

@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react'
 import StoryArcSelector from '@/components/StoryArcSelector'
 import WorkspaceEGWToggle from '@/components/WorkspaceEGWToggle'
+import { getWorkspaceGuardrailProfile, getWorkspacePlanningDetails } from '@/components/workspace-metadata.helpers'
 
 type WorkspaceLike = {
   title?: string
@@ -274,6 +275,27 @@ export default function WorkspaceOverviewSection({
             <p className="text-gray-100/90">No additional passages.</p>
           )}
         </div>
+      </div>
+      <div className="border border-cyan-400/20 rounded-xl p-4 bg-black/30">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-xl font-semibold">Planning Context</h3>
+          {getWorkspaceGuardrailProfile(workspace as any).active ? (
+            <span className="cyber-tag">Guardrail active</span>
+          ) : (
+            <span className="cyber-tag">Standard mode</span>
+          )}
+        </div>
+        <p className="mt-2 text-sm text-gray-200/75">
+          This summary feeds study, outline, manuscript, review, media, and export context.
+        </p>
+        <dl className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {getWorkspacePlanningDetails(workspace as any).map((item) => (
+            <div key={item.label} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+              <dt className="text-[10px] uppercase tracking-[0.25em] text-cyan-200/70">{item.label}</dt>
+              <dd className="mt-1 text-sm text-gray-100/90 break-words">{item.value}</dd>
+            </div>
+          ))}
+        </dl>
       </div>
     </div>
   )

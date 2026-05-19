@@ -233,7 +233,7 @@ export default function WorkspaceExportPanel({ workspace, token }: WorkspaceExpo
     if (!workspace?.id) return
     const client = createWorkspaceApiClient({ token })
     const result = await client.composeMediaPack(String(workspace.id), {
-      deckSize: deckIntent === 'social_summary' ? 'short' : 'long',
+      deckSize: deckIntent === 'social_summary' ? 'short' : undefined,
       deckIntent,
       includeDeck: true,
       exportTypes: deckIntent === 'sermon_presentation' ? ['pptx', 'pdf'] : [],
@@ -261,7 +261,7 @@ export default function WorkspaceExportPanel({ workspace, token }: WorkspaceExpo
       setMessage('Generating slide deck and exports...')
       const client = createWorkspaceApiClient({ token })
       const result = await client.composeMediaPack(String(workspace.id), {
-        deckSize: 'long',
+        deckSize: undefined,
         deckIntent: 'sermon_presentation',
         includeDeck: true,
         exportTypes: ['pptx', 'pdf'],
@@ -296,6 +296,26 @@ export default function WorkspaceExportPanel({ workspace, token }: WorkspaceExpo
         sourceOutlineId: selectedOutline?.id || null,
         sourceManuscriptId: selectedManuscript?.id || null,
         sourceStudyReportId: readiness.studyReport?.id || null,
+        planning: {
+          title: workspace.title || '',
+          seriesTitle: workspace.seriesTitle || '',
+          mainPassage: workspace.mainPassage || '',
+          additionalPassages: Array.isArray(workspace.additionalPassages) ? workspace.additionalPassages : [],
+          language: workspace.language || 'en',
+          style: workspace.style || '',
+          storyArc: workspace.storyArc || '',
+          theme: workspace.theme || '',
+          audienceProfile: workspace.audienceProfile || '',
+          sermonGoals: workspace.sermonGoals || '',
+          sermonDate: workspace?.metadata?.planning?.sermonDate || '',
+          targetLengthMinutes: workspace?.metadata?.planning?.targetLengthMinutes || null,
+          serviceType: workspace?.metadata?.planning?.serviceType || '',
+          ministryMode: workspace?.metadata?.planning?.ministryMode || '',
+          appealStyle: workspace?.metadata?.planning?.appealStyle || '',
+          bilingualMode: workspace?.metadata?.planning?.bilingualMode || '',
+          egwEnabled: workspace.egwEnabled !== false,
+          guardrailMode: workspace?.metadata?.guardrailMode || '',
+        },
         deckId: (result as any)?.deck?.id || (result as any)?.deck?.deckId || null,
         sermonId: (result as any)?.sermon?.id || (result as any)?.sermon?.sermonId || null,
         artifacts: artifacts.map((artifact) => ({
