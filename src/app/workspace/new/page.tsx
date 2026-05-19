@@ -23,6 +23,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1
 type FieldErrors = {
   title?: string
   mainPassage?: string
+  style?: string
+  storyArc?: string
   targetLengthMinutes?: string
 }
 
@@ -113,6 +115,8 @@ export default function NewWorkspacePage() {
 
     if (!title) nextFieldErrors.title = 'Enter a sermon title.'
     if (!mainPassage) nextFieldErrors.mainPassage = 'Enter the main passage for this sermon.'
+    if (!formData.style) nextFieldErrors.style = 'Choose a sermon style.'
+    if (!formData.storyArc) nextFieldErrors.storyArc = 'Choose a message flow.'
 
     const targetMinutes = formData.targetLengthMinutes ? Number(formData.targetLengthMinutes) : undefined
     if (formData.targetLengthMinutes && (!targetMinutes || targetMinutes < 1)) {
@@ -306,10 +310,10 @@ export default function NewWorkspacePage() {
                     <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-300" />
                     <div>
                       <p className="text-sm font-medium text-amber-200">
-                        Prophetic / Adventist Guardrail recommended
+                        Prophetic / Adventist Guardrails: Enabled
                       </p>
                       <p className="mt-1 text-xs text-amber-200/80">
-                        This passage matches prophetic Adventist themes. Ministry Mode will default to Prophetic / Adventist and enhanced guardrails will be applied.
+                        This keeps the sermon Scripture-first, Christ-centered, Adventist-aware, and non-sensational. Ministry Mode will default to Prophetic / Adventist and the guardrail metadata is applied automatically.
                       </p>
                     </div>
                   </div>
@@ -369,8 +373,8 @@ export default function NewWorkspacePage() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label htmlFor="workspace-style" className="mb-2 block text-xs uppercase tracking-widest cyber-muted">
-                    Style
+                <label htmlFor="workspace-style" className="mb-2 block text-xs uppercase tracking-widest cyber-muted">
+                    Style <span className="text-red-300">*</span>
                   </label>
                   <p id="workspace-style-help" className="mb-2 text-xs text-gray-400">
                     How the sermon is structured around the scripture.
@@ -381,6 +385,7 @@ export default function NewWorkspacePage() {
                     onChange={(e) => updateField('style', e.target.value)}
                     className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-gray-100/90 outline-none transition focus-visible:border-cyan-300/60 focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-black/40"
                     aria-describedby="workspace-style-help"
+                    aria-invalid={Boolean(fieldErrors.style)}
                   >
                     <option value="">Select style</option>
                     {SERMON_STYLE_OPTIONS.map((opt) => (
@@ -394,11 +399,16 @@ export default function NewWorkspacePage() {
                       {SERMON_STYLE_OPTIONS.find((o) => o.value === formData.style)?.description}
                     </p>
                   )}
+                  {fieldErrors.style ? (
+                    <p className="mt-2 text-sm text-red-300" role="alert">
+                      {fieldErrors.style}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div>
                   <label htmlFor="workspace-message-flow" className="mb-2 block text-xs uppercase tracking-widest cyber-muted">
-                    Message Flow
+                    Message Flow <span className="text-red-300">*</span>
                   </label>
                   <p id="workspace-message-flow-help" className="mb-2 text-xs text-gray-400">
                     The movement or arc of the message.
@@ -409,6 +419,7 @@ export default function NewWorkspacePage() {
                     onChange={(e) => updateField('storyArc', e.target.value)}
                     className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-gray-100/90 outline-none transition focus-visible:border-cyan-300/60 focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-black/40"
                     aria-describedby="workspace-message-flow-help"
+                    aria-invalid={Boolean(fieldErrors.storyArc)}
                   >
                     <option value="">Select message flow</option>
                     {MESSAGE_FLOW_OPTIONS.map((opt) => (
@@ -422,6 +433,11 @@ export default function NewWorkspacePage() {
                       {MESSAGE_FLOW_OPTIONS.find((o) => o.value === formData.storyArc)?.description}
                     </p>
                   )}
+                  {fieldErrors.storyArc ? (
+                    <p className="mt-2 text-sm text-red-300" role="alert">
+                      {fieldErrors.storyArc}
+                    </p>
+                  ) : null}
                 </div>
               </div>
 

@@ -28,6 +28,7 @@ export type WorkspacePlanningProfile = {
 export type WorkspaceGuardrailProfile = {
   active: boolean
   label: string
+  mode?: 'prophetic_adventist'
   reason?: string
   message?: string
   focus?: string[]

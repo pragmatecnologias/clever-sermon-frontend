@@ -35,26 +35,35 @@ const PHASE_SEQUENCE = ['THEME', 'PASSAGE', 'STUDY', 'OUTLINE', 'WRITE', 'REFINE
 type WorkspaceFilter = 'active' | 'demo-test' | 'archived' | 'all';
 
 const CANONICAL_DEMO_TITLE = 'Demo Sermon: John 3:16';
+const PINNED_CANONICAL_DEMO_ID = (process.env.NEXT_PUBLIC_CANONICAL_DEMO_WORKSPACE_ID || process.env.NEXT_PUBLIC_CANONICAL_DEMO_ID || '').trim();
 const isDemoOrTestWorkspace = (workspace: WorkspaceSummary) => /test|demo|validation|ux|probe/i.test(workspace.title);
 const isPrimaryDemoWorkspace = (workspace: WorkspaceSummary) => String(workspace.title || '').trim().toLowerCase() === CANONICAL_DEMO_TITLE.toLowerCase();
 
+const sortWorkspaceByLatestActivity = (left: WorkspaceSummary, right: WorkspaceSummary) => {
+  const leftTime = new Date(right.updatedAt || right.createdAt || 0).getTime();
+  const rightTime = new Date(left.updatedAt || left.createdAt || 0).getTime();
+  return leftTime - rightTime;
+};
+
 const selectCanonicalDemoWorkspace = (workspaces: WorkspaceSummary[]) => {
-  const candidates = workspaces.filter((workspace) => isPrimaryDemoWorkspace(workspace) && workspace.status !== 'archived');
-  const completedCandidates = candidates.filter((workspace) => workspace.status === 'completed');
-  const orderedCompleted = [...completedCandidates].sort((left, right) => {
-    const leftTime = new Date(left.createdAt || left.updatedAt || 0).getTime();
-    const rightTime = new Date(right.createdAt || right.updatedAt || 0).getTime();
-    return leftTime - rightTime;
-  });
+  const canonicalCandidates = workspaces.filter((workspace) =>
+    isPrimaryDemoWorkspace(workspace) &&
+    workspace.status !== 'archived' &&
+    workspace.status !== 'draft' &&
+    workspace.status !== 'preparing',
+  );
+  const completedCanonicalCandidates = canonicalCandidates.filter((workspace) => workspace.status === 'completed');
+  if (PINNED_CANONICAL_DEMO_ID) {
+    const pinnedCompleted = completedCanonicalCandidates.find((workspace) => workspace.id === PINNED_CANONICAL_DEMO_ID);
+    if (pinnedCompleted) {
+      return pinnedCompleted;
+    }
+  }
+  const orderedCompleted = [...completedCanonicalCandidates].sort(sortWorkspaceByLatestActivity);
   if (orderedCompleted[0]) {
     return orderedCompleted[0];
   }
-  const orderedCandidates = [...candidates].sort((left, right) => {
-    const leftTime = new Date(left.createdAt || left.updatedAt || 0).getTime();
-    const rightTime = new Date(right.createdAt || right.updatedAt || 0).getTime();
-    return leftTime - rightTime;
-  });
-  return orderedCandidates[0] || null;
+  return null;
 };
 
 const getWorkspaceTone = (workspace: WorkspaceSummary) => {
@@ -70,16 +79,16 @@ const getWorkspaceToneLabel = (workspace: WorkspaceSummary) => {
   return 'Active';
 };
 
-const phaseLabelForWorkspace = (state?: WorkspaceStateSummary | null) => {
-  if (!state?.progress) return 'Setup';
+const nextStepLabelForWorkspace = (state?: WorkspaceStateSummary | null) => {
+  if (!state?.progress) return 'Open to continue';
   if (!state.progress.themeConfigured) return 'Setup';
   if (!state.progress.passageExplored) return 'Scripture';
-  if (!state.progress.studyGenerated) return 'Deep Study';
-  if (!state.progress.outlineCreated) return 'Sermon Core';
-  if (!state.progress.manuscriptWritten) return 'Outline';
-  if (!state.progress.refineCompleted) return 'Manuscript';
-  if (!state.progress.deliverPrepared) return 'Review';
-  return 'Media & Export';
+  if (!state.progress.studyGenerated) return 'Study';
+  if (!state.progress.outlineCreated) return 'Outline';
+  if (!state.progress.manuscriptWritten) return 'Manuscript';
+  if (!state.progress.refineCompleted) return 'Review';
+  if (!state.progress.deliverPrepared) return 'Media & Export';
+  return 'Ready';
 };
 
 const progressPercent = (state?: WorkspaceStateSummary | null) => {
@@ -102,6 +111,7 @@ export default function Dashboard() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1';
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
   const [workspaceStates, setWorkspaceStates] = useState<Record<string, WorkspaceStateSummary>>({});
+  const [workspaceStateStatus, setWorkspaceStateStatus] = useState<Record<string, 'loading' | 'loaded' | 'failed'>>({});
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [search, setSearch] = useState('');
@@ -150,7 +160,12 @@ export default function Dashboard() {
           }
         }),
       );
-      setWorkspaceStates(Object.fromEntries(stateEntries.filter(([, value]) => Boolean(value))) as Record<string, WorkspaceStateSummary>);
+      const loadedStates = Object.fromEntries(stateEntries.filter(([, value]) => Boolean(value))) as Record<string, WorkspaceStateSummary>;
+      const loadedStatus = Object.fromEntries(
+        stateEntries.map(([id, value]) => [id, value ? 'loaded' : 'failed'] as const),
+      ) as Record<string, 'loading' | 'loaded' | 'failed'>;
+      setWorkspaceStates(loadedStates);
+      setWorkspaceStateStatus((current) => ({ ...current, ...loadedStatus }));
     } catch (error) {
       console.error('Failed to fetch workspaces', error);
       setActionError('Unable to load workspaces.');
@@ -190,14 +205,15 @@ export default function Dashboard() {
     [workspaces],
   );
   const demoWorkspaceState = demoWorkspace ? workspaceStates[demoWorkspace.id] : null;
+  const demoWorkspaceStateStatus = demoWorkspace ? workspaceStateStatus[demoWorkspace.id] : undefined;
   const demoProgress = progressPercent(demoWorkspaceState);
   const demoReady = Boolean(demoWorkspace && demoProgress === 100);
   const demoButtonLabel = demoBusy
     ? 'Preparing demo sermon...'
-    : demoReady
-      ? 'Open demo sermon'
-      : demoWorkspace
-        ? 'Finish preparing demo sermon'
+    : demoWorkspace
+      ? demoWorkspaceStateStatus === 'loading'
+        ? 'Loading demo sermon...'
+        : 'Open demo sermon'
         : 'Prepare demo sermon';
 
   const waitForDemoCompletion = useCallback(async (workspaceId: string, token: string) => {
@@ -279,6 +295,49 @@ export default function Dashboard() {
   const recentWorkspaces = filteredWorkspaces.slice(0, 6);
   const lastWorkspace = workspaces.find((workspace) => workspace.status !== 'archived') || workspaces[0] || null;
   const cleanupWorkspaces = workspaces.filter((workspace) => getWorkspaceTone(workspace) === 'demo-test');
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token || loading || recentWorkspaces.length === 0) {
+      return;
+    }
+
+    const missingStates = recentWorkspaces.filter((workspace) => !workspaceStates[workspace.id] && workspaceStateStatus[workspace.id] !== 'loading');
+    if (!missingStates.length) {
+      return;
+    }
+
+    let cancelled = false;
+    setWorkspaceStateStatus((current) => ({
+      ...current,
+      ...Object.fromEntries(missingStates.map((workspace) => [workspace.id, 'loading'] as const)),
+    }));
+
+    void Promise.all(
+      missingStates.map(async (workspace) => {
+        try {
+          const response = await axios.get(`${apiUrl}/workspaces/${workspace.id}/state`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          return [workspace.id, response.data as WorkspaceStateSummary] as const;
+        } catch {
+          return [workspace.id, null] as const;
+        }
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      const loadedStates = Object.fromEntries(entries.filter(([, value]) => Boolean(value))) as Record<string, WorkspaceStateSummary>;
+      const nextStatus = Object.fromEntries(
+        entries.map(([id, value]) => [id, value ? 'loaded' : 'failed'] as const),
+      ) as Record<string, 'loading' | 'loaded' | 'failed'>;
+      setWorkspaceStates((current) => ({ ...current, ...loadedStates }));
+      setWorkspaceStateStatus((current) => ({ ...current, ...nextStatus }));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiUrl, loading, recentWorkspaces, workspaceStates, workspaceStateStatus]);
 
   return (
     <div className="min-h-screen">
@@ -369,8 +428,20 @@ export default function Dashboard() {
                 <p className="text-sm text-gray-300">{lastWorkspace.mainPassage || 'No passage set'}</p>
                 <p className="mt-2 text-sm text-gray-300">{lastWorkspace.theme || 'No theme yet'}</p>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <span className="cyber-tag">{phaseLabelForWorkspace(workspaceStates[lastWorkspace.id])}</span>
-                  <span className="cyber-tag">{progressPercent(workspaceStates[lastWorkspace.id])}% complete</span>
+                  <span className="cyber-tag">
+                    {workspaceStates[lastWorkspace.id]
+                      ? `Continue at ${nextStepLabelForWorkspace(workspaceStates[lastWorkspace.id])}`
+                      : workspaceStateStatus[lastWorkspace.id] === 'loading'
+                        ? 'Progress loading…'
+                        : 'Open to continue'}
+                  </span>
+                  <span className="cyber-tag">
+                    {workspaceStates[lastWorkspace.id]
+                      ? `${progressPercent(workspaceStates[lastWorkspace.id])}% complete`
+                      : workspaceStateStatus[lastWorkspace.id] === 'loading'
+                        ? 'Progress loading…'
+                        : 'Open to continue'}
+                  </span>
                 </div>
               </div>
             ) : (
@@ -453,6 +524,7 @@ export default function Dashboard() {
               <div className="grid gap-4 md:grid-cols-2">
                 {recentWorkspaces.map((workspace) => {
                   const state = workspaceStates[workspace.id];
+                  const status = workspaceStateStatus[workspace.id];
                   const progress = progressPercent(state);
                   return (
                     <div
@@ -469,8 +541,20 @@ export default function Dashboard() {
                       </div>
                       <p className="mt-2 text-sm text-gray-300">{workspace.theme || 'No theme yet'}</p>
                       <div className="mt-4 flex flex-wrap items-center gap-2">
-                        <span className="cyber-tag">{phaseLabelForWorkspace(state)}</span>
-                        <span className="cyber-tag">{progress}% complete</span>
+                        <span className="cyber-tag">
+                          {state
+                            ? `Continue at ${nextStepLabelForWorkspace(state)}`
+                            : status === 'loading'
+                              ? 'Progress loading…'
+                              : 'Open to continue'}
+                        </span>
+                        <span className="cyber-tag">
+                          {state
+                            ? `${progress}% complete`
+                            : status === 'loading'
+                              ? 'Progress loading…'
+                              : 'Open to continue'}
+                        </span>
                         <span className="cyber-tag">Updated {new Date(workspace.updatedAt || workspace.createdAt || Date.now()).toLocaleDateString()}</span>
                       </div>
                       <div className="mt-4 flex items-center justify-between">
@@ -485,7 +569,7 @@ export default function Dashboard() {
                           }}
                           className="cyber-outline rounded-full px-3 py-2 text-xs"
                         >
-                          Continue
+                          Continue at
                         </button>
                       </div>
                     </div>

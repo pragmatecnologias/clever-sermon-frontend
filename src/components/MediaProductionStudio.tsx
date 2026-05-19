@@ -782,7 +782,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
               ))}
             </div>
             <p className="mt-3 text-xs text-gray-400">
-              Optional extras like theme songs and social packs are tucked into the expandable section below.
+              Creates sermon deck, images, audio, and video readiness. Social and music tools are available below.
             </p>
           </div>
           <button
@@ -798,7 +798,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
             ) : (
               <>
                 <Sparkles className="w-5 h-5" />
-                Generate Complete Media Package
+                Generate Core Media Package
               </>
             )}
           </button>
