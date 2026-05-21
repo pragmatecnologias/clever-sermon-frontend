@@ -33,7 +33,9 @@ interface WorkspaceManuscriptCardProps {
   toV2ManuscriptDraft: (manuscript: any) => { html: string; cues: any }
   renderManuscriptCuesPanel: (...args: any[]) => any
   focusCueInManuscript: (...args: any[]) => void
+  manuscriptCueAnchors?: Record<string, unknown>
   ensureManuscriptRichHtml: (html: string, converter: any) => string
+  manuscriptContentRef?: (el: HTMLDivElement | null) => void
   markdownLikeToHtml: any
   sanitizeManuscriptForDisplay: (html: string) => string
   emptyManuscriptCues: () => any
@@ -72,7 +74,9 @@ export default function WorkspaceManuscriptCard({
   toV2ManuscriptDraft,
   renderManuscriptCuesPanel,
   focusCueInManuscript,
+  manuscriptCueAnchors,
   ensureManuscriptRichHtml,
+  manuscriptContentRef,
   markdownLikeToHtml,
   sanitizeManuscriptForDisplay,
   emptyManuscriptCues,
@@ -383,6 +387,7 @@ export default function WorkspaceManuscriptCard({
               ) : null}
               <div className={`grid grid-cols-1 gap-6 items-start ${false ? 'xl:grid-cols-[1fr_64px]' : 'xl:grid-cols-[1fr_320px]'}`}>
                 <div
+                  ref={manuscriptContentRef ? (el) => manuscriptContentRef(el) : undefined}
                   contentEditable
                   suppressContentEditableWarning
                   onBlur={(e) => {
@@ -424,7 +429,7 @@ export default function WorkspaceManuscriptCard({
                       cue,
                       cueType,
                       cueIndex,
-                      manuscript?.content?.metadata?.cueAnchors || {},
+                      manuscriptCueAnchors || manuscript?.content?.metadata?.cueAnchors || {},
                     ),
                   {
                     staleInfo: undefined,

@@ -850,6 +850,16 @@ export default function WorkspaceDetailPage() {
   // Calculate progress
   const latestStudyReport = (workspace as any)?.workspace?.studyReports?.[0] ?? workspace?.studyReports?.[0]
   const latestManuscript = workspace?.manuscripts?.[0]
+  const latestManuscriptCueAnchors = (() => {
+    if (!latestManuscript) return {}
+    const content = latestManuscript.content || {}
+    const metadata = isRecord(content.metadata) ? (content.metadata as Record<string, unknown>) : null
+    const savedAnchors = metadata && isRecord(metadata.cueAnchors) ? (metadata.cueAnchors as Record<string, unknown>) : null
+    if (savedAnchors && Object.keys(savedAnchors).length > 0) return savedAnchors
+    const html = String(content.text || '')
+    const cues = normalizeManuscriptCues((content.cues || {}) as Record<string, unknown>)
+    return buildCueAnchorsForRenderedHtml(html, cues) as Record<string, unknown>
+  })()
   const workspaceMetadata = getWorkspaceMetadata(workspace)
   const manuscriptOptionsDrifted = (options: Record<string, unknown> | null | undefined) => {
     const uiState = isRecord(workspaceMetadata.uiState) ? (workspaceMetadata.uiState as Record<string, unknown>) : null
@@ -1515,9 +1525,11 @@ export default function WorkspaceDetailPage() {
     element.style.backgroundColor = tone === 'exact' ? 'rgba(250, 204, 21, 0.45)' : 'rgba(251, 191, 36, 0.38)'
   }
 
-  const cueAnchorKey = (cueType: keyof ManuscriptCues, cueIndex: number) => `${cueType}:${cueIndex}`
+  function cueAnchorKey(cueType: keyof ManuscriptCues, cueIndex: number) {
+    return `${cueType}:${cueIndex}`
+  }
 
-  const cueParagraphHash = (value: string) => {
+  function cueParagraphHash(value: string) {
     const normalized = normalizeCueSearchText(value)
     if (!normalized) return ''
     let hash = 0
@@ -1527,7 +1539,7 @@ export default function WorkspaceDetailPage() {
     return `h${hash.toString(16)}`
   }
 
-  const scoreCueMatch = (cueText: string, candidateText: string) => {
+  function scoreCueMatch(cueText: string, candidateText: string) {
     const cueNorm = normalizeCueSearchText(cueText)
     const candNorm = normalizeCueSearchText(candidateText)
     if (!cueNorm || !candNorm) return 0
@@ -1541,7 +1553,7 @@ export default function WorkspaceDetailPage() {
     return overlap / cueTokens.length
   }
 
-  const buildCueAnchorsFromHtml = (html: string, cues: ManuscriptCues): Record<string, CueAnchor> => {
+  function buildCueAnchorsForRenderedHtml(html: string, cues: ManuscriptCues): Record<string, CueAnchor> {
     if (typeof window === 'undefined') return {}
     const parser = new DOMParser()
     const doc = parser.parseFromString(String(html || ''), 'text/html')
@@ -2686,7 +2698,9 @@ export default function WorkspaceDetailPage() {
                   toV2ManuscriptDraft={toV2ManuscriptDraft}
                   renderManuscriptCuesPanel={renderManuscriptCuesPanel}
                   focusCueInManuscript={focusCueInManuscript}
+                  manuscriptCueAnchors={latestManuscriptCueAnchors}
                   ensureManuscriptRichHtml={ensureManuscriptRichHtml}
+                  manuscriptContentRef={latestManuscript ? (() => { const mid = latestManuscript?.id ?? ''; return (el: HTMLDivElement | null) => { if (mid) manuscriptContentRefs.current[mid] = el } })() : undefined}
                   markdownLikeToHtml={markdownLikeToHtml}
                   sanitizeManuscriptForDisplay={sanitizeManuscriptForDisplay}
                   emptyManuscriptCues={emptyManuscriptCues}
