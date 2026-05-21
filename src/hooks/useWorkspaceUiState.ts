@@ -44,6 +44,7 @@ const resolvePhaseForSection = (section: WorkspaceSection, preferredPhase?: Phas
 
 export function useWorkspaceUiState({ workspaceId, workspace, loading, router }: UseWorkspaceUiStateOptions) {
   const searchParams = useSearchParams()
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1'
   const [activeSection, setActiveSection] = useState<WorkspaceSection>('workspace')
   const [activePhase, setActivePhase] = useState<Phase>('THEME')
   const navStateRestored = useRef(false)
@@ -144,7 +145,7 @@ export function useWorkspaceUiState({ workspaceId, workspace, loading, router }:
     // Persist uiState to backend
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
     if (token && workspaceId) {
-      fetch(`/api/v1/workspaces/${workspaceId}`, {
+      fetch(`${apiUrl}/workspaces/${workspaceId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ metadata: { uiState: { phase: activePhase, section: activeSection } } }),
@@ -152,7 +153,7 @@ export function useWorkspaceUiState({ workspaceId, workspace, loading, router }:
         // ignore persistence errors - localStorage already succeeded
       })
     }
-  }, [activePhase, activeSection, workspace, workspaceId, loading, searchParams, router, navStateStorageKey])
+  }, [activePhase, activeSection, workspace, workspaceId, loading, searchParams, router, navStateStorageKey, apiUrl])
 
   return {
     activePhase,

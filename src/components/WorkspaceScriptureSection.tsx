@@ -7,6 +7,7 @@ import SDASmartBoostBanner from '@/components/SDASmartBoostBanner'
 import StudyNotes from '@/components/StudyNotes'
 import WorkspaceScriptureAnalysisPanels from '@/components/WorkspaceScriptureAnalysisPanels'
 import type { WorkspaceFeatureReadinessMap } from '@/lib/api/openapi-client'
+import { parsePassageForEgwPanel } from '@/components/workspace-page.helpers'
 
 type Props = {
   workspace: any
@@ -311,20 +312,17 @@ export function WorkspaceScriptureSection({
               <StudyNotes notes={(scriptureResult as any).studyNotes || []} onVerseClick={handleVerseClick} />
             )}
 
-            {workspace?.includeEGW !== false && scriptureLastLookup && (() => {
-              const match = scriptureLastLookup.match(/^(.+?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/)
-              const parsedBook = match?.[1]?.trim() || scriptureLastLookup.split(' ')[0]
-              const parsedChapter = Number(match?.[2] || '1')
-              const parsedVerseStart = match?.[3] ? Number(match[3]) : undefined
-              const parsedVerseEnd = match?.[4] ? Number(match[4]) : undefined
+          {workspace?.includeEGW !== false && scriptureLastLookup && (() => {
+              const parsed = parsePassageForEgwPanel(scriptureLastLookup)
+              const normalizedPassage = String(scriptureLastLookup || '').trim().replace(/:[A-Z0-9]{2,}$/i, '')
 
               return (
                 <EGWPassagePanel
-                  passage={scriptureLastLookup}
-                  book={parsedBook}
-                  chapter={parsedChapter}
-                  verseStart={parsedVerseStart}
-                  verseEnd={parsedVerseEnd}
+                  passage={normalizedPassage}
+                  book={parsed?.book || normalizedPassage.split(' ')[0]}
+                  chapter={parsed?.chapter || 1}
+                  verseStart={parsed?.verseStart}
+                  verseEnd={parsed?.verseEnd}
                   language={workspace?.language || 'en'}
                   featureReadiness={featureReadiness}
                 />

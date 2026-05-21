@@ -50,6 +50,56 @@ export function WorkspaceStudyAssetEditor({
   handleIllustrationSave,
   onClose,
 }: Props) {
+  const studyReports = (workspace as any)?.workspace?.studyReports ?? workspace?.studyReports ?? []
+  const latestStudyReport = Array.isArray(studyReports) ? studyReports[0] : null
+  const studyAssetsSection = latestStudyReport?.sections?.studyAssets || {}
+  const categoryAssets = studyAssetsSection?.categoryAssets || {}
+  const movementAssets = Array.isArray(studyAssetsSection?.movementAssets) ? studyAssetsSection.movementAssets : []
+  const flattenMovement = (key: string) => movementAssets.flatMap((item: any) => (Array.isArray(item?.[key]) ? item[key] : []))
+
+  const applicationItems = Array.isArray(workspace?.applications) && workspace.applications.length
+    ? workspace.applications
+    : [
+        ...(Array.isArray(categoryAssets?.applications) ? categoryAssets.applications : []),
+        ...flattenMovement('applications'),
+        ...(Array.isArray(studyAssetsSection?.pastoralImplications?.personalLife)
+          ? studyAssetsSection.pastoralImplications.personalLife
+          : []),
+        ...(Array.isArray(studyAssetsSection?.pastoralImplications?.churchLife)
+          ? studyAssetsSection.pastoralImplications.churchLife
+          : []),
+        ...(Array.isArray(studyAssetsSection?.pastoralImplications?.mission)
+          ? studyAssetsSection.pastoralImplications.mission
+          : []),
+      ].map((content: any, index: number) => ({
+        id: `study-application-${index}`,
+        audienceType: 'mixed_congregation',
+        content,
+      }))
+
+  const questionItems = Array.isArray(workspace?.discussionQuestions) && workspace.discussionQuestions.length
+    ? workspace.discussionQuestions
+    : [
+        ...(Array.isArray(categoryAssets?.discussionQuestions) ? categoryAssets.discussionQuestions : []),
+        ...(Array.isArray(studyAssetsSection?.discussionQuestions) ? studyAssetsSection.discussionQuestions : []),
+        ...flattenMovement('discussionQuestions'),
+      ].map((question: any, index: number) => ({
+        id: `study-question-${index}`,
+        question,
+      }))
+
+  const illustrationItems = Array.isArray(workspace?.illustrations) && workspace.illustrations.length
+    ? workspace.illustrations
+    : [
+        ...(Array.isArray(categoryAssets?.illustrationIdeas) ? categoryAssets.illustrationIdeas : []),
+        ...(Array.isArray(studyAssetsSection?.illustrationIdeas) ? studyAssetsSection.illustrationIdeas : []),
+        ...flattenMovement('illustrationIdeas'),
+      ].map((content: any, index: number) => ({
+        id: `study-illustration-${index}`,
+        title: `Illustration ${index + 1}`,
+        content,
+      }))
+
   if (studyAssetEditor === 'applications') {
     return (
       <div className="space-y-4">
@@ -79,9 +129,9 @@ export function WorkspaceStudyAssetEditor({
             </button>
           </div>
         </div>
-        {workspace?.applications?.length ? (
+        {applicationItems.length ? (
           <ul className="space-y-3 text-gray-100/90 max-h-[60vh] overflow-y-auto pr-1">
-            {workspace.applications.map((app: any) => (
+            {applicationItems.map((app: any) => (
               <li key={app.id} className="border border-white/10 rounded-xl p-4 bg-black/30">
                 <div className="flex items-center justify-between">
                   <span className="cyber-tag">{app.audienceType}</span>
@@ -151,9 +201,9 @@ export function WorkspaceStudyAssetEditor({
             </button>
           </div>
         </div>
-        {workspace?.discussionQuestions?.length ? (
+        {questionItems.length ? (
           <ul className="space-y-3 text-gray-100/90 max-h-[60vh] overflow-y-auto pr-1">
-            {workspace.discussionQuestions.map((q: any) => (
+            {questionItems.map((q: any) => (
               <li key={q.id} className="border border-white/10 rounded-xl p-4 bg-black/30">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">{renderMarkdown(q.question || q.text || '')}</div>
@@ -221,9 +271,9 @@ export function WorkspaceStudyAssetEditor({
             </button>
           </div>
         </div>
-        {workspace?.illustrations?.length ? (
+        {illustrationItems.length ? (
           <ul className="space-y-3 text-gray-100/90 max-h-[60vh] overflow-y-auto pr-1">
-            {workspace.illustrations.map((ill: any) => (
+            {illustrationItems.map((ill: any) => (
               <li key={ill.id} className="border border-white/10 rounded-xl p-4 bg-black/30">
                 <div className="flex items-center justify-between">
                   <p className="font-semibold">{ill.title || 'Illustration'}</p>

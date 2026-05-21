@@ -62,6 +62,12 @@ export default function InterpretiveChallengePanel({ passage, token, language = 
   useEffect(() => {
     if (cachedData) {
       setChallenge(cachedData)
+      if (cachedData.views?.length) {
+        setExpandedViews(new Set(cachedData.views.map((view) => view.viewName)))
+      }
+      if (cachedData.sdaPerspective) {
+        setShowSDA(true)
+      }
       return
     }
     if (passage) {
@@ -74,7 +80,7 @@ export default function InterpretiveChallengePanel({ passage, token, language = 
     setError(null)
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/scripture/interpretive-challenge?passage=${encodeURIComponent(passage)}&language=${encodeURIComponent(language)}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/scripture/interpretive-challenges?reference=${encodeURIComponent(passage)}&language=${encodeURIComponent(language)}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -91,6 +97,12 @@ export default function InterpretiveChallengePanel({ passage, token, language = 
           setChallenge(null)
         } else {
           setChallenge(data)
+          if (Array.isArray(data.views) && data.views.length > 0) {
+            setExpandedViews(new Set(data.views.map((view: InterpretiveView) => view.viewName)))
+          }
+          if (data.sdaPerspective) {
+            setShowSDA(true)
+          }
           onDataLoad?.(data)
         }
       } else {

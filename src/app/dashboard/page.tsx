@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import axios from 'axios';
 import { ArrowRight, FileText, LogOut, Plus, Search, Trash2 } from 'lucide-react';
 
@@ -40,9 +41,9 @@ const isDemoOrTestWorkspace = (workspace: WorkspaceSummary) => /test|demo|valida
 const isPrimaryDemoWorkspace = (workspace: WorkspaceSummary) => String(workspace.title || '').trim().toLowerCase() === CANONICAL_DEMO_TITLE.toLowerCase();
 
 const sortWorkspaceByLatestActivity = (left: WorkspaceSummary, right: WorkspaceSummary) => {
-  const leftTime = new Date(right.updatedAt || right.createdAt || 0).getTime();
-  const rightTime = new Date(left.updatedAt || left.createdAt || 0).getTime();
-  return leftTime - rightTime;
+  const leftTime = new Date(left.updatedAt || left.createdAt || 0).getTime();
+  const rightTime = new Date(right.updatedAt || right.createdAt || 0).getTime();
+  return rightTime - leftTime;
 };
 
 const selectCanonicalDemoWorkspace = (workspaces: WorkspaceSummary[]) => {
@@ -377,9 +378,15 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <button onClick={createDemoWorkspace} className="cyber-outline rounded-full px-5 py-3 text-sm" disabled={demoBusy}>
-                {demoButtonLabel}
-              </button>
+              {demoReady && demoWorkspace ? (
+                <Link href={`/workspace/${demoWorkspace.id}`} className="cyber-outline rounded-full px-5 py-3 text-sm">
+                  {demoButtonLabel}
+                </Link>
+              ) : (
+                <button onClick={createDemoWorkspace} className="cyber-outline rounded-full px-5 py-3 text-sm" disabled={demoBusy}>
+                  {demoButtonLabel}
+                </button>
+              )}
               <button onClick={createWorkspace} className="cyber-button rounded-full px-5 py-3 text-sm">
                 <Plus className="mr-2 inline-block h-4 w-4" />
                 Create Workspace

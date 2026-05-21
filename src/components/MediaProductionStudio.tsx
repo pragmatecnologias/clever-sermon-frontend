@@ -255,7 +255,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
   }, [sermonSummary.theme])
 
   const studyMediaPrompts = useMemo(() => {
-    const sections = workspace?.studyReports?.[0]?.sections || {}
+    const sections = ((workspace as any)?.workspace?.studyReports?.[0]?.sections ?? (workspace?.studyReports?.[0]?.sections || {}))
     const studyAssets = sections?.studyAssets || {}
     const categoryAssets = studyAssets?.categoryAssets || {}
     const movementAssets = Array.isArray(studyAssets?.movementAssets) ? studyAssets.movementAssets : []

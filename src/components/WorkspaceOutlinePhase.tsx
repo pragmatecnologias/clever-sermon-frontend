@@ -88,7 +88,7 @@ export default function WorkspaceOutlinePhase({
         mainPassage={workspace?.mainPassage || ''}
         theme={workspace?.theme}
         theologicalLens={workspace?.theologicalLens}
-        studyReport={workspace?.studyReports?.[0]?.sections}
+        studyReport={(workspace as any)?.workspace?.studyReports?.[0]?.sections ?? workspace?.studyReports?.[0]?.sections}
         initialData={workspace?.sermonCore ?? undefined}
         onDataChange={onSermonCoreChange}
         onGenerate={onGenerateSermonCore}

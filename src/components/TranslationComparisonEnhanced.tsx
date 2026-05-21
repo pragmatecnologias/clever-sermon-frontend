@@ -54,10 +54,12 @@ export default function TranslationComparisonEnhanced({
 
   useEffect(() => {
     if (cachedData) {
+      setData(cachedData)
+      const translationCount = Array.isArray(cachedData.translations) ? cachedData.translations.length : 0
+      const hasEnoughTranslations = translationCount >= 2
       const hasVerseRows = Array.isArray(cachedData.translations)
         && cachedData.translations.some((trans) => Array.isArray(trans.verses) && trans.verses.length > 0)
-      setData(cachedData)
-      if (hasVerseRows) {
+      if (hasEnoughTranslations && hasVerseRows) {
         return
       }
     }

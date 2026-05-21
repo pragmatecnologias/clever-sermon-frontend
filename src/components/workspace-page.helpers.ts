@@ -319,7 +319,10 @@ export const normalizeReferenceList = (items: unknown[], mainPassage?: string) =
     .filter((item): item is { reference: string; context: string } => Boolean((item as { reference?: string }).reference))
 
 export const parsePassageForEgwPanel = (reference: string) => {
-  const match = String(reference || '').trim().match(/^(.+?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/)
+  const normalizedReference = String(reference || '')
+    .trim()
+    .replace(/:[A-Z0-9]{2,}$/i, '')
+  const match = normalizedReference.match(/^(.+?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/)
   if (!match) return null
   return { book: match[1].trim(), chapter: Number(match[2]), verseStart: match[3] ? Number(match[3]) : undefined, verseEnd: match[4] ? Number(match[4]) : undefined }
 }
@@ -333,8 +336,12 @@ export const isStudyAssetLoading = (asset: 'report' | 'applications' | 'question
   return false
 }
 
-export const hasGeneratedStudyReport = (workspace: WorkspaceStateLike | null | undefined) =>
-  Array.isArray(workspace?.studyReports) && workspace.studyReports.length > 0 && !!workspace.studyReports[0]?.sections
+export const hasGeneratedStudyReport = (workspace: WorkspaceStateLike | null | undefined) => {
+  // WorkspaceStateResponse has studyReports nested under .workspace
+  // WorkspacePageData has it at the top level
+  const reports = (workspace as any)?.workspace?.studyReports ?? workspace?.studyReports
+  return Array.isArray(reports) && reports.length > 0 && !!reports[0]?.sections
+}
 
 export const getStudyAssetLoadingLabel = (asset: 'applications' | 'questions' | 'illustrations' | 'media' | 'references' | 'report' | 'egw') => {
   const labels: Record<'applications' | 'questions' | 'illustrations' | 'media' | 'references' | 'report' | 'egw', string> = {
@@ -350,7 +357,8 @@ export const getStudyAssetLoadingLabel = (asset: 'applications' | 'questions' | 
 }
 
 export const getPassageFocusText = (passageSummary: WorkspacePassageSummary | null | undefined, workspace: WorkspaceStateLike | null | undefined) => {
-  const primaryReport = workspace?.studyReports?.[0]?.sections as WorkspaceStudyReportSections | undefined
+  const reports = (workspace as any)?.workspace?.studyReports ?? workspace?.studyReports
+  const primaryReport = reports?.[0]?.sections as WorkspaceStudyReportSections | undefined
   const passageSummaryObject = typeof passageSummary === 'object' && passageSummary ? passageSummary : null
   if (passageSummaryObject?.summary) return String(passageSummaryObject.summary)
   if (passageSummaryObject?.mainIdea) return String(passageSummaryObject.mainIdea)

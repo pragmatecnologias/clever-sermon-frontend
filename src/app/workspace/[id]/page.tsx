@@ -361,6 +361,7 @@ type WorkspacePageData = {
   status?: string
   egwEnabled?: boolean
   metadata?: Record<string, unknown>
+  scriptureCache?: Record<string, unknown>
   outlines?: WorkspaceOutlineItem[]
   manuscripts?: WorkspaceManuscriptRecord[]
   studyReports?: Array<{ id?: string; sections?: WorkspaceStudyReportSection }>
@@ -847,7 +848,7 @@ export default function WorkspaceDetailPage() {
   }
 
   // Calculate progress
-  const latestStudyReport = workspace?.studyReports?.[0]
+  const latestStudyReport = (workspace as any)?.workspace?.studyReports?.[0] ?? workspace?.studyReports?.[0]
   const latestManuscript = workspace?.manuscripts?.[0]
   const workspaceMetadata = getWorkspaceMetadata(workspace)
   const manuscriptOptionsDrifted = (options: Record<string, unknown> | null | undefined) => {
@@ -1021,10 +1022,11 @@ export default function WorkspaceDetailPage() {
 
   const restoreScriptureLookupCache = async (workspaceData?: WorkspacePageData | null): Promise<boolean> => {
     try {
-      const client = getAppApiClient()
-      if (!client) return false
-      const data = await client.get<Record<string, unknown>>(`/workspaces/${workspaceId}/scripture-cache`)
-      if (data) {
+      const hydrateScriptureCache = (data: Record<string, unknown> | null | undefined): boolean => {
+        if (!data || typeof data !== 'object') return false
+
+        let restored = false
+
         if (data.wordStudy) {
           const cachedWordStudy = data.wordStudy as Record<string, unknown>
           const workspaceLanguage = String((workspaceData || workspace)?.language || '').toLowerCase()
@@ -1046,7 +1048,9 @@ export default function WorkspaceDetailPage() {
           setWordStudyInsights(
             canReuseWordStudyPayload ? ((cachedWordStudy.insights as Record<string, unknown>) || null) : null,
           )
+          restored = true
         }
+
         if (data.crossReferences) {
           const cachedCrossReferences = data.crossReferences as Record<string, unknown>
           setCrossRefVerse(String(cachedCrossReferences.verse || ''))
@@ -1054,6 +1058,7 @@ export default function WorkspaceDetailPage() {
           const ranked = Array.isArray(cachedCrossReferences.ranked) ? cachedCrossReferences.ranked : []
           setCrossRefResults(ranked)
           setCrossRefHasScriptureResults(ranked.length > 0)
+          restored = true
         }
 
         const history: ScriptureLookupSnapshot[] = Array.isArray(data.lookupHistory) ? data.lookupHistory : []
@@ -1089,8 +1094,6 @@ export default function WorkspaceDetailPage() {
             applyScriptureLookupSnapshot(defaultSnapshot)
             return true
           }
-          // Fallback: if exact reference match is missing, restore the latest cached snapshot
-          // so previously generated sections remain visible instead of resetting to empty.
           applyScriptureLookupSnapshot(normalizedHistory[0])
           return true
         }
@@ -1117,15 +1120,20 @@ export default function WorkspaceDetailPage() {
             cachedAt: String(cachedScripture.cachedAt || ''),
           })
           setScriptureLookupHistory([legacySnapshot])
-          if (!defaultReference || normalizeRef(legacySnapshot.scriptureLastLookup) === defaultReference) {
-            applyScriptureLookupSnapshot(legacySnapshot)
-            return true
-          }
-          // Same fallback behavior for legacy cache payloads.
           applyScriptureLookupSnapshot(legacySnapshot)
           return true
         }
+
+        return restored
       }
+
+      const localCache = isRecord(workspaceData?.scriptureCache) ? (workspaceData?.scriptureCache as Record<string, unknown>) : null
+      if (hydrateScriptureCache(localCache)) return true
+
+      const client = getAppApiClient()
+      if (!client) return false
+      const data = await client.get<Record<string, unknown>>(`/workspaces/${workspaceId}/scripture-cache`)
+      if (data) return hydrateScriptureCache(data)
       return false
     } catch (err) {
       console.error('Failed to restore scripture cache:', err)
@@ -2079,6 +2087,7 @@ export default function WorkspaceDetailPage() {
     if (workspaceData) {
       setWorkspace(workspaceData)
       setWorkspaceDraft(workspaceData)
+      await restoreScriptureLookupCache(workspaceData)
     }
     return stateData
   }
@@ -2865,10 +2874,10 @@ export default function WorkspaceDetailPage() {
                   Generate
                 </button>
               </div>
-              {workspace?.studyReports?.length ? (
+              {(workspace as any)?.workspace?.studyReports?.length ?? workspace?.studyReports?.length ? (
                 <div className="cyber-panel rounded-2xl p-6">
-                  <WorkspaceStudyReportView
-                    report={workspace.studyReports[0]}
+              <WorkspaceStudyReportView
+                    report={workspace.studyReports?.[0] || null}
                     onJumpToWordStudy={(term) => {
                       const clean = String(term || '').trim()
                       if (!clean) return
@@ -2912,6 +2921,7 @@ export default function WorkspaceDetailPage() {
                 isStudyAssetLoading={isStudyAssetLoading}
                 getStudyAssetLoadingLabel={getStudyAssetLoadingLabel}
                 expandedTextBlocks={expandedTextBlocks}
+                actionLoading={actionLoading}
                 toggleTextBlock={toggleTextBlock}
                 onOpenFullView={() => {
                   setActivePhase('PASSAGE')

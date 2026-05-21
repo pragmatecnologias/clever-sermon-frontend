@@ -54,6 +54,13 @@ export default function SermonCore({
     }
   }, [initialData])
 
+  useEffect(() => {
+    if (isGenerating) {
+      setExpanded(false)
+      setEditingField(null)
+    }
+  }, [isGenerating])
+
   const handleFieldChange = (field: keyof SermonCoreData, value: string) => {
     const newData = { ...data, [field]: value }
     setData(newData)
@@ -124,10 +131,9 @@ export default function SermonCore({
 
   return (
     <div className="cyber-panel rounded-2xl overflow-hidden">
-      {/* Header */}
-      <div 
+      <div
         className="flex items-center justify-between p-4 cursor-pointer hover:bg-white/5 transition-colors"
-        onClick={() => setExpanded(!expanded)}
+        onClick={() => setExpanded((prev) => !prev)}
       >
         <div className="flex items-center gap-3">
           <Target className="w-5 h-5 text-cyan-400" />
@@ -137,7 +143,7 @@ export default function SermonCore({
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {expanded && onUseInOutline && (
+          {expanded && !isGenerating && onUseInOutline && (
             <button
               onClick={(e) => {
                 e.stopPropagation()
@@ -145,10 +151,10 @@ export default function SermonCore({
               }}
               className="cyber-outline text-xs px-4 py-2 rounded-full flex items-center gap-2"
             >
-              Use this to generate outline
+              Generate outline from Sermon Core
             </button>
           )}
-          {expanded && (
+          {expanded && !isGenerating && (
             <button
               onClick={(e) => {
                 e.stopPropagation()
@@ -157,26 +163,26 @@ export default function SermonCore({
               disabled={isGenerating}
               className="cyber-button text-xs px-4 py-2 rounded-full flex items-center gap-2 disabled:opacity-60"
             >
-              {isGenerating ? (
-                <>
-                  <RefreshCw className="w-3 h-3 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                'Generate'
-              )}
+              Generate
             </button>
           )}
-          {expanded ? (
-            <ChevronUp className="w-5 h-5 text-gray-400" />
-          ) : (
-            <ChevronDown className="w-5 h-5 text-gray-400" />
-          )}
+          {expanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
         </div>
       </div>
 
-      {/* Content */}
-      {expanded && (
+      {isGenerating ? (
+        <div className="px-4 pb-4">
+          <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/10 p-4 space-y-3">
+            <div className="flex items-center justify-between text-xs uppercase tracking-widest text-cyan-200/80">
+              <span>Extracting Sermon Core</span>
+              <span>Analyzing tension, restoration, invitation, and application...</span>
+            </div>
+            <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+              <div className="h-full w-2/3 bg-gradient-to-r from-cyan-400 via-sky-300 to-cyan-500 animate-pulse rounded-full" />
+            </div>
+          </div>
+        </div>
+      ) : expanded ? (
         <div className="p-4 pt-0 space-y-4">
           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-3">
@@ -193,55 +199,34 @@ export default function SermonCore({
             </div>
           </div>
 
-          {!hasContent && !isGenerating && (
+          {!hasContent && (
             <div className="text-center py-6 text-gray-400">
               <Target className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p className="text-sm">Define the core message of your sermon</p>
-              <p className="text-xs mt-1 text-gray-500">
-                Click Generate to extract from your study, or fill in manually
-              </p>
+              <p className="text-xs mt-1 text-gray-500">Click Generate to extract from your study, or fill in manually</p>
             </div>
           )}
 
-          {isGenerating && (
-            <div className="space-y-3 py-4">
-              <div className="flex items-center justify-between text-xs uppercase tracking-widest text-cyan-200/80">
-                <span>Extracting Sermon Core</span>
-                <span>Analyzing tension, restoration, invitation, and application...</span>
-              </div>
-              <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-                <div className="h-full w-2/3 bg-gradient-to-r from-cyan-400 via-sky-300 to-cyan-500 animate-pulse rounded-full" />
-              </div>
-            </div>
-          )}
-
-          {(hasContent || !isGenerating) && (
+          {hasContent && (
             <div className="space-y-3">
               {fields.map((field) => {
                 const Icon = field.icon
                 const isEditing = editingField === field.key
                 const value = data[field.key]
-                
                 return (
-                  <div 
+                  <div
                     key={field.key}
                     className={`rounded-xl border transition-colors ${
-                      value 
-                        ? `border-${field.color}-400/30 bg-${field.color}-500/5` 
-                        : 'border-white/10 bg-white/5'
+                      value ? `border-${field.color}-400/30 bg-${field.color}-500/5` : 'border-white/10 bg-white/5'
                     }`}
                   >
                     <div className="p-3">
                       <div className="flex items-center gap-2 mb-2">
                         <Icon className={`w-4 h-4 text-${field.color}-400`} />
-                        <span className="text-xs font-medium uppercase tracking-wider text-gray-300">
-                          {field.label}
-                        </span>
-                        <span className="text-xs text-gray-500 ml-auto">
-                          {field.description}
-                        </span>
+                        <span className="text-xs font-medium uppercase tracking-wider text-gray-300">{field.label}</span>
+                        <span className="text-xs text-gray-500 ml-auto">{field.description}</span>
                       </div>
-                      
+
                       {isEditing ? (
                         <textarea
                           value={value}
@@ -253,10 +238,7 @@ export default function SermonCore({
                           rows={2}
                         />
                       ) : (
-                        <div 
-                          onClick={() => setEditingField(field.key)}
-                          className="cursor-text min-h-[2.5rem] px-1"
-                        >
+                        <div onClick={() => setEditingField(field.key)} className="cursor-text min-h-[2.5rem] px-1">
                           {value ? (
                             <p className="text-sm text-gray-100">{value}</p>
                           ) : (
@@ -271,17 +253,22 @@ export default function SermonCore({
             </div>
           )}
 
-          {/* Summary when collapsed */}
           {hasContent && (
             <div className="pt-3 border-t border-white/10">
               <p className="text-xs text-gray-400">
-                <span className="text-cyan-300">Core Message:</span>{' '}
-                {data.bigIdea || 'Not defined'}
+                <span className="text-cyan-300">Core Message:</span> {data.bigIdea || 'Not defined'}
               </p>
             </div>
           )}
         </div>
-      )}
+      ) : hasContent ? (
+        <div className="px-4 pb-4">
+          <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+            <p className="text-[10px] uppercase tracking-widest text-gray-300">Core Message</p>
+            <p className="mt-1 text-sm text-gray-100">{data.bigIdea || 'Not defined'}</p>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

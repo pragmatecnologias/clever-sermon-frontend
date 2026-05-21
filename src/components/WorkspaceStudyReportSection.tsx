@@ -17,9 +17,13 @@ interface WorkspaceStudyReportSectionProps {
   hasGeneratedStudyReport: boolean
   onGenerate: (asset: 'applications' | 'questions' | 'illustrations' | 'media') => void
   onEditAsset: (asset: Exclude<StudyAssetEditor, null>) => void
-  isStudyAssetLoading: (asset: 'applications' | 'questions' | 'illustrations' | 'media' | 'egw' | 'references' | 'report') => boolean
+  isStudyAssetLoading: (
+    asset: 'applications' | 'questions' | 'illustrations' | 'media' | 'egw' | 'references' | 'report',
+    actionLoading?: string[],
+  ) => boolean
   getStudyAssetLoadingLabel: (asset: 'applications' | 'questions' | 'illustrations' | 'media' | 'egw' | 'references' | 'report') => string
   expandedTextBlocks: Record<string, boolean>
+  actionLoading: string[]
   toggleTextBlock: (key: string) => void
   onOpenFullView: () => void
 }
@@ -34,13 +38,15 @@ export default function WorkspaceStudyReportSection({
   getStudyAssetLoadingLabel,
   expandedTextBlocks,
   toggleTextBlock,
+  actionLoading,
   onOpenFullView,
 }: WorkspaceStudyReportSectionProps) {
   const requireStudyReport = !hasGeneratedStudyReport
   const studyReportReadiness = getFeatureReadiness(featureReadiness, 'studyReport')
   const workspaceMainPassage = String(workspace?.mainPassage || '').trim()
   const workspaceLanguage = String(workspace?.language || 'en').trim()
-  const sections = workspace?.studyReports?.[0]?.sections || {}
+  const studyReports = (workspace as any)?.workspace?.studyReports ?? workspace?.studyReports
+  const sections = studyReports?.[0]?.sections || {}
   const studyAssetsSection = sections?.studyAssets || {}
   const categoryAssets = studyAssetsSection?.categoryAssets || {}
   const movementAssets = Array.isArray(studyAssetsSection?.movementAssets) ? studyAssetsSection.movementAssets : []
@@ -119,7 +125,7 @@ export default function WorkspaceStudyReportSection({
   const studyAssets = {
     applications: mergeLists(
       categoryAssets?.applications,
-      (workspace?.applications || []).map((item: any) => item?.content).filter(Boolean),
+      (((workspace as any)?.workspace?.applications ?? workspace?.applications) || []).map((item: any) => item?.content).filter(Boolean),
       flattenMovement('applications'),
       sections?.pastoralImplications?.personalLife || [],
       sections?.pastoralImplications?.churchLife || [],
@@ -127,12 +133,14 @@ export default function WorkspaceStudyReportSection({
     ),
     discussionQuestions: mergeLists(
       categoryAssets?.discussionQuestions,
-      (workspace?.discussionQuestions || []).map((item: any) => item?.question).filter(Boolean),
+      studyAssetsSection?.discussionQuestions,
+      sections?.discussionQuestions,
+      (((workspace as any)?.workspace?.discussionQuestions ?? workspace?.discussionQuestions) || []).map((item: any) => item?.question).filter(Boolean),
       flattenMovement('discussionQuestions'),
     ),
     illustrationIdeas: mergeLists(
       categoryAssets?.illustrationIdeas,
-      (workspace?.illustrations || []).map((item: any) => item?.content || item?.title).filter(Boolean),
+      (((workspace as any)?.workspace?.illustrations ?? workspace?.illustrations) || []).map((item: any) => item?.content || item?.title).filter(Boolean),
       flattenMovement('illustrationIdeas'),
     ),
   }
@@ -140,9 +148,11 @@ export default function WorkspaceStudyReportSection({
     ? normalizeMediaSuggestionCards(categoryAssets.mediaSuggestionCards)
     : normalizeMediaSuggestionCards(
         categoryAssets?.mediaSuggestionCards ||
-          (workspace?.studyReports?.[0]?.sections?.studyAssets?.categoryAssets?.mediaSuggestionCards || []),
+          studyAssetsSection?.mediaSuggestionCards ||
+          sections?.mediaSuggestionCards ||
+          (((workspace as any)?.workspace?.studyReports?.[0]?.sections?.studyAssets?.categoryAssets?.mediaSuggestionCards ?? workspace?.studyReports?.[0]?.sections?.studyAssets?.categoryAssets?.mediaSuggestionCards) || []),
       )
-  const studyMediaFallback = mergeLists(categoryAssets?.mediaSuggestions, flattenMovement('mediaSuggestions'))
+  const studyMediaFallback = mergeLists(categoryAssets?.mediaSuggestions, studyAssetsSection?.mediaSuggestions, sections?.mediaSuggestions, flattenMovement('mediaSuggestions'))
   const studyMediaPrompts = studyMediaCards.length
     ? studyMediaCards
     : studyMediaFallback.map((prompt: string) => ({
@@ -182,11 +192,11 @@ export default function WorkspaceStudyReportSection({
           })}
           secondaryActionLabel="Edit"
           onSecondaryAction={() => onEditAsset('applications')}
-          isLoading={isStudyAssetLoading('applications')}
+          isLoading={isStudyAssetLoading('applications', actionLoading)}
           loadingLabel={getStudyAssetLoadingLabel('applications')}
-          disableActions={isStudyAssetLoading('applications') || requireStudyReport}
+          disableActions={isStudyAssetLoading('applications', actionLoading) || requireStudyReport}
           readiness={!hasGeneratedStudyReport ? studyReportReadiness : null}
-          status={resolveAssetStatus(studyAssets.applications.length, isStudyAssetLoading('applications'))}
+          status={resolveAssetStatus(studyAssets.applications.length, isStudyAssetLoading('applications', actionLoading))}
           statusReason={
             requireStudyReport
               ? 'Generate a study report first. Applications are derived from the passage analysis.'
@@ -214,11 +224,11 @@ export default function WorkspaceStudyReportSection({
           })}
           secondaryActionLabel="Edit"
           onSecondaryAction={() => onEditAsset('questions')}
-          isLoading={isStudyAssetLoading('questions')}
+          isLoading={isStudyAssetLoading('questions', actionLoading)}
           loadingLabel={getStudyAssetLoadingLabel('questions')}
-          disableActions={isStudyAssetLoading('questions') || requireStudyReport}
+          disableActions={isStudyAssetLoading('questions', actionLoading) || requireStudyReport}
           readiness={!hasGeneratedStudyReport ? studyReportReadiness : null}
-          status={resolveAssetStatus(studyAssets.discussionQuestions.length, isStudyAssetLoading('questions'))}
+          status={resolveAssetStatus(studyAssets.discussionQuestions.length, isStudyAssetLoading('questions', actionLoading))}
           statusReason={
             requireStudyReport
               ? 'Generate a study report first. Discussion questions are grounded in the report.'
@@ -246,11 +256,11 @@ export default function WorkspaceStudyReportSection({
           })}
           secondaryActionLabel="Edit"
           onSecondaryAction={() => onEditAsset('illustrations')}
-          isLoading={isStudyAssetLoading('illustrations')}
+          isLoading={isStudyAssetLoading('illustrations', actionLoading)}
           loadingLabel={getStudyAssetLoadingLabel('illustrations')}
-          disableActions={isStudyAssetLoading('illustrations') || requireStudyReport}
+          disableActions={isStudyAssetLoading('illustrations', actionLoading) || requireStudyReport}
           readiness={!hasGeneratedStudyReport ? studyReportReadiness : null}
-          status={resolveAssetStatus(studyAssets.illustrationIdeas.length, isStudyAssetLoading('illustrations'))}
+          status={resolveAssetStatus(studyAssets.illustrationIdeas.length, isStudyAssetLoading('illustrations', actionLoading))}
           statusReason={
             requireStudyReport
               ? 'Generate a study report first. Illustration ideas are derived from the report.'
@@ -287,11 +297,11 @@ export default function WorkspaceStudyReportSection({
               ),
             },
           })}
-          isLoading={isStudyAssetLoading('media')}
+          isLoading={isStudyAssetLoading('media', actionLoading)}
           loadingLabel={getStudyAssetLoadingLabel('media')}
-          disableActions={isStudyAssetLoading('media') || requireStudyReport}
+          disableActions={isStudyAssetLoading('media', actionLoading) || requireStudyReport}
           readiness={!hasGeneratedStudyReport ? studyReportReadiness : null}
-          status={resolveAssetStatus(studyMediaPrompts.length, isStudyAssetLoading('media'))}
+          status={resolveAssetStatus(studyMediaPrompts.length, isStudyAssetLoading('media', actionLoading))}
           statusReason={
             requireStudyReport
               ? 'Generate a study report first. Media suggestions are derived from study assets.'

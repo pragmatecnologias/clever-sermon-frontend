@@ -60,7 +60,14 @@ export default function SanctuaryProphecyMapper({ passage, mode, language = 'en'
       }
 
       const data = await response.json();
-      setConnections(data);
+      const normalizedConnections = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.connections)
+          ? data.connections
+          : Array.isArray(data?.items)
+            ? data.items
+            : [];
+      setConnections(normalizedConnections);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load connections');
     } finally {

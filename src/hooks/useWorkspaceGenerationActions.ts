@@ -176,34 +176,18 @@ export function useWorkspaceGenerationActions({
     const client = getWorkspaceApiClient()
     if (!client) return null
     setSermonCoreGenerating(true)
-    let queuedGeneration = false
     try {
-      const response = await client.generateSermonCore(workspaceId, {}, true)
-      const responseData = response?.data as { jobId?: string; status?: string; state?: string; message?: string } | undefined
-      if (responseData?.jobId) {
-        queuedGeneration = true
-        setGenerationJob({
-          capability: 'sermon-core',
-          jobId: String(responseData.jobId),
-          status: String(responseData.status || 'queued'),
-          state: String(responseData.state || 'queued'),
-          message: String(responseData.message || ''),
-        })
-        return null
-      }
-      if (response?.data) {
-        const sermonCoreData = response.data as SermonCoreData
-        setWorkspace((prev: any) => (prev ? { ...prev, sermonCore: sermonCoreData } : prev))
-        return sermonCoreData
-      }
-      return null
+      const response = await client.generateSermonCore(workspaceId, {}, false)
+      if (!response?.data) return null
+      const sermonCoreData = response.data as SermonCoreData
+      setWorkspace((prev: any) => (prev ? { ...prev, sermonCore: sermonCoreData } : prev))
+      await refreshWorkspaceState(config)
+      return sermonCoreData
     } catch (err) {
       setError((err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Failed to generate sermon core')
       return null
     } finally {
-      if (!queuedGeneration) {
-        setSermonCoreGenerating(false)
-      }
+      setSermonCoreGenerating(false)
     }
   }
 
@@ -256,19 +240,22 @@ export function useWorkspaceGenerationActions({
     try {
       let generatedResponse: { data?: { id?: string; jobId?: string; status?: string; state?: string; message?: string } } | null = null
       if (isStudyAssetType(type)) {
-        if (!workspace?.studyReports?.length) {
+        // WorkspaceStateResponse: studyReports at workspaceState.workspace.studyReports
+        // WorkspacePageData: studyReports at top level
+        const studyReports = (workspace as any)?.workspace?.studyReports ?? workspace?.studyReports
+        if (!studyReports?.length) {
           setError('Generate the Study Report first before creating applications, questions, illustrations, or media suggestions.')
           return
         }
         try {
           if (type === 'applications') {
-            generatedResponse = await client.generateApplications(workspaceId, { promptOverride: override, includeEGW: workspace?.egwEnabled || false } as Record<string, unknown>, true)
+            generatedResponse = await client.generateApplications(workspaceId, { promptOverride: override, includeEGW: workspace?.egwEnabled || false } as Record<string, unknown>, false)
           } else if (type === 'questions') {
-            generatedResponse = await client.generateDiscussionQuestions(workspaceId, { promptOverride: override } as Record<string, unknown>, true)
+            generatedResponse = await client.generateDiscussionQuestions(workspaceId, { promptOverride: override } as Record<string, unknown>, false)
           } else if (type === 'illustrations') {
-            generatedResponse = await client.generateIllustrations(workspaceId, { promptOverride: override } as Record<string, unknown>, true)
+            generatedResponse = await client.generateIllustrations(workspaceId, { promptOverride: override } as Record<string, unknown>, false)
           } else if (type === 'media') {
-            generatedResponse = await client.generateMediaSuggestions(workspaceId, { promptOverride: override } as Record<string, unknown>, true)
+            generatedResponse = await client.generateMediaSuggestions(workspaceId, { promptOverride: override } as Record<string, unknown>, false)
           }
           if (generatedResponse?.data?.jobId) {
             queuedGenerationType = type
@@ -286,7 +273,7 @@ export function useWorkspaceGenerationActions({
           return
         }
       } else if (type === 'outlines') {
-        generatedResponse = await client.generateOutlines(workspaceId, { promptOverride: override, includeEGW: workspace?.egwEnabled || false } as Record<string, unknown>, true)
+        generatedResponse = await client.generateOutlines(workspaceId, { promptOverride: override, includeEGW: workspace?.egwEnabled || false } as Record<string, unknown>, false)
         if (generatedResponse?.data?.jobId) {
           queuedGenerationType = type
           setGenerationJob({
@@ -316,6 +303,7 @@ export function useWorkspaceGenerationActions({
             audienceMode: manuscriptAudienceMode === 'default' ? (workspace?.audienceProfile || 'general congregation') : manuscriptAudienceMode,
             includeSlideCues: manuscriptIncludeSlideCues,
             includeKeyLines: manuscriptIncludeKeyLines,
+            includeStudyInsights: true,
           },
         })
       } else if (type === 'citations') {
@@ -331,17 +319,12 @@ export function useWorkspaceGenerationActions({
           })
         }
       } else if (type === 'study-report') {
-        generatedResponse = await client.generateStudyReport(workspaceId, { promptOverride: override, includeEGW: workspace?.egwEnabled || false } as Record<string, unknown>, true)
-        if (generatedResponse?.data?.jobId) {
-          queuedGenerationType = type
-          setGenerationJob({
-            capability: type,
-            jobId: String(generatedResponse.data.jobId),
-            status: String(generatedResponse.data.status || 'queued'),
-            state: String(generatedResponse.data.state || 'queued'),
-            message: String(generatedResponse.data.message || ''),
-          })
-        } else if (generatedResponse?.data) {
+        generatedResponse = await client.generateStudyReport(
+          workspaceId,
+          { promptOverride: override, includeEGW: workspace?.egwEnabled || false } as Record<string, unknown>,
+          false,
+        )
+        if (generatedResponse?.data) {
           const generatedStudyReport = generatedResponse.data as { id?: string; sections?: Record<string, unknown> }
           setWorkspace((prev: any) =>
             prev

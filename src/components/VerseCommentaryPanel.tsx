@@ -32,6 +32,9 @@ export default function VerseCommentaryPanel({ reference, token, language = 'en'
   useEffect(() => {
     if (cachedData) {
       setCommentary(cachedData)
+      if (cachedData.notes?.length) {
+        setExpandedSections(Object.fromEntries(cachedData.notes.map((_, index) => [index, true])))
+      }
       return
     }
     if (reference) {
@@ -52,6 +55,9 @@ export default function VerseCommentaryPanel({ reference, token, language = 'en'
       if (response.ok) {
         const data: VerseCommentary = await response.json()
         setCommentary(data)
+        if (data.notes?.length) {
+          setExpandedSections(Object.fromEntries(data.notes.map((_, index) => [index, true])))
+        }
         onDataLoad?.(data)
       } else {
         setError('Commentary not available for this verse')

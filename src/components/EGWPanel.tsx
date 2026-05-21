@@ -75,7 +75,18 @@ export default function EGWPanel({ passage, workspaceId, featureReadiness }: EGW
       }
 
       const data = await response.json();
-      setInsights(data);
+      // Normalize API response: backend returns { paragraph, bookTitle, reference, excerpt }
+      // but frontend expects flat { id, bookCode, bookTitle, reference, content, chapterNumber, paragraphNumber }
+      const normalized: EGWInsight[] = (Array.isArray(data) ? data : []).map((item: any) => ({
+        id: item.paragraph?.id || `${item.paragraph?.bookCode}-${item.paragraph?.chapterNumber}-${item.paragraph?.paragraphNumber}`,
+        bookCode: item.paragraph?.bookCode || '',
+        bookTitle: item.bookTitle || item.paragraph?.bookTitle || '',
+        reference: item.reference || item.paragraph?.reference || '',
+        content: item.excerpt || item.paragraph?.content || '',
+        chapterNumber: item.paragraph?.chapterNumber || 0,
+        paragraphNumber: item.paragraph?.paragraphNumber || 0,
+      }));
+      setInsights(normalized);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load EGW insights');
     } finally {
@@ -84,7 +95,8 @@ export default function EGWPanel({ passage, workspaceId, featureReadiness }: EGW
   };
 
   const parsePassageReference = (ref: string) => {
-    const match = ref.match(/^([\w\s]+)\s+(\d+)(?::(\d+)(?:-(\d+))?)?/);
+    const normalizedRef = String(ref || '').trim().replace(/:[A-Z0-9]{2,}$/i, '')
+    const match = normalizedRef.match(/^([\w\s]+)\s+(\d+)(?::(\d+)(?:-(\d+))?)?/);
     if (!match) return null;
     
     return {

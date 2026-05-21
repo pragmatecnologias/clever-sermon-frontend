@@ -166,6 +166,9 @@ export default function WorkspaceStateSummary({ workspaceId, state: initialState
     manuscriptHistory[0]?.revisionLabel || outlineHistory[0]?.revisionLabel || 'No archived versions yet.'
   const guardrail = getWorkspaceGuardrailProfile(state?.workspace as any)
   const planningSummary = getWorkspacePlanningSummary(state?.workspace as any)
+  const nextActionLabel = state?.nextAction?.label || 'Continue sermon'
+  const nextActionDescription =
+    state?.nextAction?.description || 'Open the current workspace section and continue from the latest saved progress.'
 
   if (loading) {
     return (
@@ -232,11 +235,11 @@ export default function WorkspaceStateSummary({ workspaceId, state: initialState
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/70">Next Action</p>
-              <h3 className="mt-1 text-2xl font-semibold text-white">{state.nextAction.label}</h3>
+              <h3 className="mt-1 text-2xl font-semibold text-white">{nextActionLabel}</h3>
             </div>
             <ArrowRight className="w-6 h-6 text-cyan-300" />
           </div>
-          <p className="mt-3 text-sm leading-6 text-gray-200/85">{state.nextAction.description}</p>
+          <p className="mt-3 text-sm leading-6 text-gray-200/85">{nextActionDescription}</p>
 
           <div className="mt-5 flex items-center gap-3 text-xs text-gray-300">
             <CheckCircle2 className="w-4 h-4 text-green-300" />
