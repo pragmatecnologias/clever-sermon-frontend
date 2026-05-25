@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { AlertCircle, BookOpen, CheckCircle2 } from 'lucide-react'
 import WorkspaceCitationActionLane from '@/components/WorkspaceCitationActionLane'
+import WorkspaceSocraticReviewPanel, { WorkspaceReviewSummaryBar } from '@/components/WorkspaceSocraticReviewPanel'
 import { renderMarkdown } from '@/components/workspace-render.helpers'
 import type {
   WorkspaceCitationDraft,
@@ -21,6 +22,7 @@ interface WorkspaceCitationReviewProps {
     claimLedger?: WorkspaceClaimLedgerEntry[]
     sourceLedger?: WorkspaceSourceLedgerEntry[]
     claimReviewDecisions?: WorkspaceClaimReviewDecision[]
+    reviewSummary?: { totalClaims: number; supportedClaims: number; needsReview: number; highRiskClaims: number; theologicalExtensions: number; illustrations: number; outsideRangeClaims: number; suggestedRepairs: number } | null
   } | null
   actionLoading: string[]
   citationTranslation: string
@@ -147,6 +149,8 @@ export default function WorkspaceCitationReview({
         onFilterChange={setFilter}
         onOpenRefine={onOpenRefine}
       />
+
+      <WorkspaceReviewSummaryBar summary={workspaceState?.reviewSummary as any} />
 
       {workspace.citations?.length ? (
         <div className="space-y-3">
@@ -311,6 +315,7 @@ export default function WorkspaceCitationReview({
                     Cite
                   </button>
                 </div>
+                <WorkspaceSocraticReviewPanel claim={claim} />
               </div>
               )
             })}

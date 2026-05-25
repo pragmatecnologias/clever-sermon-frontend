@@ -49,6 +49,22 @@ export type WorkspaceClaimLedgerEntry = {
   supportLevel?: WorkspaceSupportLevel | string
   location?: string
   locationPath?: string
+  verified?: boolean
+  // Socratic review fields
+  claimSubType?: string
+  socraticQuestions?: string[]
+  pastoralRisk?: 'none' | 'low' | 'medium' | 'high'
+  riskReason?: string
+  suggestedRepair?: string
+  claimSplitSuggestion?: Array<{
+    claimText: string
+    claimType: string
+    supportHint: string
+  }>
+  outsideSelectedRange?: boolean
+  outsideRangeReason?: string
+  theologicalExtension?: boolean
+  homileticalImagination?: boolean
 }
 
 export type WorkspaceCitationDraft = {

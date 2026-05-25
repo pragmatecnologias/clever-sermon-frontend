@@ -162,6 +162,7 @@ export default function WorkspaceStateSummary({ workspaceId, state: initialState
   const studyCount = state?.artifacts?.studyReports || 0
   const citationCount = state?.artifacts?.citations || 0
   const claimsSupported = (state?.claimLedger || []).filter((item) => item.supportLevel === 'supported').length
+  const claimsHighRisk = (state?.claimLedger || []).filter((item: any) => item.pastoralRisk === 'high').length
   const latestArchiveLabel =
     manuscriptHistory[0]?.revisionLabel || outlineHistory[0]?.revisionLabel || 'No archived versions yet.'
   const guardrail = getWorkspaceGuardrailProfile(state?.workspace as any)
@@ -324,7 +325,7 @@ export default function WorkspaceStateSummary({ workspaceId, state: initialState
         <MiniCard
           label="Sources & Support"
           title={`${state.claimLedger?.length || 0} items`}
-          detail={`${claimsSupported} clearly supported`}
+          detail={`${claimsSupported} supported${claimsHighRisk > 0 ? ` · ${claimsHighRisk} high risk` : ''}`}
         />
         <MiniCard
           label="Source List"
