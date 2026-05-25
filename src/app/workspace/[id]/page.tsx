@@ -2625,31 +2625,20 @@ export default function WorkspaceDetailPage() {
 
           {activeSection === 'manuscript' && (
             <WorkspaceManuscriptPhase workspace={workspace}>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-xl font-semibold">Manuscript</h3>
-                  {workspace?.egwEnabled && (
-                    <span className="text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-200 border border-blue-400/40 flex items-center gap-1">
-                      <Book className="w-3 h-3" />
-                      EGW Enabled
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => openPromptEditor('manuscript')}
-                    className="cyber-outline text-xs px-4 py-2 rounded-full"
-                  >
-                    Prompt
-                  </button>
-                  <button
-                    onClick={() => handleGenerate('manuscript')}
-                    className="cyber-button-secondary text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                    disabled={actionLoading.includes('manuscript')}
-                  >
-                    {actionLoading.includes('manuscript') ? 'Generating...' : 'Generate'}
-                  </button>
-                </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => openPromptEditor('manuscript')}
+                  className="cyber-outline text-xs px-4 py-2 rounded-full"
+                >
+                  Prompt
+                </button>
+                <button
+                  onClick={() => handleGenerate('manuscript')}
+                  className="cyber-button-secondary text-xs px-4 py-2 rounded-full disabled:opacity-60"
+                  disabled={actionLoading.includes('manuscript')}
+                >
+                  {actionLoading.includes('manuscript') ? 'Generating...' : 'Generate'}
+                </button>
               </div>
               <div className="border border-white/10 rounded-2xl p-5 bg-gradient-to-br from-black/40 to-black/20 space-y-4">
                 <WorkspaceManuscriptControls
