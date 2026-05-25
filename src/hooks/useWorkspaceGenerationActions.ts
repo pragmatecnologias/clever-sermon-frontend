@@ -359,10 +359,6 @@ export function useWorkspaceGenerationActions({
               : prev,
           )
         }
-        // Refresh workspace state to get latest data before clearing loading
-        await refreshWorkspaceState(config)
-        setActionLoading((prev) => prev.filter((item) => item !== 'study-report'))
-        return
       } else if (type === 'integrity-check') {
         generatedResponse = await client.runIntegrityCheck(workspaceId, true)
         if (generatedResponse?.data?.jobId) {
