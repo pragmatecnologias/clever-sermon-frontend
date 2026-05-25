@@ -149,8 +149,8 @@ export default function WorkspaceFlowShell({
       ) : null}
       {workspaceSnapshot?.sermonCore ? (
         <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-500/5 px-4 py-3 text-sm text-cyan-50">
-              <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/80">Sermon Core</p>
-              <p className="mt-1 font-medium">{workspaceSnapshot.sermonCore.bigIdea || workspaceSnapshot.sermonCore.centralTruth || workspaceSnapshot.sermonCore.mainIdea || workspaceSnapshot.sermonCore.summary || 'Sermon core available'}</p>
+              <p className="text-xs uppercase tracking-[0.25em] text-cyan-200/80">Core Message</p>
+              <p className="mt-1 font-medium">{workspaceSnapshot.sermonCore.bigIdea || workspaceSnapshot.sermonCore.centralTruth || workspaceSnapshot.sermonCore.mainIdea || workspaceSnapshot.sermonCore.summary || 'Core message available'}</p>
               <p className="mt-1 text-xs text-cyan-100/70">Use this to generate or refine the outline.</p>
             </div>
           ) : null}

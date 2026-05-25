@@ -57,6 +57,7 @@ export const createWorkspaceApiClient = (options: WorkspaceApiClientOptions = {}
   }
 
   return {
+    get: <T>(path: string) => request<T>(path, {}, 'GET'),
     getWorkspace: (workspaceId: string) =>
       request<JsonRecord>(`/workspaces/${workspaceId}`, {}, 'GET'),
     getWorkspaceState: (workspaceId: string) =>

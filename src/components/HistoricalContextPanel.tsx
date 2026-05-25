@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BookOpen, Users, DollarSign, Church, AlertCircle, Loader2 } from 'lucide-react'
 import axios from 'axios'
 
@@ -44,6 +44,7 @@ export default function HistoricalContextPanel({
   const runAnalysis = async () => {
     setLoading(true)
     setError(null)
+    setContext(null)
     try {
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/analysis/historical-context/${workspaceId}`,
@@ -52,7 +53,11 @@ export default function HistoricalContextPanel({
       )
       setContext(response.data)
     } catch (err) {
-      setError('Failed to enhance historical context')
+      const message =
+        axios.isAxiosError(err) && typeof err.response?.data?.message === 'string'
+          ? err.response.data.message
+          : 'Historical context could not be generated. Please retry.'
+      setError(message)
       console.error(err)
     } finally {
       setLoading(false)
@@ -63,7 +68,10 @@ export default function HistoricalContextPanel({
     try {
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/analysis/historical-context/${workspaceId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { t: Date.now() },
+        }
       )
       if (response.data) {
         setContext(response.data)
@@ -73,9 +81,9 @@ export default function HistoricalContextPanel({
     }
   }
 
-  useState(() => {
-    loadExisting()
-  })
+  useEffect(() => {
+    void loadExisting()
+  }, [workspaceId, token])
 
   return (
     <div className="bg-gradient-to-br from-amber-900/20 to-orange-900/20 border border-amber-500/30 rounded-xl p-6">
@@ -101,8 +109,15 @@ export default function HistoricalContextPanel({
       </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-900/20 border border-red-500/50 rounded-lg text-red-200">
-          {error}
+        <div className="mb-4 p-4 bg-red-900/20 border border-red-500/50 rounded-lg text-red-200 space-y-3">
+          <p>{error}</p>
+          <button
+            onClick={runAnalysis}
+            disabled={loading}
+            className="px-4 py-2 rounded-lg bg-red-500/80 hover:bg-red-500 text-white text-sm font-medium disabled:opacity-60"
+          >
+            Retry historical context
+          </button>
         </div>
       )}
 
@@ -121,8 +136,8 @@ export default function HistoricalContextPanel({
             <div className="bg-black/30 rounded-lg p-5 border border-amber-500/20">
               <div className="flex items-center gap-2 mb-4">
                 <Users className="w-5 h-5 text-amber-400" />
-                <h4 className="text-sm font-semibold text-amber-300 uppercase tracking-wide">
-                  Social Realities
+              <h4 className="text-sm font-semibold text-amber-300 uppercase tracking-wide">
+                  Community Setting
                 </h4>
               </div>
               <div className="space-y-3">
@@ -146,9 +161,9 @@ export default function HistoricalContextPanel({
             <div className="bg-black/30 rounded-lg p-5 border border-red-500/20">
               <div className="flex items-center gap-2 mb-4">
                 <AlertCircle className="w-5 h-5 text-red-400" />
-                <h4 className="text-sm font-semibold text-red-300 uppercase tracking-wide">
-                  Power Structures
-                </h4>
+                  <h4 className="text-sm font-semibold text-red-300 uppercase tracking-wide">
+                  Authority Setting
+                  </h4>
               </div>
               <div className="space-y-3">
                 {context.powerStructures.map((item, idx) => (
@@ -171,9 +186,9 @@ export default function HistoricalContextPanel({
             <div className="bg-black/30 rounded-lg p-5 border border-green-500/20">
               <div className="flex items-center gap-2 mb-4">
                 <DollarSign className="w-5 h-5 text-green-400" />
-                <h4 className="text-sm font-semibold text-green-300 uppercase tracking-wide">
-                  Economic Context
-                </h4>
+                  <h4 className="text-sm font-semibold text-green-300 uppercase tracking-wide">
+                  Economic Setting
+                  </h4>
               </div>
               <div className="space-y-3">
                 {context.economicContext.map((item, idx) => (
@@ -191,9 +206,9 @@ export default function HistoricalContextPanel({
             <div className="bg-black/30 rounded-lg p-5 border border-purple-500/20">
               <div className="flex items-center gap-2 mb-4">
                 <Church className="w-5 h-5 text-purple-400" />
-                <h4 className="text-sm font-semibold text-purple-300 uppercase tracking-wide">
-                  Religious Climate
-                </h4>
+                  <h4 className="text-sm font-semibold text-purple-300 uppercase tracking-wide">
+                  Worship Climate
+                  </h4>
               </div>
               <div className="space-y-3">
                 {context.religiousClimate.map((item, idx) => (
@@ -216,9 +231,9 @@ export default function HistoricalContextPanel({
             <div className="bg-black/30 rounded-lg p-5 border border-yellow-500/20">
               <div className="flex items-center gap-2 mb-4">
                 <AlertCircle className="w-5 h-5 text-yellow-400" />
-                <h4 className="text-sm font-semibold text-yellow-300 uppercase tracking-wide">
-                  Audience Pressures
-                </h4>
+                  <h4 className="text-sm font-semibold text-yellow-300 uppercase tracking-wide">
+                  Listener Pressures
+                  </h4>
               </div>
               <div className="space-y-3">
                 {context.audiencePressures.map((item, idx) => (

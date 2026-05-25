@@ -50,6 +50,7 @@ export default function VerseCommentaryPanel({ reference, token, language = 'en'
         `${process.env.NEXT_PUBLIC_API_URL}/scripture/verse-commentary?reference=${encodeURIComponent(reference)}&force=true&language=${encodeURIComponent(language)}`,
         {
           headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
         }
       )
       if (response.ok) {
@@ -59,6 +60,8 @@ export default function VerseCommentaryPanel({ reference, token, language = 'en'
           setExpandedSections(Object.fromEntries(data.notes.map((_, index) => [index, true])))
         }
         onDataLoad?.(data)
+      } else if (response.status === 304 && commentary?.notes?.length) {
+        onDataLoad?.(commentary)
       } else {
         setError('Commentary not available for this verse')
       }

@@ -1032,6 +1032,11 @@ export default function WorkspaceDetailPage() {
 
   const restoreScriptureLookupCache = async (workspaceData?: WorkspacePageData | null): Promise<boolean> => {
     try {
+      const stripRestoredVerseContext = (snapshot: ScriptureLookupSnapshot): ScriptureLookupSnapshot => ({
+        ...snapshot,
+        perVerseContext: null,
+      })
+
       const hydrateScriptureCache = (data: Record<string, unknown> | null | undefined): boolean => {
         if (!data || typeof data !== 'object') return false
 
@@ -1074,7 +1079,8 @@ export default function WorkspaceDetailPage() {
         const history: ScriptureLookupSnapshot[] = Array.isArray(data.lookupHistory) ? data.lookupHistory : []
         const normalizedHistory = history
           .filter((entry) => entry?.scriptureLastLookup && entry?.scriptureResult)
-          .map((entry) => buildScriptureSnapshot(entry))
+          .map((entry) => stripRestoredVerseContext(buildScriptureSnapshot(entry)))
+          .filter((entry) => extractVerses(entry.scriptureResult).length > 0)
           .sort((a: ScriptureLookupSnapshot, b: ScriptureLookupSnapshot) => {
             const aDate = new Date(a.cachedAt).getTime() || 0
             const bDate = new Date(b.cachedAt).getTime() || 0
@@ -1129,9 +1135,12 @@ export default function WorkspaceDetailPage() {
             translationComparison: (cachedScripture.translationComparison as TranslationComparisonData | null) || null,
             cachedAt: String(cachedScripture.cachedAt || ''),
           })
-          setScriptureLookupHistory([legacySnapshot])
-          applyScriptureLookupSnapshot(legacySnapshot)
-          return true
+          if (extractVerses(legacySnapshot.scriptureResult).length > 0) {
+            const restoredSnapshot = stripRestoredVerseContext(legacySnapshot)
+            setScriptureLookupHistory([restoredSnapshot])
+            applyScriptureLookupSnapshot(restoredSnapshot)
+            return true
+          }
         }
 
         return restored
@@ -2141,7 +2150,7 @@ export default function WorkspaceDetailPage() {
     workspaceId,
     repairJob,
     generationJob,
-    workspaceApiClient: getAppApiClient,
+    workspaceApiClient: getWorkspaceApiClient,
     refreshWorkspaceState,
     withToken,
     setError,

@@ -136,6 +136,7 @@ export const slidesApi = {
       deckIntent?: 'sermon_presentation' | 'social_summary' | 'teaching_study' | 'youth_message' | 'evangelistic_appeal'
       backgroundProvider?: 'local' | 'openai'
       backgroundPreset?: string
+      visualStyle?: 'auto' | 'reverent_worship' | 'warm_pastoral' | 'evangelistic_invitation' | 'hopeful_prophecy' | 'bible_study_clean' | 'youth_modern' | 'spanish_church_warm'
     }
   ) => {
     const response = await axios.post(
@@ -146,6 +147,7 @@ export const slidesApi = {
         deckIntent: options?.deckIntent,
         backgroundProvider: options?.backgroundProvider,
         backgroundPreset: options?.backgroundPreset,
+        visualStyle: options?.visualStyle,
       },
       {
         headers: { Authorization: `Bearer ${token}` },
@@ -297,6 +299,31 @@ export const slidesApi = {
     link.click();
     link.remove();
     URL.revokeObjectURL(blobUrl);
+  },
+
+  exportDeckBlob: async (deckId: string, format: 'pptx' | 'pdf', token: string) => {
+    const response = await axios.post(
+      `${MEDIA_API_URL}/decks/${deckId}/exports`,
+      { type: format },
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    const exportEntity = response.data as { id?: string; fileUrl?: string; status?: string; type?: string }
+    const exportId = String(exportEntity?.id || '').trim()
+    if (!exportId) {
+      throw new Error('Export record was not created')
+    }
+
+    const downloadResponse = await axios.get(
+      `${MEDIA_API_URL}/exports/${exportId}/download`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob',
+      }
+    );
+
+    return downloadResponse.data as Blob;
   },
 
   // Audio

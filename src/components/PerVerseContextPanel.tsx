@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { MapPin, Clock, Users, Book } from 'lucide-react'
+import { MapPin, Clock, Users, Book, Loader2, RefreshCw, Layers } from 'lucide-react'
 import axios from 'axios'
 
 interface HistoricalNote {
@@ -22,12 +22,23 @@ interface GeographicalInfo {
   modernLocation?: string
 }
 
+interface VerseContextSection {
+  title: string
+  content: string
+}
+
 interface VerseContextData {
   reference: string
-  historical: HistoricalNote[]
-  cultural: CulturalNote[]
-  geographical: GeographicalInfo[]
-  dataSource: string
+  status?: 'ready' | 'unavailable'
+  genre?: string
+  sections?: VerseContextSection[]
+  warnings?: string[]
+  message?: string | null
+  source?: 'llm-generated' | 'curated'
+  historical?: HistoricalNote[]
+  cultural?: CulturalNote[]
+  geographical?: GeographicalInfo[]
+  dataSource?: string
 }
 
 interface PerVerseContextPanelProps {
@@ -56,11 +67,12 @@ export default function PerVerseContextPanel({ reference, token, language = 'en'
   const fetchContext = async () => {
     setLoading(true)
     setError(null)
+    setData(null)
     try {
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_URL}/scripture/verse-context`,
         {
-          params: { reference, language },
+          params: { reference, language, t: Date.now() },
           headers: { Authorization: `Bearer ${token}` }
         }
       )
@@ -68,7 +80,11 @@ export default function PerVerseContextPanel({ reference, token, language = 'en'
       onDataLoad?.(response.data)
     } catch (err) {
       console.error('Failed to fetch verse context:', err)
-      setError('Unable to load verse context')
+      const message =
+        axios.isAxiosError(err) && typeof err.response?.data?.message === 'string'
+          ? err.response.data.message
+          : 'Historical context could not be generated. Please retry.'
+      setError(message)
     } finally {
       setLoading(false)
     }
@@ -80,6 +96,8 @@ export default function PerVerseContextPanel({ reference, token, language = 'en'
     economic: 'bg-green-500/20 text-green-200 border-green-400/40',
     political: 'bg-red-500/20 text-red-200 border-red-400/40'
   }
+
+  const isUnavailable = data?.status === 'unavailable'
 
   if (loading) {
     return (
@@ -105,8 +123,17 @@ export default function PerVerseContextPanel({ reference, token, language = 'en'
           <Clock className="w-5 h-5 text-cyan-400" />
           <h3 className="text-lg font-semibold">Historical Context</h3>
         </div>
-        <div className="border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm rounded-xl px-4 py-3">
-          {error}
+        <div className="border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm rounded-xl px-4 py-3 space-y-3">
+          <p>{error}</p>
+          <button
+            type="button"
+            onClick={fetchContext}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-lg bg-amber-500/80 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-400 disabled:opacity-60"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Retry historical context
+          </button>
         </div>
       </div>
     )
@@ -124,6 +151,36 @@ export default function PerVerseContextPanel({ reference, token, language = 'en'
     )
   }
 
+  if (isUnavailable) {
+    return (
+      <div className="cyber-panel rounded-2xl p-6 space-y-4">
+        <div className="flex items-center gap-2 pr-24">
+          <Clock className="w-5 h-5 text-cyan-400" />
+          <h3 className="text-lg font-semibold">Historical Context</h3>
+        </div>
+        <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-amber-100 space-y-3">
+          <p>{data.message || 'Historical context could not be generated. Please retry.'}</p>
+          {Array.isArray(data.warnings) && data.warnings.length > 0 && (
+            <div className="text-xs text-amber-200/90 space-y-1">
+              {data.warnings.map((warning, idx) => (
+                <div key={idx}>{warning}</div>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={fetchContext}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-lg bg-amber-500/80 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-400 disabled:opacity-60"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Retry historical context
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="cyber-panel rounded-2xl p-6 space-y-4">
       <div className="flex items-center gap-2 pr-24">
@@ -134,11 +191,31 @@ export default function PerVerseContextPanel({ reference, token, language = 'en'
       {/* Reference Header */}
       <div>
         <h4 className="text-lg font-semibold text-cyan-200">{data.reference}</h4>
-        <p className="text-xs text-gray-400 mt-1">Historical, Cultural & Geographical Context</p>
+        <p className="text-xs text-gray-400 mt-1">
+          {data.genre ? `${data.genre} · ` : ''}
+          Historical, Cultural & Geographical Context
+        </p>
       </div>
 
+      {Array.isArray(data.sections) && data.sections.length > 0 && (
+        <div className="space-y-3">
+          {data.sections.map((section, idx) => {
+            const tone = idx === 0 ? 'amber' : idx === 1 ? 'purple' : idx === 2 ? 'green' : 'amber'
+            return (
+              <div key={`${section.title}-${idx}`} className="rounded-xl border border-white/10 bg-black/25 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Layers className="h-4 w-4 text-cyan-300" />
+                  <h5 className="text-sm font-semibold uppercase tracking-wide text-cyan-200">{section.title}</h5>
+                </div>
+                <p className="text-sm text-gray-200 leading-relaxed">{section.content}</p>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       {/* Historical Context */}
-      {data.historical && Array.isArray(data.historical) && data.historical.length > 0 && (
+      {(!data.sections || data.sections.length === 0) && data.historical && Array.isArray(data.historical) && data.historical.length > 0 && (
         <div className="border border-amber-400/40 rounded-lg p-4 bg-amber-500/10">
           <div className="flex items-center gap-2 mb-3">
             <Clock className="w-5 h-5 text-amber-400" />
@@ -164,7 +241,7 @@ export default function PerVerseContextPanel({ reference, token, language = 'en'
       )}
 
       {/* Cultural Context */}
-      {data.cultural && Array.isArray(data.cultural) && data.cultural.length > 0 && (
+      {(!data.sections || data.sections.length === 0) && data.cultural && Array.isArray(data.cultural) && data.cultural.length > 0 && (
         <div className="border border-purple-400/40 rounded-lg p-4 bg-purple-500/10">
           <div className="flex items-center gap-2 mb-3">
             <Users className="w-5 h-5 text-purple-400" />
@@ -184,7 +261,7 @@ export default function PerVerseContextPanel({ reference, token, language = 'en'
       )}
 
       {/* Geographical Context */}
-      {data.geographical && Array.isArray(data.geographical) && data.geographical.length > 0 && (
+      {(!data.sections || data.sections.length === 0) && data.geographical && Array.isArray(data.geographical) && data.geographical.length > 0 && (
         <div className="border border-green-400/40 rounded-lg p-4 bg-green-500/10">
           <div className="flex items-center gap-2 mb-3">
             <MapPin className="w-5 h-5 text-green-400" />

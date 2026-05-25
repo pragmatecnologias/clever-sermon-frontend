@@ -8,6 +8,7 @@ import ReactMarkdown from 'react-markdown'
 import { ReactNode } from 'react'
 import { createWorkspaceApiClient } from '@/lib/api/openapi-client'
 import { getDeckSlideCount, normalizeDeckIntent, selectPreferredDeck } from '@/lib/deck-identity'
+import { resolveDeckBackgroundPreset } from '../../../../shared/deck-composition.contract'
 
 interface SlideGenerationPanelProps {
   workspace: any
@@ -21,6 +22,18 @@ type DeckIntent =
   | 'teaching_study'
   | 'youth_message'
   | 'evangelistic_appeal'
+
+type VisualStyleKey =
+  | 'auto'
+  | 'reverent_worship'
+  | 'warm_pastoral'
+  | 'evangelistic_invitation'
+  | 'hopeful_prophecy'
+  | 'bible_study_clean'
+  | 'youth_modern'
+  | 'spanish_church_warm'
+
+type LocalBackgroundPreset = 'worship' | 'biblical' | 'cyberpunk' | 'modern' | 'aurora' | 'minimal' | 'nature'
 
 export default function SlideGenerationPanel({ workspace, token, onGenerated }: SlideGenerationPanelProps) {
   const [syncing, setSyncing] = useState(false)
@@ -37,8 +50,34 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
   const [showEditor, setShowEditor] = useState(false)
   const [existingDeckStatus, setExistingDeckStatus] = useState<string | null>(null)
   const [backgroundProvider, setBackgroundProvider] = useState<'local' | 'openai'>('local')
-  const [backgroundPreset, setBackgroundPreset] = useState<'cyberpunk' | 'modern' | 'aurora' | 'minimal'>('modern')
+  const [backgroundPreset, setBackgroundPreset] = useState<LocalBackgroundPreset>('worship')
   const [deckIntent, setDeckIntent] = useState<DeckIntent>('sermon_presentation')
+  const [visualStyle, setVisualStyle] = useState<VisualStyleKey>('auto')
+  const [generatedVisualStyle, setGeneratedVisualStyle] = useState<VisualStyleKey>('auto')
+  const [generatedQualityWarnings, setGeneratedQualityWarnings] = useState<string[]>([])
+  const [generatedImageCoverage, setGeneratedImageCoverage] = useState<number | null>(null)
+  const [generatedExportReady, setGeneratedExportReady] = useState<boolean | null>(null)
+  const workspaceExportReady = Boolean((workspace as any)?.exportPack?.status === 'ready' || (workspace as any)?.mediaPack?.exportPrepared)
+
+  useEffect(() => {
+    if (backgroundProvider !== 'local') return
+    const preferred = resolveDeckBackgroundPreset(visualStyle, deckIntent, backgroundPreset) as LocalBackgroundPreset
+    setBackgroundPreset((current) => {
+      if (['worship', 'biblical', 'nature'].includes(String(current))) {
+        return current
+      }
+      return preferred
+    })
+  }, [backgroundProvider, visualStyle, deckIntent, backgroundPreset])
+
+  const isImageReady = (slide: any) =>
+    ['ready', 'completed'].includes(String(slide?.imageStatus || slide?.contentImageStatus || '').toLowerCase()) ||
+    Boolean(slide?.imageUrl || slide?.contentImageUrl)
+
+  const getImageCoverage = (slides: any[]) =>
+    Array.isArray(slides) && slides.length
+      ? Math.round((slides.filter((slide: any) => isImageReady(slide)).length / slides.length) * 100)
+      : null
 
   const loadThemes = useCallback(async () => {
     try {
@@ -95,12 +134,21 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
 
       const preferredIntent = normalizeDeckIntent(preferred?.deckIntent)
       const slideCount = getDeckSlideCount(preferred)
+      const composition = preferred?.composition || {}
+      const slides = Array.isArray(preferred?.slides) ? preferred.slides : []
+      const imageCoverage = getImageCoverage(slides)
       setGeneratedDeckId(preferred.id)
       setGeneratedDeckIntent((preferredIntent as DeckIntent) || 'sermon_presentation')
+      const preferredVisualStyle = (composition?.visualStyle as VisualStyleKey) || 'auto'
+      setGeneratedVisualStyle((current) => (current !== 'auto' ? current : preferredVisualStyle))
       setSermonId(preferred?.sermon?.id || null)
       const status = String(preferred?.status || '').toLowerCase() || null
       setExistingDeckStatus(status)
       setGeneratedSlideCount(slideCount)
+      setGeneratedImageCoverage(imageCoverage)
+      setGeneratedQualityWarnings(Array.isArray(composition?.qualityWarnings) ? composition.qualityWarnings.map((warning: any) => warning?.message).filter(Boolean) : [])
+      const preferredExportReady = Boolean((preferred as any)?.exports?.length || composition?.exportPrepared || workspaceExportReady)
+      setGeneratedExportReady((current) => (current === true ? true : preferredExportReady))
       if (status === 'ready' || status === 'completed') {
         setShowEditor(true)
       }
@@ -150,9 +198,17 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
         includeDeck: true,
         deckSize: deckIntent === 'social_summary' ? 'short' : undefined,
         deckIntent,
+        exportTypes: deckIntent === 'sermon_presentation' ? ['pptx', 'pdf'] : [],
         themeId: selectedTheme && selectedTheme.trim() !== '' ? selectedTheme : undefined,
         backgroundProvider,
-        backgroundPreset: backgroundProvider === 'local' ? backgroundPreset : undefined,
+        backgroundPreset: backgroundProvider === 'local'
+          ? resolveDeckBackgroundPreset(
+              visualStyle,
+              deckIntent,
+              backgroundPreset,
+            )
+          : undefined,
+        visualStyle,
       })
       const sermon = (result as any)?.sermon || result
       const deck = (result as any)?.deck || (result as any)?.deckResult || null
@@ -160,9 +216,11 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
       if (!resolvedSermonId || !deck?.id) {
         throw new Error('Deck generation did not return a sermon or deck id')
       }
+      const chosenVisualStyle = ((result as any)?.manifest?.visualStyle || visualStyle) as VisualStyleKey
+      const exportReady = Boolean((result as any)?.manifest?.exportPrepared || workspaceExportReady)
       
       // Track progress via SSE
-      const SLIDES_API_URL = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1'}/media`
+      const SLIDES_API_URL = `${process.env.NEXT_PUBLIC_SLIDES_API_URL || 'http://localhost:3001/api/v1'}`
       const eventSource = new EventSource(
         `${SLIDES_API_URL}/decks/${deck.id}/progress?token=${token}`
       )
@@ -170,6 +228,10 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
       setGeneratedDeckId(deck.id)
       setGeneratedDeckIntent(deckIntent)
       setGeneratedSlideCount(Array.isArray(deck?.slides) ? deck.slides.length : null)
+      setGeneratedVisualStyle(chosenVisualStyle)
+      setGeneratedQualityWarnings(Array.isArray(deck?.composition?.qualityWarnings) ? deck.composition.qualityWarnings.map((warning: any) => warning?.message).filter(Boolean) : [])
+      setGeneratedImageCoverage(getImageCoverage(Array.isArray(deck?.slides) ? deck.slides : []))
+      setGeneratedExportReady(exportReady)
       setExistingDeckStatus('generating')
       
       eventSource.onmessage = (event) => {
@@ -192,6 +254,16 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
             .then((freshDeck) => {
               setGeneratedDeckIntent((freshDeck?.deckIntent as DeckIntent) || deckIntent)
               setGeneratedSlideCount(Array.isArray(freshDeck?.slides) ? freshDeck.slides.length : null)
+              setGeneratedVisualStyle((current) => (current !== 'auto' ? current : chosenVisualStyle))
+              setGeneratedQualityWarnings(Array.isArray(freshDeck?.composition?.qualityWarnings)
+                ? freshDeck.composition.qualityWarnings.map((warning: any) => warning?.message).filter(Boolean)
+                : [])
+              setGeneratedImageCoverage(getImageCoverage(Array.isArray(freshDeck?.slides) ? freshDeck.slides : []))
+              setGeneratedExportReady((current) => (
+                current === true
+                  ? true
+                  : Boolean((freshDeck as any)?.exports?.length || freshDeck?.composition?.exportPrepared || exportReady)
+              ))
             })
             .catch((err) => console.warn('Failed to refresh generated deck metadata:', err))
           onGenerated?.()
@@ -252,6 +324,29 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
         </div>
       </div>
 
+      <div>
+        <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+          Visual Style
+        </label>
+        <select
+          value={visualStyle}
+          onChange={(e) => setVisualStyle(e.target.value as VisualStyleKey)}
+          className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+        >
+          <option value="auto">Auto</option>
+          <option value="reverent_worship">Reverent Worship</option>
+          <option value="warm_pastoral">Warm Pastoral</option>
+          <option value="evangelistic_invitation">Evangelistic Invitation</option>
+          <option value="hopeful_prophecy">Hopeful Prophecy</option>
+          <option value="bible_study_clean">Bible Study Clean</option>
+          <option value="youth_modern">Youth Modern</option>
+          <option value="spanish_church_warm">Spanish Church Warm</option>
+        </select>
+        <p className="mt-2 text-xs text-gray-400">
+          Auto picks a style from the sermon. Select one to override the visual tone.
+        </p>
+      </div>
+
       {/* Sync Status */}
       {!sermonId && (
         <div className="border border-yellow-400/40 bg-yellow-500/10 text-yellow-100 text-sm rounded-xl px-4 py-3">
@@ -268,12 +363,20 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
             <Sparkles className="w-4 h-4" />
             Workspace synced. {generatedDeckId ? 'Existing deck loaded.' : 'Ready to generate slides.'}
           </p>
-          {generatedDeckId ? (
-            <p className="text-xs text-green-200/80 mt-1">
-              Deck status: {existingDeckStatus || 'unknown'} · Deck mode: {generatedDeckIntent.replace(/_/g, ' ')}{generatedSlideCount ? ` · Slides: ${generatedSlideCount}` : ''}.
-            </p>
+          {generatedDeckId && !generating ? (
+            <div className="mt-2 space-y-1 text-xs text-green-200/80">
+              <p>
+                Deck status: {existingDeckStatus || 'unknown'} · Deck mode: {generatedDeckIntent.replace(/_/g, ' ')}{generatedSlideCount ? ` · Slides: ${generatedSlideCount}` : ''}.
+              </p>
+              <p>
+                Visual style: {generatedVisualStyle.replace(/_/g, ' ')}{generatedImageCoverage !== null ? ` · Image coverage: ${generatedImageCoverage}%` : ''}.
+              </p>
+              <p>
+                Quality: {generatedQualityWarnings.length ? `${generatedQualityWarnings.length} warning(s)` : 'clean'} · Export: {generatedExportReady ? 'ready' : 'pending'}.
+              </p>
+            </div>
           ) : null}
-          {generatedDeckIntent === 'sermon_presentation' && generatedSlideCount !== null && generatedSlideCount < 8 ? (
+          {!generating && generatedDeckIntent === 'sermon_presentation' && generatedSlideCount !== null && generatedSlideCount < 8 ? (
             <p className="text-xs text-amber-200 mt-1">
               This deck may be too short for a full sermon presentation.
             </p>
@@ -316,12 +419,15 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
         {backgroundProvider === 'local' && (
           <select
             value={backgroundPreset}
-            onChange={(e) => setBackgroundPreset(e.target.value as 'cyberpunk' | 'modern' | 'aurora' | 'minimal')}
+            onChange={(e) => setBackgroundPreset(e.target.value as LocalBackgroundPreset)}
             className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
           >
+            <option value="worship">Worship Light</option>
+            <option value="biblical">Biblical Horizon</option>
             <option value="cyberpunk">Cyberpunk Neon</option>
             <option value="modern">Modern Geometric</option>
             <option value="aurora">Aurora Glow</option>
+            <option value="nature">Nature Warmth</option>
             <option value="minimal">Minimal Studio</option>
           </select>
         )}
@@ -411,15 +517,15 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
           {generating ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              {deckIntent === 'social_summary' ? 'Generating Social Promo Deck...' : 'Generating Sermon Slides...'}
+              {deckIntent === 'social_summary' ? 'Generating Styled Social Deck...' : 'Generating Styled Deck...'}
             </>
           ) : (
             <>
               <FileText className="w-4 h-4" />
               {sermonId
                 ? deckIntent === 'social_summary'
-                  ? 'Generate Social Promo Deck'
-                  : 'Generate Sermon Presentation Deck'
+                  ? 'Generate Styled Social Deck'
+                  : 'Generate Styled Deck'
                 : 'Sync & Generate'}
             </>
           )}

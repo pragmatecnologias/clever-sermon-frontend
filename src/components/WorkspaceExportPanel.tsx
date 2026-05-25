@@ -9,6 +9,7 @@ import {
   getDeckIdentity,
   selectPreferredDeck,
 } from '@/lib/deck-identity'
+import { resolveDeckBackgroundPreset } from '../../../../shared/deck-composition.contract'
 
 type WorkspaceExportPanelProps = {
   workspace: any
@@ -220,13 +221,25 @@ export default function WorkspaceExportPanel({ workspace, token }: WorkspaceExpo
   }
 
   const previewDeck = async (deck: any) => {
-    const slides = Array.isArray(deck?.slides) ? [...deck.slides] : []
-    const firstSlide = slides.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))[0]
-    if (!firstSlide?.id) return
-    const blob = await slidesApi.getSlideImageBlob(firstSlide.id, token)
-    const url = URL.createObjectURL(blob)
-    window.open(url, '_blank', 'noopener,noreferrer')
-    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    if (!deck?.id) return
+    const previewWindow = window.open('', '_blank', 'noopener,noreferrer')
+    if (!previewWindow) {
+      console.error('Failed to open preview window')
+      return
+    }
+    try {
+      const blob = await slidesApi.exportDeckBlob(deck.id, 'pdf', token)
+      const url = URL.createObjectURL(blob)
+      previewWindow.location.href = url
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (error) {
+      try {
+        previewWindow.close()
+      } catch {
+        // ignore
+      }
+      console.error('Failed to open deck preview:', error)
+    }
   }
 
   const generateDeckForIntent = async (deckIntent: 'sermon_presentation' | 'social_summary') => {
@@ -238,7 +251,7 @@ export default function WorkspaceExportPanel({ workspace, token }: WorkspaceExpo
       includeDeck: true,
       exportTypes: deckIntent === 'sermon_presentation' ? ['pptx', 'pdf'] : [],
       backgroundProvider: 'local',
-      backgroundPreset: 'modern',
+      backgroundPreset: resolveDeckBackgroundPreset('auto', deckIntent, 'modern'),
     })
     const deckId = (result as any)?.deck?.id || (result as any)?.deck?.deckId || null
     if (deckId) {
@@ -266,7 +279,7 @@ export default function WorkspaceExportPanel({ workspace, token }: WorkspaceExpo
         includeDeck: true,
         exportTypes: ['pptx', 'pdf'],
         backgroundProvider: 'local',
-        backgroundPreset: 'modern',
+        backgroundPreset: resolveDeckBackgroundPreset('auto', 'sermon_presentation', 'modern'),
       })
 
       setMessage('Building DOCX manuscript export...')

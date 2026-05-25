@@ -25,6 +25,7 @@ type WorkspaceJobsDeps = {
   generationJob: WorkspaceGenerationJobState
   workspaceApiClient: () => {
     get: <T>(path: string) => Promise<T>
+    getGenerationJobStatus: (workspaceId: string, jobId: string) => Promise<Record<string, unknown>>
   } | null
   refreshWorkspaceState: (config: Record<string, unknown>) => Promise<WorkspaceStateResponse | null>
   withToken: () => Record<string, unknown> | null
@@ -153,6 +154,7 @@ export function useWorkspaceJobs({
   ])
 
   useEffect(() => {
+    console.log('[useWorkspaceJobs] Generation job effect running, generationJob:', JSON.stringify(generationJob))
     if (!generationJob?.jobId) return
     const config = withToken()
     if (!config) return
@@ -162,7 +164,9 @@ export function useWorkspaceJobs({
       try {
         const client = workspaceApiClient()
         if (!client) return
-        const data = await client.get<Record<string, unknown>>(`/workspaces/${workspaceId}/jobs/${generationJob.jobId}`)
+        console.log('[useWorkspaceJobs] Polling job:', generationJob.jobId, 'capability:', capability)
+        const data = await client.getGenerationJobStatus(workspaceId, generationJob.jobId)
+        console.log('[useWorkspaceJobs] Job response:', JSON.stringify(data))
         const nextStatus = String(data.status || data.state || '').toLowerCase()
         setGenerationJob((prev) =>
           prev
@@ -191,7 +195,6 @@ export function useWorkspaceJobs({
           setActionLoading((prev) => prev.filter((item) => item !== capability))
         }
       } catch (err) {
-        console.error('Failed to poll generation job status', err)
         setError('Unable to track generation progress.')
         if (capability === 'sermon-core') {
           setSermonCoreGenerating(false)

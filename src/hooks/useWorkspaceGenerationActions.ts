@@ -115,6 +115,16 @@ type Props = {
 
 type StudyAssetType = 'applications' | 'questions' | 'illustrations' | 'media'
 
+const unwrapJobPayload = (response: unknown) => {
+  if (!response || typeof response !== 'object') return null
+  const record = response as Record<string, unknown>
+  const maybeData = record.data
+  if (maybeData && typeof maybeData === 'object' && !Array.isArray(maybeData)) {
+    return maybeData as Record<string, unknown>
+  }
+  return record
+}
+
 export function useWorkspaceGenerationActions({
   workspaceId,
   workspace,
@@ -178,11 +188,18 @@ export function useWorkspaceGenerationActions({
     setSermonCoreGenerating(true)
     try {
       const response = await client.generateSermonCore(workspaceId, {}, false)
-      if (!response?.data) return null
-      const sermonCoreData = response.data as SermonCoreData
-      setWorkspace((prev: any) => (prev ? { ...prev, sermonCore: sermonCoreData } : prev))
+      const sermonCoreData = unwrapJobPayload(response) as SermonCoreData | null
+      if (!sermonCoreData || typeof sermonCoreData !== 'object') return null
+      const normalizedCore: SermonCoreData = {
+        bigIdea: String(sermonCoreData.bigIdea || '').trim(),
+        fallenCondition: String(sermonCoreData.fallenCondition || '').trim(),
+        centralTruth: String(sermonCoreData.centralTruth || '').trim(),
+        sermonGoal: String(sermonCoreData.sermonGoal || '').trim(),
+        audienceNeed: String(sermonCoreData.audienceNeed || '').trim(),
+      }
+      setWorkspace((prev: any) => (prev ? { ...prev, sermonCore: normalizedCore } : prev))
       await refreshWorkspaceState(config)
-      return sermonCoreData
+      return normalizedCore
     } catch (err) {
       setError((err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Failed to generate sermon core')
       return null
@@ -307,15 +324,19 @@ export function useWorkspaceGenerationActions({
           },
         })
       } else if (type === 'citations') {
+        console.log('[handleGenerate] Calling generateCitations for type:', type)
         generatedResponse = await client.generateCitations(workspaceId, { promptOverride: override } as Record<string, unknown>, true)
-        if (generatedResponse?.data?.jobId) {
+        console.log('[handleGenerate] generateCitations response:', JSON.stringify(generatedResponse))
+        const citationJob = unwrapJobPayload(generatedResponse)
+        if (citationJob?.jobId) {
+          console.log('[handleGenerate] Setting generationJob with jobId:', citationJob.jobId)
           queuedGenerationType = type
           setGenerationJob({
             capability: type,
-            jobId: String(generatedResponse.data.jobId),
-            status: String(generatedResponse.data.status || 'queued'),
-            state: String(generatedResponse.data.state || 'queued'),
-            message: String(generatedResponse.data.message || ''),
+            jobId: String(citationJob.jobId),
+            status: String(citationJob.status || 'queued'),
+            state: String(citationJob.state || 'queued'),
+            message: String(citationJob.message || ''),
           })
         }
       } else if (type === 'study-report') {
@@ -324,8 +345,8 @@ export function useWorkspaceGenerationActions({
           { promptOverride: override, includeEGW: workspace?.egwEnabled || false } as Record<string, unknown>,
           false,
         )
-        if (generatedResponse?.data) {
-          const generatedStudyReport = generatedResponse.data as { id?: string; sections?: Record<string, unknown> }
+        const generatedStudyReport = unwrapJobPayload(generatedResponse) as { id?: string; sections?: Record<string, unknown> } | null
+        if (generatedStudyReport) {
           setWorkspace((prev: any) =>
             prev
               ? ({

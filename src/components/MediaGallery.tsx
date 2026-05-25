@@ -692,15 +692,23 @@ export default function MediaGallery({ workspace, workspaceId, token, filter, on
   }
 
   const previewDeck = async (deck: any) => {
-    const slides = Array.isArray(deck?.slides) ? [...deck.slides] : []
-    const firstSlide = slides.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))[0]
-    if (!firstSlide?.id) return
+    if (!deck?.id) return
+    const previewWindow = window.open('', '_blank', 'noopener,noreferrer')
+    if (!previewWindow) {
+      console.error('Failed to open preview window')
+      return
+    }
     try {
-      const blob = await slidesApi.getSlideImageBlob(firstSlide.id, token)
+      const blob = await slidesApi.exportDeckBlob(deck.id, 'pdf', token)
       const url = URL.createObjectURL(blob)
-      window.open(url, '_blank', 'noopener,noreferrer')
+      previewWindow.location.href = url
       setTimeout(() => URL.revokeObjectURL(url), 60_000)
     } catch (error) {
+      try {
+        previewWindow.close()
+      } catch {
+        // ignore
+      }
       console.error('Failed to open deck preview:', error)
     }
   }
@@ -1273,6 +1281,11 @@ function DeckFirstSlidePreview({ deck, token }: { deck: any; token: string }) {
   const slides = Array.isArray(deck?.slides) ? [...deck.slides] : []
   const firstSlide = slides.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))[0]
   const [imageSrc, setImageSrc] = useState<string | null>(null)
+  const isSocialDeck = String(deck?.deckIntent || '').toLowerCase() === 'social_summary'
+  const deckHeadline = isSocialDeck ? 'Social Summary' : 'Sermon Presentation'
+  const deckToneClass = isSocialDeck
+    ? 'from-fuchsia-950/65 via-slate-950/90 to-cyan-900/45'
+    : 'from-indigo-950/55 via-slate-950/88 to-cyan-900/35'
 
   useEffect(() => {
     let mounted = true
@@ -1307,8 +1320,8 @@ function DeckFirstSlidePreview({ deck, token }: { deck: any; token: string }) {
   const subtitle = firstSlide?.content?.subtitle || firstSlide?.content?.caption || ''
 
   return (
-    <div className="mt-3 mb-3 rounded-lg overflow-hidden border border-white/10 bg-black/30">
-      <div className="aspect-video w-full relative">
+    <div className="mt-3 mb-3 overflow-hidden rounded-xl border border-white/10 bg-black/30 shadow-[0_24px_60px_rgba(0,0,0,0.26)]">
+      <div className="relative aspect-video w-full">
         {imageSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -1317,11 +1330,17 @@ function DeckFirstSlidePreview({ deck, token }: { deck: any; token: string }) {
             className="absolute inset-0 w-full h-full object-cover"
           />
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/40 via-slate-900/80 to-cyan-900/30" />
+          <div className={`absolute inset-0 bg-gradient-to-br ${deckToneClass}`} />
         )}
-        <div className="absolute inset-0 p-3 flex flex-col justify-center">
-          <p className="text-sm font-semibold text-white line-clamp-2">{String(title)}</p>
-          {subtitle ? <p className="text-xs text-gray-200/80 mt-1 line-clamp-2">{String(subtitle)}</p> : null}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/55" />
+        <div className="absolute left-3 top-3 rounded-full border border-white/15 bg-black/30 px-2.5 py-1 text-[10px] uppercase tracking-[0.24em] text-cyan-100/90 backdrop-blur">
+          {deckHeadline}
+        </div>
+        <div className="absolute inset-0 flex flex-col justify-end p-3">
+          <div className="max-w-[85%] rounded-xl border border-white/10 bg-black/38 px-3 py-2 backdrop-blur-sm">
+            <p className="text-sm font-semibold text-white line-clamp-2">{String(title)}</p>
+            {subtitle ? <p className="mt-1 text-xs text-gray-200/85 line-clamp-2">{String(subtitle)}</p> : null}
+          </div>
         </div>
       </div>
     </div>

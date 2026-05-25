@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { slidesApi } from '@/lib/slides-api'
+import { resolveDeckBackgroundPreset } from '../../../../shared/deck-composition.contract'
 
 const SLIDES_BACKEND_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1').replace(
   /\/api\/v1\/?$/,
@@ -64,12 +65,37 @@ interface SlideLayout {
   boxes: SlideFieldBox[]
 }
 
-type LocalBackgroundPreset = 'cyberpunk' | 'modern' | 'aurora' | 'minimal'
+type LayoutFamily =
+  | 'title'
+  | 'scripture'
+  | 'big_idea'
+  | 'point'
+  | 'story'
+  | 'application'
+  | 'reflection'
+  | 'appeal'
+  | 'closing'
+  | 'social'
+  | 'default'
+
+type LocalBackgroundPreset = 'worship' | 'biblical' | 'cyberpunk' | 'modern' | 'aurora' | 'minimal' | 'nature'
+type DeckVisualStyle =
+  | 'auto'
+  | 'reverent_worship'
+  | 'warm_pastoral'
+  | 'evangelistic_invitation'
+  | 'hopeful_prophecy'
+  | 'bible_study_clean'
+  | 'youth_modern'
+  | 'spanish_church_warm'
 
 const LOCAL_BACKGROUND_PRESET_OPTIONS: Array<{ value: LocalBackgroundPreset; label: string }> = [
+  { value: 'worship', label: 'Worship Light' },
+  { value: 'biblical', label: 'Biblical Horizon' },
   { value: 'cyberpunk', label: 'Cyberpunk Neon' },
   { value: 'modern', label: 'Modern Geometric' },
   { value: 'aurora', label: 'Aurora Glow' },
+  { value: 'nature', label: 'Nature Warmth' },
   { value: 'minimal', label: 'Minimal Studio' },
 ]
 
@@ -89,10 +115,59 @@ const slideLayouts: SlideLayout[] = [
     ],
   },
   {
+    layoutKey: 'cinematic_title',
+    boxes: [
+      { field: 'title', x: 8, y: 22, w: 84, h: 18, variant: 'title' },
+      { field: 'subtitle', x: 12, y: 45, w: 76, h: 12, variant: 'subtitle' },
+    ],
+  },
+  {
+    layoutKey: 'scripture_focus',
+    boxes: [
+      { field: 'reference', x: 10, y: 10, w: 80, h: 9, variant: 'reference' },
+      { field: 'lines', x: 10, y: 23, w: 80, h: 62, variant: 'body', multiline: true },
+    ],
+  },
+  {
+    layoutKey: 'big_idea_center',
+    boxes: [
+      { field: 'title', x: 8, y: 24, w: 84, h: 16, variant: 'title' },
+      { field: 'subtitle', x: 12, y: 44, w: 76, h: 16, variant: 'subtitle' },
+    ],
+  },
+  {
+    layoutKey: 'point_with_support',
+    boxes: [
+      { field: 'title', x: 8, y: 4, w: 84, h: 18, variant: 'title' },
+      { field: 'bullets', x: 10, y: 24, w: 80, h: 60, variant: 'body', multiline: true },
+    ],
+  },
+  {
+    layoutKey: 'story_moment',
+    boxes: [
+      { field: 'title', x: 8, y: 8, w: 84, h: 18, variant: 'title' },
+      { field: 'body', x: 10, y: 32, w: 80, h: 44, variant: 'body', multiline: true },
+    ],
+  },
+  {
     layoutKey: 'point_bullets_v1',
     boxes: [
       { field: 'title', x: 8, y: 4, w: 84, h: 24, variant: 'title' },
       { field: 'bullets', x: 10, y: 32, w: 80, h: 52, variant: 'body', multiline: true },
+    ],
+  },
+  {
+    layoutKey: 'point_statement',
+    boxes: [
+      { field: 'title', x: 8, y: 8, w: 84, h: 20, variant: 'title' },
+      { field: 'bullets', x: 12, y: 34, w: 76, h: 42, variant: 'body', multiline: true },
+    ],
+  },
+  {
+    layoutKey: 'support_verse',
+    boxes: [
+      { field: 'title', x: 8, y: 6, w: 84, h: 18, variant: 'title' },
+      { field: 'bullets', x: 10, y: 28, w: 80, h: 56, variant: 'body', multiline: true },
     ],
   },
   {
@@ -123,10 +198,235 @@ const slideLayouts: SlideLayout[] = [
       { field: 'message', x: 12, y: 38, w: 76, h: 40, variant: 'message', multiline: true },
     ],
   },
+  {
+    layoutKey: 'reflection_question',
+    boxes: [
+      { field: 'title', x: 8, y: 18, w: 84, h: 14, variant: 'title' },
+      { field: 'body', x: 12, y: 40, w: 76, h: 32, variant: 'body', multiline: true },
+    ],
+  },
+  {
+    layoutKey: 'appeal_minimal',
+    boxes: [
+      { field: 'title', x: 8, y: 18, w: 84, h: 14, variant: 'title' },
+      { field: 'message', x: 12, y: 40, w: 76, h: 32, variant: 'message', multiline: true },
+    ],
+  },
+  {
+    layoutKey: 'closing_blessing',
+    boxes: [
+      { field: 'title', x: 8, y: 18, w: 84, h: 14, variant: 'title' },
+      { field: 'body', x: 12, y: 40, w: 76, h: 32, variant: 'body', multiline: true },
+    ],
+  },
+  {
+    layoutKey: 'social_square',
+    boxes: [
+      { field: 'title', x: 8, y: 18, w: 84, h: 18, variant: 'title' },
+      { field: 'subtitle', x: 12, y: 42, w: 76, h: 18, variant: 'subtitle' },
+    ],
+  },
+  {
+    layoutKey: 'social_story',
+    boxes: [
+      { field: 'title', x: 8, y: 18, w: 84, h: 18, variant: 'title' },
+      { field: 'subtitle', x: 12, y: 42, w: 76, h: 18, variant: 'subtitle' },
+    ],
+  },
 ]
 
 const getLayoutForTemplate = (layoutKey?: string | null) =>
   slideLayouts.find((layout) => layout.layoutKey === layoutKey)
+
+const getLayoutFamily = (layoutKey?: string | null): LayoutFamily => {
+  const key = String(layoutKey || '')
+  if (['cinematic_title', 'title_centered_v1'].includes(key)) return 'title'
+  if (['scripture_focus', 'scripture_centered_v1'].includes(key)) return 'scripture'
+  if (['big_idea_center'].includes(key)) return 'big_idea'
+  if (['point_with_support', 'point_statement', 'point_bullets_v1', 'support_verse'].includes(key)) return 'point'
+  if (['story_moment'].includes(key)) return 'story'
+  if (['application_steps', 'application_bullets_v1'].includes(key)) return 'application'
+  if (['reflection_question'].includes(key)) return 'reflection'
+  if (['appeal_minimal', 'invitation_centered_v1'].includes(key)) return 'appeal'
+  if (['closing_blessing'].includes(key)) return 'closing'
+  if (['social_square', 'social_story'].includes(key)) return 'social'
+  return 'default'
+}
+
+const getVisualStylePalette = (style: DeckVisualStyle, theme?: any) => {
+  const themePrimary = String(theme?.primaryColor || '#60A5FA')
+  const themeSecondary = String(theme?.secondaryColor || '#1E3A8A')
+  const palettes: Record<DeckVisualStyle, { top: string; mid: string; bottom: string; glow: string; text: string }> = {
+    auto: { top: '#0F172A', mid: '#1E293B', bottom: '#111827', glow: 'rgba(96,165,250,0.28)', text: '#FFFFFF' },
+    reverent_worship: { top: '#0F172A', mid: '#1E293B', bottom: '#030712', glow: 'rgba(245,158,11,0.20)', text: '#F8FAFC' },
+    warm_pastoral: { top: '#2A1E1A', mid: '#4B3228', bottom: '#111827', glow: 'rgba(249,115,22,0.22)', text: '#FFF7ED' },
+    evangelistic_invitation: { top: '#0B1020', mid: '#1E3A8A', bottom: '#0F172A', glow: 'rgba(250,204,21,0.24)', text: '#F8FAFC' },
+    hopeful_prophecy: { top: '#082F49', mid: '#0F172A', bottom: '#111827', glow: 'rgba(56,189,248,0.22)', text: '#F8FAFC' },
+    bible_study_clean: { top: '#F8FAFC', mid: '#EFF6FF', bottom: '#DBEAFE', glow: 'rgba(37,99,235,0.12)', text: '#0F172A' },
+    youth_modern: { top: '#111827', mid: '#312E81', bottom: '#0F172A', glow: 'rgba(168,85,247,0.24)', text: '#F8FAFC' },
+    spanish_church_warm: { top: '#431407', mid: '#9A3412', bottom: '#1F2937', glow: 'rgba(249,115,22,0.24)', text: '#FFF7ED' },
+  }
+  return {
+    ...palettes[style],
+    top: palettes[style].top === '#60A5FA' ? themePrimary : palettes[style].top,
+    mid: palettes[style].mid === '#1E3A8A' ? themeSecondary : palettes[style].mid,
+  }
+}
+
+  const buildPreviewBackdrop = (style: DeckVisualStyle, layoutKey?: string | null, theme?: any) => {
+  const palette = getVisualStylePalette(style, theme)
+  const family = getLayoutFamily(layoutKey)
+  const isTitle = family === 'title' || family === 'social'
+  const isScripture = family === 'scripture'
+  const isAppeal = family === 'appeal'
+  const isReflection = family === 'reflection'
+  const isApplication = family === 'application'
+  const isSupport = family === 'point'
+
+  const gradient = isScripture
+    ? `radial-gradient(circle at top, ${palette.glow} 0%, transparent 42%), linear-gradient(145deg, ${palette.top} 0%, ${palette.mid} 55%, ${palette.bottom} 100%)`
+    : isTitle
+      ? `radial-gradient(circle at 18% 18%, ${palette.glow} 0%, transparent 32%), radial-gradient(circle at 84% 16%, rgba(255,255,255,0.16) 0%, transparent 24%), linear-gradient(135deg, ${palette.top} 0%, ${palette.mid} 56%, ${palette.bottom} 100%)`
+      : isAppeal
+        ? `radial-gradient(circle at 70% 20%, ${palette.glow} 0%, transparent 34%), radial-gradient(circle at 18% 80%, rgba(255,255,255,0.08) 0%, transparent 26%), linear-gradient(145deg, ${palette.top} 0%, ${palette.mid} 60%, ${palette.bottom} 100%)`
+        : isReflection
+          ? `radial-gradient(circle at 50% 12%, rgba(255,255,255,0.08) 0%, transparent 22%), linear-gradient(150deg, ${palette.top} 0%, ${palette.mid} 52%, ${palette.bottom} 100%)`
+          : isApplication
+            ? `radial-gradient(circle at 78% 18%, rgba(255,255,255,0.08) 0%, transparent 20%), linear-gradient(145deg, ${palette.top} 0%, ${palette.mid} 62%, ${palette.bottom} 100%)`
+            : isSupport
+              ? `radial-gradient(circle at 22% 22%, rgba(255,255,255,0.07) 0%, transparent 18%), linear-gradient(145deg, ${palette.top} 0%, ${palette.mid} 55%, ${palette.bottom} 100%)`
+              : `linear-gradient(140deg, ${palette.top} 0%, ${palette.mid} 55%, ${palette.bottom} 100%)`
+
+  return {
+    backgroundImage: gradient,
+    color: palette.text,
+  }
+}
+
+const getPreviewChromeOpacityFloor = (family: LayoutFamily, variant: SlideFieldBox['variant']) => {
+  if (family === 'title') {
+    if (variant === 'title') return 0.12
+    if (variant === 'subtitle') return 0.08
+    return 0.06
+  }
+  if (family === 'scripture') {
+    if (variant === 'reference') return 0.10
+    if (variant === 'body') return 0.05
+    return 0.06
+  }
+  if (family === 'point') {
+    if (variant === 'title') return 0.16
+    if (variant === 'body') return 0.08
+    return 0.07
+  }
+  if (family === 'story' || family === 'application') {
+    if (variant === 'title') return 0.14
+    if (variant === 'body' || variant === 'message') return 0.08
+    return 0.06
+  }
+  if (family === 'reflection' || family === 'appeal' || family === 'closing') {
+    if (variant === 'title') return 0.12
+    if (variant === 'body' || variant === 'message') return 0.08
+    return 0.06
+  }
+  return variant === 'title' || variant === 'reference' ? 0.10 : 0.06
+}
+
+const renderPreviewAccents = (
+  family: LayoutFamily,
+  palette: { top: string; mid: string; bottom: string; glow: string; text: string },
+) => {
+  switch (family) {
+    case 'title':
+      return (
+        <>
+          <div className="absolute left-5 top-5 h-1.5 w-20 rounded-full opacity-80" style={{ backgroundColor: palette.glow }} />
+          <div className="absolute right-6 top-6 h-24 w-px opacity-50" style={{ backgroundColor: palette.text }} />
+          <div className="absolute left-1/2 top-8 h-28 w-px -translate-x-1/2 opacity-35" style={{ backgroundColor: palette.text }} />
+          <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/30 to-transparent" />
+        </>
+      )
+    case 'scripture':
+      return (
+        <>
+          <div className="absolute left-6 top-6 h-[82%] w-1 rounded-full opacity-70" style={{ backgroundColor: palette.glow }} />
+          <div className="absolute left-10 top-10 h-8 w-32 rounded-full opacity-35" style={{ backgroundColor: palette.text }} />
+          <div className="absolute right-8 top-12 h-24 w-px opacity-45" style={{ backgroundColor: palette.text }} />
+          <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/18 to-transparent" />
+        </>
+      )
+    case 'big_idea':
+      return (
+        <>
+          <div className="absolute inset-x-14 top-14 h-px opacity-45" style={{ backgroundColor: palette.text }} />
+          <div className="absolute inset-x-20 bottom-14 h-px opacity-35" style={{ backgroundColor: palette.text }} />
+          <div className="absolute left-1/2 top-1/2 h-40 w-40 -translate-x-1/2 -translate-y-1/2 rounded-full border opacity-20" style={{ borderColor: palette.glow }} />
+        </>
+      )
+    case 'point':
+      return (
+        <>
+          <div className="absolute left-6 top-8 h-[76%] w-1 rounded-full opacity-75" style={{ backgroundColor: palette.glow }} />
+          <div className="absolute right-8 top-10 h-10 w-28 rounded-full opacity-30" style={{ backgroundColor: palette.text }} />
+          <div className="absolute inset-x-14 bottom-12 h-px opacity-30" style={{ backgroundColor: palette.text }} />
+        </>
+      )
+    case 'story':
+      return (
+        <>
+          <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-black/35 to-transparent" />
+          <div className="absolute right-8 top-10 h-[70%] w-px opacity-40" style={{ backgroundColor: palette.text }} />
+          <div className="absolute left-8 bottom-10 h-1.5 w-32 rounded-full opacity-45" style={{ backgroundColor: palette.glow }} />
+        </>
+      )
+    case 'application':
+      return (
+        <>
+          <div className="absolute left-6 top-8 h-[74%] w-1 rounded-full opacity-65" style={{ backgroundColor: palette.glow }} />
+          <div className="absolute inset-x-12 top-12 h-px opacity-35" style={{ backgroundColor: palette.text }} />
+          <div className="absolute inset-x-12 bottom-12 h-px opacity-25" style={{ backgroundColor: palette.text }} />
+        </>
+      )
+    case 'reflection':
+      return (
+        <>
+          <div className="absolute inset-x-20 top-12 h-px opacity-35" style={{ backgroundColor: palette.text }} />
+          <div className="absolute inset-x-20 bottom-12 h-px opacity-35" style={{ backgroundColor: palette.text }} />
+          <div className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border opacity-15" style={{ borderColor: palette.glow }} />
+        </>
+      )
+    case 'appeal':
+      return (
+        <>
+          <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/30 to-transparent" />
+          <div className="absolute left-8 top-10 h-px w-24 opacity-45" style={{ backgroundColor: palette.text }} />
+          <div className="absolute right-8 top-10 h-px w-24 opacity-45" style={{ backgroundColor: palette.text }} />
+          <div className="absolute left-1/2 bottom-10 h-1.5 w-36 -translate-x-1/2 rounded-full opacity-60" style={{ backgroundColor: palette.glow }} />
+        </>
+      )
+    case 'closing':
+      return (
+        <>
+          <div className="absolute inset-x-14 bottom-12 h-px opacity-32" style={{ backgroundColor: palette.text }} />
+          <div className="absolute left-1/2 top-14 h-20 w-px -translate-x-1/2 opacity-35" style={{ backgroundColor: palette.text }} />
+        </>
+      )
+    case 'social':
+      return (
+        <>
+          <div className="absolute inset-y-0 right-0 w-28 bg-gradient-to-l from-black/35 to-transparent" />
+          <div className="absolute left-6 top-6 h-1.5 w-28 rounded-full opacity-75" style={{ backgroundColor: palette.glow }} />
+          <div className="absolute left-1/2 top-1/2 h-44 w-44 -translate-x-1/2 -translate-y-1/2 rounded-full border opacity-18" style={{ borderColor: palette.text }} />
+        </>
+      )
+    default:
+      return (
+        <>
+          <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/18" />
+        </>
+      )
+  }
+}
 
 type FieldStyle = {
   fontFamily?: string
@@ -162,7 +462,7 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
   const [columns, setColumns] = useState<1 | 2 | 3>(1)
   const [imagePreviews, setImagePreviews] = useState<Record<string, string>>({})
   const [globalImageProvider, setGlobalImageProvider] = useState<'local' | 'openai'>('local')
-  const [globalImagePreset, setGlobalImagePreset] = useState<LocalBackgroundPreset>('cyberpunk')
+  const [globalImagePreset, setGlobalImagePreset] = useState<LocalBackgroundPreset>('worship')
   const [generatingAllBackgrounds, setGeneratingAllBackgrounds] = useState(false)
   const previewScale = columns === 1 ? 1 : columns === 2 ? 0.62 : 0.48
 
@@ -172,6 +472,22 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
   )
 
   const fontSizeOptions = useMemo(() => [18, 22, 26, 32, 36, 42, 48, 54, 64, 72, 84], [])
+  const deckVisualStyle: DeckVisualStyle = useMemo(
+    () => (String(deck?.composition?.visualStyle || deck?.manifest?.visualStyle || 'auto') as DeckVisualStyle),
+    [deck],
+  )
+  const deckPalette = useMemo(() => getVisualStylePalette(deckVisualStyle, deck?.theme), [deckVisualStyle, deck?.theme])
+
+  useEffect(() => {
+    if (globalImageProvider !== 'local') return
+    const preferredPreset = resolveDeckBackgroundPreset(deckVisualStyle, String(deck?.deckIntent || 'sermon_presentation') as any) as LocalBackgroundPreset
+    setGlobalImagePreset((current) => {
+      if (['worship', 'biblical', 'nature'].includes(String(current))) {
+        return current
+      }
+      return preferredPreset
+    })
+  }, [deckVisualStyle, deck?.deckIntent, globalImageProvider])
 
   useEffect(() => {
     const linkId = 'google-fonts-deck-editor'
@@ -200,7 +516,7 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
           align: 'center',
           verticalAlign: 'middle',
           backgroundColor: '#000000',
-          backgroundOpacity: 0.55,
+          backgroundOpacity: 0.34,
         }
       case 'subtitle':
         return {
@@ -210,7 +526,7 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
           align: 'center',
           verticalAlign: 'middle',
           backgroundColor: '#000000',
-          backgroundOpacity: 0.45,
+          backgroundOpacity: 0.24,
         }
       case 'reference':
         return {
@@ -221,7 +537,7 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
           align: 'center',
           verticalAlign: 'middle',
           backgroundColor: '#000000',
-          backgroundOpacity: 0.55,
+          backgroundOpacity: 0.30,
         }
       case 'message':
         return {
@@ -231,7 +547,7 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
           align: 'center',
           verticalAlign: 'middle',
           backgroundColor: '#000000',
-          backgroundOpacity: 0.6,
+          backgroundOpacity: 0.26,
         }
       default:
         return {
@@ -241,7 +557,7 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
           align: 'left',
           verticalAlign: 'top',
           backgroundColor: '#000000',
-          backgroundOpacity: 0.5,
+          backgroundOpacity: 0.16,
         }
     }
   }
@@ -249,10 +565,14 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
   const normalizeFieldStyle = (variant: SlideFieldBox['variant'], style?: FieldStyle): FieldStyle => {
     const base = defaultStyleForField(variant)
     const candidate = { ...base, ...(style || {}) }
+    const backgroundOpacityFloor = getPreviewChromeOpacityFloor('default', variant)
     // Don't clamp font sizes - let defaults apply as-is
     return {
       ...candidate,
-      backgroundOpacity: Math.max(0.4, Math.min(1, Number(candidate.backgroundOpacity ?? base.backgroundOpacity ?? 0.55))),
+      backgroundOpacity: Math.max(
+        backgroundOpacityFloor,
+        Math.min(0.9, Number(candidate.backgroundOpacity ?? base.backgroundOpacity ?? 0.55)),
+      ),
     }
   }
 
@@ -704,22 +1024,38 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
       }`}>
         {slides.map((slide, idx) => {
           const layout = getLayoutForTemplate(slide.layoutKey)
+          const layoutFamily = getLayoutFamily(slide.layoutKey)
           const fieldKeys = layout?.boxes?.map((box) => box.field) || Object.keys(slide.content || {})
           const resolvedSlideImageUrl = imagePreviews[slide.id] || resolveSlidesAssetUrl(slide.imageUrl)
 
           return (
-            <div key={slide.id} className="border border-white/10 rounded-xl p-4 bg-black/30 hover:bg-black/40">
+            <div
+              key={slide.id}
+              className="border border-white/10 rounded-2xl p-4 bg-black/30 hover:bg-black/40"
+              style={{
+                boxShadow:
+                  layoutFamily === 'title'
+                    ? `0 0 0 1px rgba(255,255,255,0.03), 0 18px 46px ${deckPalette.glow}`
+                    : layoutFamily === 'scripture'
+                      ? `0 0 0 1px rgba(255,255,255,0.03), 0 14px 34px rgba(0,0,0,0.24)`
+                      : `0 0 0 1px rgba(255,255,255,0.02), 0 12px 28px rgba(0,0,0,0.22)`,
+              }}
+            >
               <div className="mb-2">
                 <p className="text-sm font-medium">Slide {idx + 1}</p>
                 <p className="text-xs text-gray-500">{slide.type}</p>
               </div>
               <div
-                className="relative w-full rounded-md border border-white/10 overflow-hidden"
+                className="relative w-full rounded-[18px] border border-white/10 overflow-hidden"
                 style={{
                   aspectRatio: '16 / 9',
-                  background: resolvedSlideImageUrl
-                    ? undefined
-                    : `linear-gradient(140deg, ${hexToRgba(deck?.theme?.primaryColor || '#1D4ED8', 0.14)} 0%, ${hexToRgba(deck?.theme?.secondaryColor || '#0f172a', 0.18)} 55%, rgba(248,250,252,0.96) 100%)`,
+                  boxShadow:
+                    layoutFamily === 'title'
+                      ? `inset 0 0 0 1px rgba(255,255,255,0.06), 0 22px 60px ${deckPalette.glow}`
+                      : layoutFamily === 'appeal'
+                        ? `inset 0 0 0 1px rgba(255,255,255,0.06), 0 18px 44px rgba(0,0,0,0.26)`
+                        : `inset 0 0 0 1px rgba(255,255,255,0.03), 0 14px 36px rgba(0,0,0,0.22)`,
+                  ...(!resolvedSlideImageUrl ? buildPreviewBackdrop(deckVisualStyle, slide.layoutKey, deck?.theme) : {}),
                 }}
               >
                 {resolvedSlideImageUrl && (
@@ -728,9 +1064,10 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
                       className="absolute inset-0 bg-cover bg-center"
                       style={{ backgroundImage: `url(${resolvedSlideImageUrl})` }}
                     />
-                    <div className="absolute inset-0 bg-slate-900/20" />
+                    <div className="absolute inset-0 bg-slate-900/18" />
                   </>
                 )}
+                {renderPreviewAccents(layoutFamily, deckPalette)}
                 {(() => {
                 // Calculate cumulative overflow from title boxes to push content down
                 let cumulativeOverflow = 0
@@ -738,6 +1075,11 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
                   const value = contentDrafts[slide.id]?.[box.field] || ''
                   const style = styleDrafts[slide.id]?.[box.field] || defaultStyleForField(box.variant)
                   const fieldScale = getPreviewFieldScale(box.variant, value, box.multiline)
+                  const hasBackgroundImage = Boolean(resolvedSlideImageUrl)
+                  const chromeOpacityFloor = getPreviewChromeOpacityFloor(layoutFamily, box.variant)
+                  const visualOpacityBoost = hasBackgroundImage
+                    ? (layoutFamily === 'title' || layoutFamily === 'social' ? 0.6 : 0.42)
+                    : 1
 
                   // Dynamic font sizing for titles
                   const baseFontSize = style.fontSize || 48
@@ -770,19 +1112,41 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
                     overflow: 'hidden',
                     wordWrap: 'break-word',
                     overflowWrap: 'break-word',
+                    textShadow: box.variant === 'title' || box.variant === 'reference'
+                      ? '0 2px 16px rgba(0,0,0,0.48)'
+                      : '0 1px 10px rgba(0,0,0,0.28)',
                   }
 
                   return (
                     <div
                       key={box.field}
-                      className="absolute flex rounded-lg shadow-lg"
+                      className="absolute flex"
                       style={{
                         left: `${box.x}%`,
                         top: `${currentTop}%`,
                         width: `${box.w}%`,
                         height: `${dynamicHeight}%`,
+                        borderRadius: layoutFamily === 'scripture' || layoutFamily === 'reflection'
+                          ? '16px'
+                          : box.variant === 'title' || box.variant === 'reference'
+                            ? '20px'
+                            : '14px',
+                        border:
+                          box.variant === 'title' || box.variant === 'reference'
+                            ? `1px solid ${deckPalette.glow}`
+                            : layoutFamily === 'application' || layoutFamily === 'point'
+                              ? `1px solid rgba(255,255,255,0.08)`
+                              : '1px solid rgba(255,255,255,0.10)',
+                        boxShadow: box.variant === 'title' || box.variant === 'reference'
+                          ? `0 18px 44px ${deckPalette.glow}, inset 0 1px 0 rgba(255,255,255,0.12)`
+                          : layoutFamily === 'appeal'
+                            ? `0 14px 30px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.06)`
+                            : `0 10px 24px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.06)`,
                         backgroundColor: style.backgroundColor
-                          ? hexToRgba(style.backgroundColor, style.backgroundOpacity ?? 1)
+                          ? hexToRgba(
+                              style.backgroundColor,
+                              Math.max(chromeOpacityFloor, (style.backgroundOpacity ?? 1) * visualOpacityBoost),
+                            )
                           : undefined,
                         backdropFilter: style.backgroundOpacity && style.backgroundOpacity > 0 ? 'blur(8px)' : undefined,
                       }}

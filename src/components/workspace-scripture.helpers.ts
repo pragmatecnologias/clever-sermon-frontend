@@ -144,32 +144,109 @@ export const getReferenceStartVerse = (reference: string) => {
   return Number.isFinite(start) ? start : null
 }
 
+const cleanVerseText = (text: string) =>
+  String(text || '')
+    .replace(/\s*\[[a-zA-Z0-9]{1,4}\]\s*/g, ' ')
+    .replace(/\s*\([A-Z]\)\s*/g, ' ')
+    .replace(/\s*\([a-z]\)\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+
+const isLikelyTruncatedVerseText = (text: string) => {
+  const value = cleanVerseText(text)
+  if (!value) return true
+  if (value.length < 8) return true
+
+  const stripped = value.replace(/[“”"'')\]]+$/g, '').trim()
+  const lastWord = stripped.split(/\s+/).pop()?.toLowerCase() || ''
+  const trailingFragments = new Set([
+    'a', 'an', 'and', 'or', 'but', 'for', 'nor', 'so', 'yet', 'because', 'since', 'with',
+    'of', 'to', 'in', 'on', 'at', 'by', 'from', 'up', 'down', 'the', 'his', 'her', 'their',
+  ])
+
+  if (!/[.!?]$/.test(stripped) && trailingFragments.has(lastWord)) {
+    return true
+  }
+
+  if (
+    !/[.!?]$/.test(stripped) &&
+    /\b(?:for|with|of|to|by|from|in|on|at|because|that|which|who|whom|and|or|but|nor|so|yet|though|if|until|while)\s+(?:the|his|her|their|our|my|your)?\s*[A-Z][a-z]+$/.test(stripped)
+  ) {
+    return true
+  }
+
+  return !/[.!?]$/.test(stripped) && stripped.split(/\s+/).length <= 4
+}
+
+const normalizeVerseReference = (reference: string, fallbackReference: string, verseIndex: number) => {
+  const cleanedReference = String(reference || '').trim().replace(/[–—]/g, '-')
+  const fallback = String(fallbackReference || '').trim().replace(/[–—]/g, '-')
+  const parsed = fallback.match(/^(.*?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/)
+  const verseNumber = cleanedReference.match(/:(\d+)(?:-\d+)?\b/)?.[1] || (parsed?.[3] ? String(Number(parsed[3]) + verseIndex) : '')
+  if (parsed && verseNumber) {
+    return `${parsed[1].trim()} ${parsed[2]}:${verseNumber}`
+  }
+  return cleanedReference || fallback
+}
+
 export const normalizeScriptureResult = (raw: unknown, reference: string, translation: string) => {
   const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value)
   const recordRaw = isRecord(raw) ? raw : null
   const dataRaw = isRecord(recordRaw?.data) ? recordRaw.data : null
 
   if (Array.isArray(recordRaw?.verses)) {
+    const verses = recordRaw.verses
+      .map((verse, index) => ({
+        ...(isRecord(verse) ? verse : {}),
+        reference: normalizeVerseReference(String((verse as Record<string, unknown>)?.reference || ''), reference, index),
+        text: cleanVerseText(String((verse as Record<string, unknown>)?.text || '')),
+      }))
+      .filter((verse) => verse.reference && verse.text)
+
+    if (!verses.length || verses.some((verse) => isLikelyTruncatedVerseText(String(verse.text || '')))) {
+      return null
+    }
+
     return {
       ...recordRaw,
       reference: (recordRaw?.reference as string | undefined) || reference,
       translation: (recordRaw?.translation as string | undefined) || translation,
+      verses,
     }
   }
 
   if (Array.isArray(dataRaw?.verses)) {
+    const verses = dataRaw.verses
+      .map((verse, index) => ({
+        ...(isRecord(verse) ? verse : {}),
+        reference: normalizeVerseReference(String((verse as Record<string, unknown>)?.reference || ''), reference, index),
+        text: cleanVerseText(String((verse as Record<string, unknown>)?.text || '')),
+      }))
+      .filter((verse) => verse.reference && verse.text)
+
+    if (!verses.length || verses.some((verse) => isLikelyTruncatedVerseText(String(verse.text || '')))) {
+      return null
+    }
+
     return {
       ...dataRaw,
       reference: (dataRaw?.reference as string | undefined) || reference,
       translation: (dataRaw?.translation as string | undefined) || translation,
+      verses,
     }
   }
 
   if (typeof raw === 'string' && raw.trim()) {
+    const text = cleanVerseText(raw.trim())
+    if (isLikelyTruncatedVerseText(text)) {
+      return null
+    }
     return {
       reference,
       translation,
-      verses: [{ reference, text: raw.trim() }],
+      verses: [{ reference, text }],
     }
   }
 
@@ -180,8 +257,7 @@ export const buildScriptureSnapshot = (
   payload: Partial<ScriptureLookupSnapshot> & Pick<ScriptureLookupSnapshot, 'scriptureResult' | 'scriptureLastLookup' | 'scriptureQuery' | 'scriptureTranslation' | 'parallelTranslations'>,
 ): ScriptureLookupSnapshot => ({
   scriptureResult:
-    normalizeScriptureResult(payload.scriptureResult, payload.scriptureLastLookup || payload.scriptureQuery, payload.scriptureTranslation) ||
-    payload.scriptureResult,
+    normalizeScriptureResult(payload.scriptureResult, payload.scriptureLastLookup || payload.scriptureQuery, payload.scriptureTranslation) || null,
   scriptureLastLookup: payload.scriptureLastLookup,
   scriptureQuery: payload.scriptureQuery,
   scriptureTranslation: payload.scriptureTranslation,

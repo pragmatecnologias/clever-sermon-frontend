@@ -26,12 +26,23 @@ export interface VerseContextGeographicalInfo {
   modernLocation?: string
 }
 
+export interface VerseContextSection {
+  title: string
+  content: string
+}
+
 export interface VerseContextData {
   reference: string
-  historical: VerseContextNote[]
-  cultural: VerseContextCulturalNote[]
-  geographical: VerseContextGeographicalInfo[]
-  dataSource: string
+  status?: 'ready' | 'unavailable'
+  genre?: string
+  sections?: VerseContextSection[]
+  warnings?: string[]
+  message?: string | null
+  source?: 'llm-generated' | 'curated'
+  historical?: VerseContextNote[]
+  cultural?: VerseContextCulturalNote[]
+  geographical?: VerseContextGeographicalInfo[]
+  dataSource?: string
 }
 
 export interface TranslationComparisonVerse {

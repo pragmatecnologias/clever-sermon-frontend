@@ -172,7 +172,7 @@ export default function WorkspaceScriptureAnalysisPanels({
               }}
             />
           ) : (
-            renderEmptyState('Historical Context', <Layers className="w-5 h-5 text-cyan-400" />, 'passageSummary', 'Generate background context, cultural notes, and passage setting from the current reference.')
+            renderEmptyState('Historical Context', <Layers className="w-5 h-5 text-cyan-400" />, 'verseContext', 'Generate background context, cultural notes, and passage setting from the current reference.')
           )}
         </div>
       </ScriptureSection>

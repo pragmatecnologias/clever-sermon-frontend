@@ -27,4 +27,21 @@
 | #12130 | " | 🔵 | WorkspaceFlowShell orchestrates phase navigation | ~347 |
 | #12129 | " | 🔵 | WorkspaceFlowShell likely controls Generate button state | ~290 |
 | #12128 | " | 🔵 | Investigating disabled Generate button root cause | ~253 |
+
+### May 24, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #13137 | 8:06 PM | 🔴 | Verse-context endpoint now includes cache-control and pragma headers | ~216 |
+| #13136 | " | ✅ | Backend restarted on port 4001 with updated verse-context headers | ~190 |
+| #13135 | " | ✅ | Backend and frontend built successfully with react-hooks warnings | ~201 |
+
+### May 25, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #13291 | 9:38 AM | 🔴 | Verse commentary cache fix verified with live API test | ~258 |
+| #13288 | 9:37 AM | 🔴 | Verse commentary caching fix deployed successfully | ~164 |
+| #13287 | " | 🔴 | Fixed verse commentary caching causing empty display | ~264 |
+| #13285 | " | 🔵 | Verse commentary API is functional - backend returns valid EGW data | ~322 |
 </claude-mem-context>
