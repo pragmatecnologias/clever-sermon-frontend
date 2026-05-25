@@ -2625,21 +2625,7 @@ export default function WorkspaceDetailPage() {
 
           {activeSection === 'manuscript' && (
             <WorkspaceManuscriptPhase workspace={workspace}>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => openPromptEditor('manuscript')}
-                  className="cyber-outline text-xs px-4 py-2 rounded-full"
-                >
-                  Prompt
-                </button>
-                <button
-                  onClick={() => handleGenerate('manuscript')}
-                  className="cyber-button-secondary text-xs px-4 py-2 rounded-full disabled:opacity-60"
-                  disabled={actionLoading.includes('manuscript')}
-                >
-                  {actionLoading.includes('manuscript') ? 'Generating...' : 'Generate'}
-                </button>
-              </div>
+              {/* Prompt/Generate buttons are rendered by WorkspaceManuscriptControls below */}
               <div className="border border-white/10 rounded-2xl p-5 bg-gradient-to-br from-black/40 to-black/20 space-y-4">
                 <WorkspaceManuscriptControls
                   actionLoading={actionLoading}
