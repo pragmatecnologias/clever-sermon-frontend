@@ -1032,11 +1032,6 @@ export default function WorkspaceDetailPage() {
 
   const restoreScriptureLookupCache = async (workspaceData?: WorkspacePageData | null): Promise<boolean> => {
     try {
-      const stripRestoredVerseContext = (snapshot: ScriptureLookupSnapshot): ScriptureLookupSnapshot => ({
-        ...snapshot,
-        perVerseContext: null,
-      })
-
       const hydrateScriptureCache = (data: Record<string, unknown> | null | undefined): boolean => {
         if (!data || typeof data !== 'object') return false
 
@@ -1079,7 +1074,7 @@ export default function WorkspaceDetailPage() {
         const history: ScriptureLookupSnapshot[] = Array.isArray(data.lookupHistory) ? data.lookupHistory : []
         const normalizedHistory = history
           .filter((entry) => entry?.scriptureLastLookup && entry?.scriptureResult)
-          .map((entry) => stripRestoredVerseContext(buildScriptureSnapshot(entry)))
+          .map((entry) => buildScriptureSnapshot(entry))
           .filter((entry) => extractVerses(entry.scriptureResult).length > 0)
           .sort((a: ScriptureLookupSnapshot, b: ScriptureLookupSnapshot) => {
             const aDate = new Date(a.cachedAt).getTime() || 0
@@ -1136,7 +1131,7 @@ export default function WorkspaceDetailPage() {
             cachedAt: String(cachedScripture.cachedAt || ''),
           })
           if (extractVerses(legacySnapshot.scriptureResult).length > 0) {
-            const restoredSnapshot = stripRestoredVerseContext(legacySnapshot)
+            const restoredSnapshot = legacySnapshot
             setScriptureLookupHistory([restoredSnapshot])
             applyScriptureLookupSnapshot(restoredSnapshot)
             return true
