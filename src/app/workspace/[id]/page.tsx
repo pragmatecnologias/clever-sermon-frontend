@@ -1669,10 +1669,8 @@ export default function WorkspaceDetailPage() {
       if (fuzzy && fuzzy.score >= 0.45) {
         fuzzy.element.scrollIntoView({ behavior: 'smooth', block: 'center' })
         applyManuscriptHighlight(fuzzy.element, 'approximate')
-        setError('Approximate cue match used after manual edits.')
         return
       }
-      setError('No matching manuscript section found for that cue yet.')
       return
     }
 
@@ -1717,14 +1715,8 @@ export default function WorkspaceDetailPage() {
     auditItem: { afterSnippet?: string; beforeSnippet?: string; anchor?: string } | null | undefined,
   ) => {
     const query = getRepairItemMatchQuery(auditItem)
-    if (!query) {
-      setError('No searchable content found for this repair action.')
-      return
-    }
-    const found = focusSearchQueryInManuscript(manuscriptId, query)
-    if (!found) {
-      setError('Could not locate that repaired section in the current manuscript view.')
-    }
+    if (!query) return
+    focusSearchQueryInManuscript(manuscriptId, query)
   }
 
   const clearRepairMarkers = (manuscriptId: string) => {
@@ -1785,10 +1777,7 @@ export default function WorkspaceDetailPage() {
     if (!pendingSearchJump) return
     if (activeSection !== 'manuscript') return
     const run = window.setTimeout(() => {
-      const found = focusSearchQueryInManuscript(pendingSearchJump.manuscriptId, pendingSearchJump.query)
-      if (!found) {
-        setError('Search result selected, but exact manuscript match is not available in current content.')
-      }
+      focusSearchQueryInManuscript(pendingSearchJump.manuscriptId, pendingSearchJump.query)
       setPendingSearchJump(null)
     }, 220)
     return () => window.clearTimeout(run)
