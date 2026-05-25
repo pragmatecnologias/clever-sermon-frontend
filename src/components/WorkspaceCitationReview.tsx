@@ -65,6 +65,15 @@ const normalizeSupportLevel = (
   return 'needs_review'
 }
 
+const formatClaimType = (value: string | undefined): string => {
+  const text = String(value || '').replace(/[_-]+/g, ' ').trim()
+  if (!text) return 'Claim'
+  return text
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
 export default function WorkspaceCitationReview({
   workspace,
   workspaceState,
@@ -275,7 +284,7 @@ export default function WorkspaceCitationReview({
               return (
               <div key={claim.id} className="rounded-xl border border-white/10 bg-black/20 p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-white">{claim.claimType}</p>
+                  <p className="text-sm font-semibold text-white">{formatClaimType(claim.claimType)}</p>
                   <div className="flex items-center gap-2 flex-wrap justify-end">
                     {decisionMap.has(claim.id) && (
                       <span className="text-[10px] uppercase tracking-widest px-2 py-1 rounded-full border border-cyan-400/50 text-cyan-200">

@@ -62,6 +62,7 @@ export type WorkspaceClaimLedgerEntry = {
     supportHint: string
   }>
   outsideSelectedRange?: boolean
+  outsideReferenceCategory?: 'inside_selected_passage' | 'wider_literary_context' | 'broader_canonical_support'
   outsideRangeReason?: string
   theologicalExtension?: boolean
   homileticalImagination?: boolean

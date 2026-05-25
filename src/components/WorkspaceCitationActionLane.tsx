@@ -59,7 +59,7 @@ export default function WorkspaceCitationActionLane({
           <p className="mt-1 text-lg font-semibold text-white">{supportCounts.supported}</p>
         </div>
         <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-          <p className="text-[10px] uppercase tracking-[0.25em] text-gray-400">Needs review</p>
+          <p className="text-[10px] uppercase tracking-[0.25em] text-gray-400">Needs support</p>
           <p className="mt-1 text-lg font-semibold text-white">{supportCounts.review + supportCounts.unsupported}</p>
         </div>
       </div>
@@ -106,13 +106,13 @@ export default function WorkspaceCitationActionLane({
           <p className="text-xs uppercase tracking-[0.25em]">Support filters</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {[
-            ['all', `All (${claims.length})`],
-            ['supported', `Supported (${supportCounts.supported})`],
-            ['partial', `Partial (${supportCounts.partial})`],
-            ['review', `Review (${supportCounts.review})`],
-            ['unsupported', `Unsupported (${supportCounts.unsupported})`],
-          ].map(([key, label]) => (
+            {[
+          ['all', `All (${claims.length})`],
+          ['supported', `Supported (${supportCounts.supported})`],
+          ['partial', `Partial (${supportCounts.partial})`],
+          ['review', `Needs support (${supportCounts.review})`],
+          ['unsupported', `Unsupported (${supportCounts.unsupported})`],
+        ].map(([key, label]) => (
             <button
               key={key}
               onClick={() => onFilterChange(key as 'all' | 'supported' | 'partial' | 'review' | 'unsupported')}

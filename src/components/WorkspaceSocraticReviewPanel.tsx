@@ -47,14 +47,48 @@ function subTypeLabel(t: string | undefined): string {
     case 'illustration': return 'Illustration'
     case 'external_reference': return 'External reference'
     case 'wider_context': return 'Wider context'
+    case 'original_language_claim': return 'Original-language claim'
     default: return t || ''
   }
 }
 
+function outsideReferenceLabel(category: string | undefined): string {
+  switch (category) {
+    case 'wider_literary_context':
+      return 'Wider literary context'
+    case 'broader_canonical_support':
+      return 'Broader canonical support'
+    default:
+      return 'Outside selected passage'
+  }
+}
+
+function claimLabel(claim: WorkspaceClaimLedgerEntry): string {
+  const original = String(claim.claimType || '').trim().toLowerCase()
+  const meaningfulOriginal = ['application', 'interpretation', 'theological_extension', 'illustration', 'external_reference', 'wider_context', 'textual_observation', 'original_language_claim']
+    .includes(original)
+    && !['claim', 'statement', 'note', 'observation'].includes(original)
+
+  if (meaningfulOriginal) {
+    return subTypeLabel(original)
+  }
+
+  if (claim.claimSubType) {
+    return subTypeLabel(claim.claimSubType)
+  }
+
+  return ''
+}
+
 export default function WorkspaceSocraticReviewPanel({ claim, defaultExpanded }: Props) {
-  const hasSocratic = Array.isArray(claim.socraticQuestions) && claim.socraticQuestions.length > 0
+  const socraticQuestions = Array.isArray(claim.socraticQuestions)
+    ? claim.socraticQuestions.map((q) => String(q || '').trim()).filter(Boolean)
+    : []
+  const hasSocratic = socraticQuestions.length > 0
   const hasRepair = Boolean(claim.suggestedRepair)
   const isRisky = claim.pastoralRisk === 'high' || claim.pastoralRisk === 'medium'
+  const outsideLabel = outsideReferenceLabel(claim.outsideReferenceCategory)
+  const dedupedRiskReason = claim.riskReason && claim.riskReason !== claim.outsideRangeReason ? claim.riskReason : undefined
 
   const [socraticOpen, setSocraticOpen] = useState(defaultExpanded || isRisky)
   const [repairOpen, setRepairOpen] = useState(defaultExpanded || isRisky)
@@ -68,8 +102,8 @@ export default function WorkspaceSocraticReviewPanel({ claim, defaultExpanded }:
             <AlertTriangle className="w-3 h-3" />
             {riskLabel(claim.pastoralRisk)}
           </span>
-          {claim.claimSubType && (
-            <span className="text-xs text-gray-400">{subTypeLabel(claim.claimSubType)}</span>
+          {(claimLabel(claim) || claim.claimSubType) && (
+            <span className="text-xs text-gray-400">{claimLabel(claim) || subTypeLabel(claim.claimSubType)}</span>
           )}
         </div>
       )}
@@ -79,7 +113,7 @@ export default function WorkspaceSocraticReviewPanel({ claim, defaultExpanded }:
         {claim.outsideSelectedRange && (
           <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-200 border border-purple-400/40 flex items-center gap-1">
             <Flag className="w-3 h-3" />
-            Outside selected range
+            {outsideLabel}
           </span>
         )}
         {claim.theologicalExtension && (
@@ -99,7 +133,7 @@ export default function WorkspaceSocraticReviewPanel({ claim, defaultExpanded }:
       {/* Flag explanations */}
       {claim.outsideSelectedRange && (
         <p className="text-xs text-purple-200/70">
-          This claim uses wider literary context outside the selected passage.
+          {outsideLabel}
           {claim.outsideRangeReason && <span className="block mt-0.5 italic">{claim.outsideRangeReason}</span>}
         </p>
       )}
@@ -115,8 +149,8 @@ export default function WorkspaceSocraticReviewPanel({ claim, defaultExpanded }:
       )}
 
       {/* Risk Reason */}
-      {claim.riskReason && (
-        <p className="text-xs text-gray-300 leading-relaxed">{claim.riskReason}</p>
+      {dedupedRiskReason && (
+        <p className="text-xs text-gray-300 leading-relaxed">{dedupedRiskReason}</p>
       )}
 
       {/* Claim Split Suggestions */}
@@ -146,7 +180,7 @@ export default function WorkspaceSocraticReviewPanel({ claim, defaultExpanded }:
           </button>
           {socraticOpen && (
             <div className="mt-1 space-y-1">
-              {claim.socraticQuestions!.map((q, idx) => (
+              {socraticQuestions.map((q, idx) => (
                 <p key={idx} className="text-xs text-gray-300 italic border-l-2 border-cyan-400/30 pl-2">
                   {q}
                 </p>
@@ -154,11 +188,6 @@ export default function WorkspaceSocraticReviewPanel({ claim, defaultExpanded }:
             </div>
           )}
         </div>
-      )}
-
-      {/* No Socratic fallback — only when ALL enriched fields are absent */}
-      {!hasSocratic && !hasRepair && !claim.riskReason && !claim.pastoralRisk && !claim.homileticalImagination && !claim.theologicalExtension && !claim.outsideSelectedRange && !claim.claimSubType && !hasSocratic && (
-        <p className="text-xs text-gray-500 italic">No Socratic review available for this claim.</p>
       )}
 
       {/* Suggested Repair */}
@@ -193,7 +222,7 @@ export function WorkspaceReviewSummaryBar({ summary }: { summary: ReviewSummary 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <SummaryStat label="Total claims" value={summary.totalClaims} />
         <SummaryStat label="Supported" value={summary.supportedClaims} color="text-green-300" />
-        <SummaryStat label="Needs review" value={summary.needsReview} color="text-amber-300" />
+        <SummaryStat label="Needs support" value={summary.needsReview} color="text-amber-300" />
         <SummaryStat label="High risk" value={summary.highRiskClaims} color="text-red-300" />
         <SummaryStat label="Theological ext." value={summary.theologicalExtensions} color="text-blue-300" />
         <SummaryStat label="Outside range" value={summary.outsideRangeClaims} color="text-purple-300" />

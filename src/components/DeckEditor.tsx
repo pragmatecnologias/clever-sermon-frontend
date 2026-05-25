@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { slidesApi } from '@/lib/slides-api'
 import { resolveDeckBackgroundPreset } from '../../../../shared/deck-composition.contract'
+import SlidePresentationCanvas from '@/components/SlidePresentationCanvas'
 
 const SLIDES_BACKEND_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1').replace(
   /\/api\/v1\/?$/,
@@ -117,8 +118,9 @@ const slideLayouts: SlideLayout[] = [
   {
     layoutKey: 'cinematic_title',
     boxes: [
-      { field: 'title', x: 8, y: 22, w: 84, h: 18, variant: 'title' },
-      { field: 'subtitle', x: 12, y: 45, w: 76, h: 12, variant: 'subtitle' },
+      { field: 'title', x: 8, y: 18, w: 84, h: 18, variant: 'title' },
+      { field: 'reference', x: 16, y: 40, w: 68, h: 8, variant: 'reference' },
+      { field: 'subtitle', x: 12, y: 50, w: 76, h: 12, variant: 'subtitle' },
     ],
   },
   {
@@ -133,6 +135,24 @@ const slideLayouts: SlideLayout[] = [
     boxes: [
       { field: 'title', x: 8, y: 24, w: 84, h: 16, variant: 'title' },
       { field: 'subtitle', x: 12, y: 44, w: 76, h: 16, variant: 'subtitle' },
+    ],
+  },
+  {
+    layoutKey: 'point_hero',
+    boxes: [
+      { field: 'title', x: 8, y: 10, w: 60, h: 18, variant: 'title' },
+      { field: 'subtitle', x: 8, y: 34, w: 52, h: 18, variant: 'subtitle', multiline: true },
+      { field: 'reference', x: 68, y: 14, w: 20, h: 10, variant: 'reference' },
+      { field: 'bullets', x: 68, y: 34, w: 18, h: 22, variant: 'caption', multiline: true },
+    ],
+  },
+  {
+    layoutKey: 'split_support',
+    boxes: [
+      { field: 'title', x: 8, y: 14, w: 36, h: 22, variant: 'title', multiline: true },
+      { field: 'body', x: 8, y: 42, w: 36, h: 26, variant: 'body', multiline: true },
+      { field: 'reference', x: 54, y: 16, w: 30, h: 10, variant: 'reference' },
+      { field: 'subtitle', x: 50, y: 34, w: 34, h: 32, variant: 'body', multiline: true },
     ],
   },
   {
@@ -182,6 +202,14 @@ const slideLayouts: SlideLayout[] = [
     boxes: [
       { field: 'reference', x: 10, y: 10, w: 80, h: 9, variant: 'reference' },
       { field: 'lines', x: 10, y: 23, w: 80, h: 62, variant: 'body', multiline: true },
+    ],
+  },
+  {
+    layoutKey: 'application_steps',
+    boxes: [
+      { field: 'title', x: 8, y: 8, w: 84, h: 14, variant: 'title' },
+      { field: 'subtitle', x: 16, y: 24, w: 68, h: 10, variant: 'subtitle' },
+      { field: 'bullets', x: 10, y: 40, w: 80, h: 38, variant: 'body', multiline: true },
     ],
   },
   {
@@ -243,7 +271,7 @@ const getLayoutFamily = (layoutKey?: string | null): LayoutFamily => {
   if (['cinematic_title', 'title_centered_v1'].includes(key)) return 'title'
   if (['scripture_focus', 'scripture_centered_v1'].includes(key)) return 'scripture'
   if (['big_idea_center'].includes(key)) return 'big_idea'
-  if (['point_with_support', 'point_statement', 'point_bullets_v1', 'support_verse'].includes(key)) return 'point'
+  if (['point_with_support', 'point_statement', 'point_bullets_v1', 'support_verse', 'point_hero', 'split_support'].includes(key)) return 'point'
   if (['story_moment'].includes(key)) return 'story'
   if (['application_steps', 'application_bullets_v1'].includes(key)) return 'application'
   if (['reflection_question'].includes(key)) return 'reflection'
@@ -458,6 +486,7 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
   const [lineSpacing, setLineSpacing] = useState(1.28)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [presentationMode, setPresentationMode] = useState(true)
   const [exporting, setExporting] = useState(false)
   const [columns, setColumns] = useState<1 | 2 | 3>(1)
   const [imagePreviews, setImagePreviews] = useState<Record<string, string>>({})
@@ -1016,12 +1045,54 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
         </div>
       )}
 
-      {/* Slides Grid */}
-      <div className={`grid gap-4 ${
-        columns === 1 ? 'grid-cols-1' :
-        columns === 2 ? 'grid-cols-1 md:grid-cols-2' :
-        'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
-      }`}>
+      {/* View Mode Toggle */}
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setPresentationMode(true)}
+          className={`text-xs px-3 py-2 rounded-full ${presentationMode ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/50' : 'border border-white/10 text-gray-400'}`}
+        >
+          Presentation View
+        </button>
+        <button
+          onClick={() => setPresentationMode(false)}
+          className={`text-xs px-3 py-2 rounded-full ${!presentationMode ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/50' : 'border border-white/10 text-gray-400'}`}
+        >
+          Edit View
+        </button>
+      </div>
+
+      {/* Slides — Presentation or Edit mode */}
+      {presentationMode ? (
+        <div className="space-y-6">
+          {slides.map((slide, idx) => {
+            const resolvedSlideImageUrl = imagePreviews[slide.id] || resolveSlidesAssetUrl(slide.imageUrl)
+            return (
+              <div key={slide.id} className="space-y-2">
+                <div className="flex items-center gap-2 text-xs text-gray-400">
+                  <span className="font-semibold text-gray-300">{idx + 1}.</span>
+                  <span className="uppercase tracking-wider">{slide.type}</span>
+                </div>
+                <SlidePresentationCanvas
+                  slide={{
+                    id: slide.id,
+                    type: slide.type,
+                    layoutKey: slide.layoutKey,
+                    content: (slide.content || {}) as any,
+                    speakerNotes: slide.speakerNotes,
+                    imageUrl: resolvedSlideImageUrl,
+                  }}
+                  visualStyle={deckVisualStyle}
+                />
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className={`grid gap-4 ${
+          columns === 1 ? 'grid-cols-1' :
+          columns === 2 ? 'grid-cols-1 md:grid-cols-2' :
+          'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
+        }`}>
         {slides.map((slide, idx) => {
           const layout = getLayoutForTemplate(slide.layoutKey)
           const layoutFamily = getLayoutFamily(slide.layoutKey)
@@ -1032,191 +1103,56 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
             <div
               key={slide.id}
               className="border border-white/10 rounded-2xl p-4 bg-black/30 hover:bg-black/40"
-              style={{
-                boxShadow:
-                  layoutFamily === 'title'
-                    ? `0 0 0 1px rgba(255,255,255,0.03), 0 18px 46px ${deckPalette.glow}`
-                    : layoutFamily === 'scripture'
-                      ? `0 0 0 1px rgba(255,255,255,0.03), 0 14px 34px rgba(0,0,0,0.24)`
-                      : `0 0 0 1px rgba(255,255,255,0.02), 0 12px 28px rgba(0,0,0,0.22)`,
-              }}
             >
               <div className="mb-2">
                 <p className="text-sm font-medium">Slide {idx + 1}</p>
                 <p className="text-xs text-gray-500">{slide.type}</p>
               </div>
-              <div
-                className="relative w-full rounded-[18px] border border-white/10 overflow-hidden"
-                style={{
-                  aspectRatio: '16 / 9',
-                  boxShadow:
-                    layoutFamily === 'title'
-                      ? `inset 0 0 0 1px rgba(255,255,255,0.06), 0 22px 60px ${deckPalette.glow}`
-                      : layoutFamily === 'appeal'
-                        ? `inset 0 0 0 1px rgba(255,255,255,0.06), 0 18px 44px rgba(0,0,0,0.26)`
-                        : `inset 0 0 0 1px rgba(255,255,255,0.03), 0 14px 36px rgba(0,0,0,0.22)`,
-                  ...(!resolvedSlideImageUrl ? buildPreviewBackdrop(deckVisualStyle, slide.layoutKey, deck?.theme) : {}),
+              {/* Mini preview in edit mode */}
+              <SlidePresentationCanvas
+                slide={{
+                  id: slide.id,
+                  type: slide.type,
+                  layoutKey: slide.layoutKey,
+                  content: (slide.content || {}) as any,
+                  speakerNotes: slide.speakerNotes,
+                  imageUrl: resolvedSlideImageUrl,
                 }}
-              >
-                {resolvedSlideImageUrl && (
-                  <>
-                    <div
-                      className="absolute inset-0 bg-cover bg-center"
-                      style={{ backgroundImage: `url(${resolvedSlideImageUrl})` }}
+                visualStyle={deckVisualStyle}
+              />
+              {/* Quick edit fields */}
+              <div className="mt-3 space-y-2">
+                {fieldKeys.filter(f => f === 'title' || f === 'body' || f === 'reference' || f === 'subtitle').map((field) => (
+                  <div key={field}>
+                    <label className="text-[10px] uppercase tracking-wider text-gray-400">{field}</label>
+                    <input
+                      className="w-full text-sm border border-white/10 rounded-lg px-3 py-2 bg-black/40 text-gray-200"
+                      value={contentDrafts[slide.id]?.[field] || ''}
+                      onChange={(e) => setContentDrafts((prev) => ({
+                        ...prev,
+                        [slide.id]: { ...prev[slide.id], [field]: e.target.value },
+                      }))}
+                      onBlur={() => saveEditingSlide(slide.id)}
+                      onFocus={() => setActiveField({ slideId: slide.id, field })}
                     />
-                    <div className="absolute inset-0 bg-slate-900/18" />
-                  </>
-                )}
-                {renderPreviewAccents(layoutFamily, deckPalette)}
-                {(() => {
-                // Calculate cumulative overflow from title boxes to push content down
-                let cumulativeOverflow = 0
-                return layout?.boxes?.map((box, boxIndex) => {
-                  const value = contentDrafts[slide.id]?.[box.field] || ''
-                  const style = styleDrafts[slide.id]?.[box.field] || defaultStyleForField(box.variant)
-                  const fieldScale = getPreviewFieldScale(box.variant, value, box.multiline)
-                  const hasBackgroundImage = Boolean(resolvedSlideImageUrl)
-                  const chromeOpacityFloor = getPreviewChromeOpacityFloor(layoutFamily, box.variant)
-                  const visualOpacityBoost = hasBackgroundImage
-                    ? (layoutFamily === 'title' || layoutFamily === 'social' ? 0.6 : 0.42)
-                    : 1
-
-                  // Dynamic font sizing for titles
-                  const baseFontSize = style.fontSize || 48
-                  const dynamicFontSize = getDynamicFontSize(baseFontSize, value, box.variant, box.w)
-
-                  // Dynamic box height for titles that wrap
-                  const { height: dynamicHeight, overflow } = getDynamicBoxHeight(
-                    box.h,
-                    value,
-                    dynamicFontSize,
-                    box.w,
-                    box.variant,
-                  )
-
-                  // Track overflow for pushing subsequent boxes down
-                  const currentTop = box.y + cumulativeOverflow
-                  if (box.variant === 'title' || box.variant === 'reference') {
-                    cumulativeOverflow += overflow
-                  }
-
-                  const textStyle: React.CSSProperties = {
-                    fontFamily: style.fontFamily,
-                    fontSize: `${Math.max(9, dynamicFontSize * fieldScale)}px`,
-                    color: style.color,
-                    fontWeight: style.bold ? 700 : 400,
-                    fontStyle: style.italic ? 'italic' : 'normal',
-                    textDecoration: style.underline ? 'underline' : 'none',
-                    textAlign: style.align,
-                    lineHeight: box.multiline ? String(Math.max(1.04, lineSpacing * fieldScale)) : '1.2',
-                    overflow: 'hidden',
-                    wordWrap: 'break-word',
-                    overflowWrap: 'break-word',
-                    textShadow: box.variant === 'title' || box.variant === 'reference'
-                      ? '0 2px 16px rgba(0,0,0,0.48)'
-                      : '0 1px 10px rgba(0,0,0,0.28)',
-                  }
-
-                  return (
-                    <div
-                      key={box.field}
-                      className="absolute flex"
-                      style={{
-                        left: `${box.x}%`,
-                        top: `${currentTop}%`,
-                        width: `${box.w}%`,
-                        height: `${dynamicHeight}%`,
-                        borderRadius: layoutFamily === 'scripture' || layoutFamily === 'reflection'
-                          ? '16px'
-                          : box.variant === 'title' || box.variant === 'reference'
-                            ? '20px'
-                            : '14px',
-                        border:
-                          box.variant === 'title' || box.variant === 'reference'
-                            ? `1px solid ${deckPalette.glow}`
-                            : layoutFamily === 'application' || layoutFamily === 'point'
-                              ? `1px solid rgba(255,255,255,0.08)`
-                              : '1px solid rgba(255,255,255,0.10)',
-                        boxShadow: box.variant === 'title' || box.variant === 'reference'
-                          ? `0 18px 44px ${deckPalette.glow}, inset 0 1px 0 rgba(255,255,255,0.12)`
-                          : layoutFamily === 'appeal'
-                            ? `0 14px 30px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.06)`
-                            : `0 10px 24px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.06)`,
-                        backgroundColor: style.backgroundColor
-                          ? hexToRgba(
-                              style.backgroundColor,
-                              Math.max(chromeOpacityFloor, (style.backgroundOpacity ?? 1) * visualOpacityBoost),
-                            )
-                          : undefined,
-                        backdropFilter: style.backgroundOpacity && style.backgroundOpacity > 0 ? 'blur(8px)' : undefined,
-                      }}
-                    >
-                      {box.multiline ? (
-                        <textarea
-                          className="w-full resize-none bg-transparent border-0 text-xs"
-                          rows={box.variant === 'body' ? 8 : 5}
-                          value={value}
-                          onFocus={() => setActiveField({ slideId: slide.id, field: box.field })}
-                          onChange={(e) =>
-                            setContentDrafts((prev) => ({
-                              ...prev,
-                              [slide.id]: {
-                                ...(prev[slide.id] || {}),
-                                [box.field]: e.target.value,
-                              },
-                            }))
-                          }
-                          onBlur={() => saveEditingSlide(slide.id)}
-                          style={{
-                            ...textStyle,
-                            paddingLeft: `${Math.max(3, 10 * fieldScale)}px`,
-                            paddingRight: `${Math.max(3, 10 * fieldScale)}px`,
-                            paddingTop: `${Math.max(2, 7 * fieldScale)}px`,
-                            paddingBottom: `${Math.max(2, 7 * fieldScale)}px`,
-                          }}
-                        />
-                      ) : (
-                        <input
-                          className="w-full h-full bg-transparent border-0 text-xs"
-                          value={value}
-                          onFocus={() => setActiveField({ slideId: slide.id, field: box.field })}
-                          onChange={(e) =>
-                            setContentDrafts((prev) => ({
-                              ...prev,
-                              [slide.id]: {
-                                ...(prev[slide.id] || {}),
-                                [box.field]: e.target.value,
-                              },
-                            }))
-                          }
-                          onBlur={() => saveEditingSlide(slide.id)}
-                          style={{
-                            ...textStyle,
-                            paddingLeft: `${Math.max(3, 10 * fieldScale)}px`,
-                            paddingRight: `${Math.max(3, 10 * fieldScale)}px`,
-                            paddingTop: `${Math.max(2, 7 * fieldScale)}px`,
-                            paddingBottom: `${Math.max(2, 7 * fieldScale)}px`,
-                          }}
-                        />
-                      )}
-                    </div>
-                  )
-                })
-                })()}
-              </div>
-              <div className="mt-3">
-                <label className="block text-xs text-gray-400 mb-1">Speaker Notes</label>
-                <textarea
-                  className="w-full min-h-[60px] text-xs border border-white/10 rounded p-2 bg-black/40"
-                  value={notesDrafts[slide.id] || ''}
-                  onChange={(e) => setNotesDrafts((prev) => ({ ...prev, [slide.id]: e.target.value }))}
-                  onBlur={() => saveEditingSlide(slide.id)}
-                />
+                  </div>
+                ))}
+                {/* Speaker notes */}
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-gray-400">Speaker Notes</label>
+                  <textarea
+                    className="w-full min-h-[60px] text-xs border border-white/10 rounded p-2 bg-black/40"
+                    value={notesDrafts[slide.id] || ''}
+                    onChange={(e) => setNotesDrafts((prev) => ({ ...prev, [slide.id]: e.target.value }))}
+                    onBlur={() => saveEditingSlide(slide.id)}
+                  />
+                </div>
               </div>
             </div>
           )
         })}
       </div>
+      )}
     </div>
   )
 }
