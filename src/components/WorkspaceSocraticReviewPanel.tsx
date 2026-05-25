@@ -156,8 +156,8 @@ export default function WorkspaceSocraticReviewPanel({ claim, defaultExpanded }:
         </div>
       )}
 
-      {/* No Socratic fallback */}
-      {!hasSocratic && !hasRepair && !claim.riskReason && (
+      {/* No Socratic fallback — only when ALL enriched fields are absent */}
+      {!hasSocratic && !hasRepair && !claim.riskReason && !claim.pastoralRisk && !claim.homileticalImagination && !claim.theologicalExtension && !claim.outsideSelectedRange && !claim.claimSubType && !hasSocratic && (
         <p className="text-xs text-gray-500 italic">No Socratic review available for this claim.</p>
       )}
 
