@@ -124,7 +124,7 @@ function CinematicTitle({ slide, preset, imageUrl }: { slide: SlideData; preset:
   )
 }
 
-function ScriptureImmersive({ slide, preset }: { slide: SlideData; preset: StylePreset }) {
+function ScriptureImmersive({ slide, preset, imageUrl }: { slide: SlideData; preset: StylePreset; imageUrl?: string | null }) {
   const f = slide.content || {}
   const lines = Array.isArray(f.lines) ? f.lines : f.body ? [f.body] : []
   const reference = String(f.reference || '')
@@ -132,6 +132,9 @@ function ScriptureImmersive({ slide, preset }: { slide: SlideData; preset: Style
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: preset.bgGradient }}>
+      {imageUrl && (
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${imageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.35 }} />
+      )}
       <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(ellipse at center, ${preset.accentColor}10 0%, transparent 70%)` }} />
       <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100%', padding: '7% 10%', position: 'relative', zIndex: 1 }}>
         <span style={{ fontFamily: preset.accentFont, fontSize: 'clamp(48px, 7vw, 96px)', color: `${preset.accentColor}22`, lineHeight: 0, marginBottom: '-0.15em', userSelect: 'none' }}>&ldquo;</span>
@@ -142,12 +145,16 @@ function ScriptureImmersive({ slide, preset }: { slide: SlideData; preset: Style
   )
 }
 
-function BigIdeaStatement({ slide, preset }: { slide: SlideData; preset: StylePreset }) {
+function BigIdeaStatement({ slide, preset, imageUrl }: { slide: SlideData; preset: StylePreset; imageUrl?: string | null }) {
   const f = slide.content || {}
   const title = String(f.title || f.body || '')
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: preset.bgGradient }}>
+      {imageUrl && (
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${imageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.3 }} />
+      )}
+      <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(180deg, ${preset.overlayFrom} 0%, rgba(0,0,0,0.3) 100%)` }} />
       <div style={{ position: 'absolute', left: '5%', top: '50%', right: '5%', transform: 'translateY(-50%)', zIndex: 1 }}>
         <div style={{ width: '48px', height: '3px', background: preset.accentColor, marginBottom: '0.8em', opacity: 0.8 }} />
         <p style={{ fontFamily: preset.headingFont, fontSize: 'clamp(36px, 4.8vw, 62px)', fontWeight: 700, color: preset.textColor, lineHeight: 1.15, margin: 0, letterSpacing: '-0.01em' }}>{title}</p>
@@ -157,7 +164,7 @@ function BigIdeaStatement({ slide, preset }: { slide: SlideData; preset: StylePr
   )
 }
 
-function PointDeclaration({ slide, preset }: { slide: SlideData; preset: StylePreset }) {
+function PointDeclaration({ slide, preset, imageUrl }: { slide: SlideData; preset: StylePreset; imageUrl?: string | null }) {
   const f = slide.content || {}
   const title = String(f.title || '')
   const body = String(f.body || '')
@@ -165,6 +172,10 @@ function PointDeclaration({ slide, preset }: { slide: SlideData; preset: StylePr
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: preset.bgGradient }}>
+      {imageUrl && (
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${imageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.3 }} />
+      )}
+      <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(135deg, ${preset.overlayFrom} 0%, rgba(0,0,0,0.3) 100%)` }} />
       <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', background: `${preset.accentColor}18` }} />
       <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', padding: '7% 9% 7% 10%', position: 'relative', zIndex: 1 }}>
         {title && <h2 style={{ fontFamily: preset.headingFont, fontSize: 'clamp(32px, 4.2vw, 54px)', fontWeight: 700, color: preset.textColor, lineHeight: 1.15, margin: 0, marginBottom: body ? '0.4em' : '0' }}>{title}</h2>}
@@ -175,13 +186,17 @@ function PointDeclaration({ slide, preset }: { slide: SlideData; preset: StylePr
   )
 }
 
-function ApplicationSteps({ slide, preset }: { slide: SlideData; preset: StylePreset }) {
+function ApplicationSteps({ slide, preset, imageUrl }: { slide: SlideData; preset: StylePreset; imageUrl?: string | null }) {
   const f = slide.content || {}
   const bullets = Array.isArray(f.bullets) ? f.bullets.filter(Boolean) : []
   const title = String(f.title || '')
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: preset.bgGradient }}>
+      {imageUrl && (
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${imageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.25 }} />
+      )}
+      <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(180deg, ${preset.overlayFrom} 0%, rgba(0,0,0,0.35) 100%)` }} />
       <div style={{ display: 'flex', alignItems: 'center', height: '100%', padding: '6% 8%', position: 'relative', zIndex: 1 }}>
         <div style={{ display: 'flex', gap: '3%', width: '100%', justifyContent: 'center', flexWrap: 'wrap' }}>
           {bullets.slice(0, 3).map((bullet, i) => (
@@ -196,12 +211,15 @@ function ApplicationSteps({ slide, preset }: { slide: SlideData; preset: StylePr
   )
 }
 
-function ReflectionQuestion({ slide, preset }: { slide: SlideData; preset: StylePreset }) {
+function ReflectionQuestion({ slide, preset, imageUrl }: { slide: SlideData; preset: StylePreset; imageUrl?: string | null }) {
   const f = slide.content || {}
   const title = String(f.title || f.body || f.message || '')
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: preset.bgGradient }}>
+      {imageUrl && (
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${imageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.3 }} />
+      )}
       <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(ellipse at center, ${preset.accentColor}08 0%, transparent 60%)` }} />
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', padding: '10%', position: 'relative', zIndex: 1 }}>
         <p style={{ fontFamily: preset.headingFont, fontSize: 'clamp(28px, 3.8vw, 50px)', fontWeight: 400, color: preset.textColor, lineHeight: 1.25, textAlign: 'center', maxWidth: '85%', margin: 0, fontStyle: 'italic' }}>{title}</p>
@@ -229,12 +247,15 @@ function AppealInvitation({ slide, preset, imageUrl }: { slide: SlideData; prese
   )
 }
 
-function ClosingBlessing({ slide, preset }: { slide: SlideData; preset: StylePreset }) {
+function ClosingBlessing({ slide, preset, imageUrl }: { slide: SlideData; preset: StylePreset; imageUrl?: string | null }) {
   const f = slide.content || {}
   const title = String(f.title || f.body || f.message || '')
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: preset.bgGradient }}>
+      {imageUrl && (
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${imageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.35 }} />
+      )}
       <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(ellipse at center top, ${preset.accentColor}0C 0%, transparent 65%)` }} />
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', padding: '10%', position: 'relative', zIndex: 1 }}>
         <p style={{ fontFamily: preset.accentFont, fontSize: 'clamp(24px, 3.2vw, 42px)', fontWeight: 400, color: preset.textColor, lineHeight: 1.3, textAlign: 'center', maxWidth: '85%', margin: 0, fontStyle: 'italic' }}>{title}</p>

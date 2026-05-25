@@ -5,7 +5,7 @@ import { slidesApi } from '@/lib/slides-api'
 import { resolveDeckBackgroundPreset } from '../../../../shared/deck-composition.contract'
 import SlidePresentationCanvas from '@/components/SlidePresentationCanvas'
 
-const SLIDES_BACKEND_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1').replace(
+const SLIDES_BACKEND_BASE_URL = (process.env.NEXT_PUBLIC_SLIDES_API_URL || 'http://localhost:3001/api/v1').replace(
   /\/api\/v1\/?$/,
   '',
 )
@@ -490,7 +490,7 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
   const [exporting, setExporting] = useState(false)
   const [columns, setColumns] = useState<1 | 2 | 3>(1)
   const [imagePreviews, setImagePreviews] = useState<Record<string, string>>({})
-  const [globalImageProvider, setGlobalImageProvider] = useState<'local' | 'openai'>('local')
+  const [globalImageProvider, setGlobalImageProvider] = useState<'local' | 'openai' | 'falai'>('local')
   const [globalImagePreset, setGlobalImagePreset] = useState<LocalBackgroundPreset>('worship')
   const [generatingAllBackgrounds, setGeneratingAllBackgrounds] = useState(false)
   const previewScale = columns === 1 ? 1 : columns === 2 ? 0.62 : 0.48
@@ -938,10 +938,11 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
         <select
           className="w-full px-3 py-2 border border-white/10 rounded-lg bg-black/40 text-sm text-gray-100"
           value={globalImageProvider}
-          onChange={(e) => setGlobalImageProvider(e.target.value as 'local' | 'openai')}
+          onChange={(e) => setGlobalImageProvider(e.target.value as 'local' | 'openai' | 'falai')}
         >
           <option value="local">Local Generated</option>
-          <option value="openai">OpenAI Generated</option>
+          <option value="openai">OpenAI (DALL-E 3)</option>
+          <option value="falai">fal.ai (Flux Schnell)</option>
         </select>
         {globalImageProvider === 'local' && (
           <select
@@ -1122,7 +1123,13 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
               />
               {/* Quick edit fields */}
               <div className="mt-3 space-y-2">
-                {fieldKeys.filter(f => f === 'title' || f === 'body' || f === 'reference' || f === 'subtitle').map((field) => (
+                {fieldKeys.filter(f => {
+                  if (!['title', 'body', 'reference', 'subtitle'].includes(f)) return false
+                  // Skip fields that contain CSS property strings (orphaned style artifacts)
+                  const val = slide.content?.[f]
+                  if (typeof val === 'string' && /^[a-z-]+\s*:\s*[^|]+;/i.test(val.trim())) return false
+                  return true
+                }).map((field) => (
                   <div key={field}>
                     <label className="text-[10px] uppercase tracking-wider text-gray-400">{field}</label>
                     <input

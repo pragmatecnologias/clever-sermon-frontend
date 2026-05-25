@@ -231,7 +231,7 @@ export const slidesApi = {
 
   generateSlideImage: async (
     slideId: string,
-    provider: 'local' | 'openai',
+    provider: 'local' | 'openai' | 'falai',
     token: string,
     prompt?: string,
     preset?: string,
