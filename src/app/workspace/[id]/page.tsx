@@ -2897,7 +2897,24 @@ export default function WorkspaceDetailPage() {
                   Generate
                 </button>
               </div>
-              {(workspace as any)?.workspace?.studyReports?.length ?? workspace?.studyReports?.length ? (
+              {isStudyAssetLoading('report', actionLoading) ? (
+                <div className="cyber-panel rounded-2xl p-6">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-xs uppercase tracking-widest text-cyan-200/80">
+                      <span>Generating Study Report</span>
+                      <span>Compiling passage intelligence</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                      <div className="h-full w-2/3 bg-gradient-to-r from-cyan-400 via-sky-300 to-cyan-500 animate-pulse rounded-full" />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="h-3 rounded bg-white/10 animate-pulse w-5/6" />
+                      <div className="h-3 rounded bg-white/10 animate-pulse w-4/6" />
+                      <div className="h-3 rounded bg-white/10 animate-pulse w-3/6" />
+                    </div>
+                  </div>
+                </div>
+              ) : (workspace as any)?.workspace?.studyReports?.length ?? workspace?.studyReports?.length ? (
                 <div className="cyber-panel rounded-2xl p-6">
               <WorkspaceStudyReportView
                     report={workspace.studyReports?.[0] || null}
@@ -2915,24 +2932,7 @@ export default function WorkspaceDetailPage() {
                 </div>
               ) : (
                 <div className="cyber-panel rounded-2xl p-6">
-                  {isStudyAssetLoading('report', actionLoading) ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between text-xs uppercase tracking-widest text-cyan-200/80">
-                        <span>Generating Study Report</span>
-                        <span>Compiling passage intelligence</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-                        <div className="h-full w-2/3 bg-gradient-to-r from-cyan-400 via-sky-300 to-cyan-500 animate-pulse rounded-full" />
-                      </div>
-                      <div className="space-y-2">
-                        <div className="h-3 rounded bg-white/10 animate-pulse w-5/6" />
-                        <div className="h-3 rounded bg-white/10 animate-pulse w-4/6" />
-                        <div className="h-3 rounded bg-white/10 animate-pulse w-3/6" />
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-gray-200/80">No study report yet.</p>
-                  )}
+                  <p className="text-gray-200/80">No study report yet.</p>
                 </div>
               )}
               <WorkspaceStudyReportSection
