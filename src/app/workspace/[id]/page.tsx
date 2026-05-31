@@ -31,6 +31,7 @@ import WorkspaceStudyReportSection from '@/components/WorkspaceStudyReportSectio
 import WorkspaceStudyReportView from '@/components/WorkspaceStudyReportView'
 import WorkspaceStudyAssetEditor from '@/components/WorkspaceStudyAssetEditor'
 import WorkspaceManuscriptCuesPanel from '@/components/WorkspaceManuscriptCuesPanel'
+import { getPreferredStudyReport } from '@/components/workspace-study-report.helpers'
 import {
   buildScriptureSnapshot,
   compactSnapshotForPersistence,
@@ -848,7 +849,7 @@ export default function WorkspaceDetailPage() {
   }
 
   // Calculate progress
-  const latestStudyReport = (workspace as any)?.workspace?.studyReports?.[0] ?? workspace?.studyReports?.[0]
+  const latestStudyReport = getPreferredStudyReport(workspace)
   const latestManuscript = workspace?.manuscripts?.[0]
   const latestManuscriptCueAnchors = (() => {
     if (!latestManuscript) return {}
@@ -2873,10 +2874,10 @@ export default function WorkspaceDetailPage() {
                     </div>
                   </div>
                 </div>
-              ) : (workspace as any)?.workspace?.studyReports?.length ?? workspace?.studyReports?.length ? (
+              ) : getPreferredStudyReport(workspace) ? (
                 <div className="cyber-panel rounded-2xl p-6">
               <WorkspaceStudyReportView
-                    report={workspace.studyReports?.[0] || null}
+                    report={getPreferredStudyReport(workspace)}
                     onJumpToWordStudy={(term) => {
                       const clean = String(term || '').trim()
                       if (!clean) return

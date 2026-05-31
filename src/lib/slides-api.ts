@@ -28,7 +28,7 @@ export interface GenerateImageRequest {
   sermonId?: string;
   workspaceId?: string;
   prompt: string;
-  provider: 'openai' | 'local';
+  provider: 'openai' | 'local' | 'falai';
   preset?: string;
 }
 
@@ -134,7 +134,7 @@ export const slidesApi = {
     deckSize: 'short' | 'standard' | 'long' = 'long',
     options?: {
       deckIntent?: 'sermon_presentation' | 'social_summary' | 'teaching_study' | 'youth_message' | 'evangelistic_appeal'
-      backgroundProvider?: 'local' | 'openai'
+      backgroundProvider?: 'local' | 'openai' | 'falai'
       backgroundPreset?: string
       visualStyle?: 'auto' | 'reverent_worship' | 'warm_pastoral' | 'evangelistic_invitation' | 'hopeful_prophecy' | 'bible_study_clean' | 'youth_modern' | 'spanish_church_warm'
     }
@@ -549,7 +549,9 @@ export const slidesApi = {
     prompt?: string;
     mode?: 'auto_multi_network' | 'core4' | 'manual';
     useCase?: string;
+    campaignGoal?: 'invite_attendance' | 'devotional_series' | null;
     overlay?: {
+      visualStyle?: 'auto' | 'reverent_worship' | 'warm_pastoral' | 'evangelistic_invitation' | 'hopeful_prophecy' | 'bible_study_clean' | 'youth_modern' | 'spanish_church_warm';
       eventTitle?: string;
       eventSubtitle?: string;
       serviceDate?: string;
@@ -570,9 +572,13 @@ export const slidesApi = {
       preset?: 'minimal' | 'bold' | 'announcement';
       layoutVariant?: string;
       densityMode?: 'auto' | 'full' | 'minimal';
-      imageProvider?: 'local' | 'openai';
+      imageProvider?: 'local' | 'openai' | 'falai';
       imagePreset?: string;
       language?: 'es' | 'en';
+      timezoneLabel?: string;
+      address?: string;
+      livestreamUrl?: string;
+      campaignGoal?: 'invite_attendance' | 'devotional_series' | null;
     };
   }, token: string) => {
     const response = await axios.post(
@@ -621,6 +627,24 @@ export const slidesApi = {
       }
     );
     return response.data as Blob;
+  },
+
+  regenerateSocialCopy: async (socialId: string, data: { caption?: string; ctaText?: string }, token: string) => {
+    const response = await axios.post(
+      `${MEDIA_API_URL}/social/${socialId}/regenerate-copy`,
+      data,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    return response.data;
+  },
+
+  regenerateSocialImage: async (socialId: string, data: { prompt?: string }, token: string) => {
+    const response = await axios.post(
+      `${MEDIA_API_URL}/social/${socialId}/regenerate-image`,
+      data,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    return response.data;
   },
 
   getChurchSettings: async (token: string) => {

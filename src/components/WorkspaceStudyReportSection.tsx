@@ -6,6 +6,7 @@ import SanctuaryProphecyMapper from '@/components/SanctuaryProphecyMapper'
 import InteractiveProphecyWeb from '@/components/InteractiveProphecyWeb'
 import BiblicalNarrativeMap from '@/components/BiblicalNarrativeMap'
 import { StudyAssetCard, StudyAssetBoxes } from '@/components/WorkspaceStudyReportCards'
+import { getPreferredStudyReport } from '@/components/workspace-study-report.helpers'
 import type { WorkspaceFeatureReadinessMap } from '@/lib/api/openapi-client'
 import { getFeatureReadiness } from '@/components/feature-readiness'
 
@@ -45,8 +46,7 @@ export default function WorkspaceStudyReportSection({
   const studyReportReadiness = getFeatureReadiness(featureReadiness, 'studyReport')
   const workspaceMainPassage = String(workspace?.mainPassage || '').trim()
   const workspaceLanguage = String(workspace?.language || 'en').trim()
-  const studyReports = (workspace as any)?.workspace?.studyReports ?? workspace?.studyReports
-  const sections = studyReports?.[0]?.sections || {}
+  const sections = getPreferredStudyReport(workspace)?.sections || {}
   const studyAssetsSection = sections?.studyAssets || {}
   const categoryAssets = studyAssetsSection?.categoryAssets || {}
   const movementAssets = Array.isArray(studyAssetsSection?.movementAssets) ? studyAssetsSection.movementAssets : []
@@ -146,12 +146,12 @@ export default function WorkspaceStudyReportSection({
   }
   const studyMediaCards = Array.isArray(categoryAssets?.mediaSuggestionCards) && categoryAssets.mediaSuggestionCards.length
     ? normalizeMediaSuggestionCards(categoryAssets.mediaSuggestionCards)
-    : normalizeMediaSuggestionCards(
-        categoryAssets?.mediaSuggestionCards ||
-          studyAssetsSection?.mediaSuggestionCards ||
-          sections?.mediaSuggestionCards ||
-          (((workspace as any)?.workspace?.studyReports?.[0]?.sections?.studyAssets?.categoryAssets?.mediaSuggestionCards ?? workspace?.studyReports?.[0]?.sections?.studyAssets?.categoryAssets?.mediaSuggestionCards) || []),
-      )
+        : normalizeMediaSuggestionCards(
+            categoryAssets?.mediaSuggestionCards ||
+              studyAssetsSection?.mediaSuggestionCards ||
+              sections?.mediaSuggestionCards ||
+              (getPreferredStudyReport(workspace)?.sections?.studyAssets?.categoryAssets?.mediaSuggestionCards || []),
+          )
   const studyMediaFallback = mergeLists(categoryAssets?.mediaSuggestions, studyAssetsSection?.mediaSuggestions, sections?.mediaSuggestions, flattenMovement('mediaSuggestions'))
   const studyMediaPrompts = studyMediaCards.length
     ? studyMediaCards

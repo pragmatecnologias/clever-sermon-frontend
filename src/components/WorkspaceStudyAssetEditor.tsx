@@ -2,6 +2,7 @@
 
 import { Book } from 'lucide-react'
 import { renderMarkdown } from '@/components/workspace-render.helpers'
+import { getPreferredStudyReport } from '@/components/workspace-study-report.helpers'
 
 type Props = {
   studyAssetEditor: 'applications' | 'questions' | 'illustrations' | null
@@ -50,8 +51,7 @@ export function WorkspaceStudyAssetEditor({
   handleIllustrationSave,
   onClose,
 }: Props) {
-  const studyReports = (workspace as any)?.workspace?.studyReports ?? workspace?.studyReports ?? []
-  const latestStudyReport = Array.isArray(studyReports) ? studyReports[0] : null
+  const latestStudyReport = getPreferredStudyReport(workspace)
   const studyAssetsSection = latestStudyReport?.sections?.studyAssets || {}
   const categoryAssets = studyAssetsSection?.categoryAssets || {}
   const movementAssets = Array.isArray(studyAssetsSection?.movementAssets) ? studyAssetsSection.movementAssets : []

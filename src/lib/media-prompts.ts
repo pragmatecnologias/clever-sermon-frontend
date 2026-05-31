@@ -19,7 +19,7 @@ export interface MediaPromptEntry {
   fields?: Record<string, string>
 }
 
-export const MAX_NARRATION_CHARACTERS = 5000
+export const MAX_NARRATION_CHARACTERS = 1500
 
 function cleanHeadline(text: string, maxWords = 8): string {
   const words = String(text || '')

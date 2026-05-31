@@ -33,6 +33,9 @@ type VisualStyleKey =
   | 'youth_modern'
   | 'spanish_church_warm'
 
+type LayoutPreference = 'balanced' | 'text_forward' | 'image_rich' | 'scripture_forward' | 'minimal'
+type ImageGenerationTarget = 'background' | 'content' | 'both'
+
 type LocalBackgroundPreset = 'worship' | 'biblical' | 'cyberpunk' | 'modern' | 'aurora' | 'minimal' | 'nature'
 
 export default function SlideGenerationPanel({ workspace, token, onGenerated }: SlideGenerationPanelProps) {
@@ -49,26 +52,17 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
   const [generatedSlideCount, setGeneratedSlideCount] = useState<number | null>(null)
   const [showEditor, setShowEditor] = useState(false)
   const [existingDeckStatus, setExistingDeckStatus] = useState<string | null>(null)
-  const [backgroundProvider, setBackgroundProvider] = useState<'local' | 'openai'>('local')
+  const [backgroundProvider, setBackgroundProvider] = useState<'local' | 'openai' | 'falai'>('local')
   const [backgroundPreset, setBackgroundPreset] = useState<LocalBackgroundPreset>('worship')
   const [deckIntent, setDeckIntent] = useState<DeckIntent>('sermon_presentation')
+  const [layoutPreference, setLayoutPreference] = useState<LayoutPreference>('balanced')
+  const [imageGenerationTarget, setImageGenerationTarget] = useState<ImageGenerationTarget>('both')
   const [visualStyle, setVisualStyle] = useState<VisualStyleKey>('auto')
   const [generatedVisualStyle, setGeneratedVisualStyle] = useState<VisualStyleKey>('auto')
   const [generatedQualityWarnings, setGeneratedQualityWarnings] = useState<string[]>([])
   const [generatedImageCoverage, setGeneratedImageCoverage] = useState<number | null>(null)
   const [generatedExportReady, setGeneratedExportReady] = useState<boolean | null>(null)
   const workspaceExportReady = Boolean((workspace as any)?.exportPack?.status === 'ready' || (workspace as any)?.mediaPack?.exportPrepared)
-
-  useEffect(() => {
-    if (backgroundProvider !== 'local') return
-    const preferred = resolveDeckBackgroundPreset(visualStyle, deckIntent, backgroundPreset) as LocalBackgroundPreset
-    setBackgroundPreset((current) => {
-      if (['worship', 'biblical', 'nature'].includes(String(current))) {
-        return current
-      }
-      return preferred
-    })
-  }, [backgroundProvider, visualStyle, deckIntent, backgroundPreset])
 
   const isImageReady = (slide: any) =>
     ['ready', 'completed'].includes(String(slide?.imageStatus || slide?.contentImageStatus || '').toLowerCase()) ||
@@ -173,6 +167,8 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
       const workspaceApi = createWorkspaceApiClient({ token })
       const result = await workspaceApi.composeMediaPack(String(workspace.id), {
         includeDeck: false,
+        layoutPreference,
+        imageGenerationTarget,
       })
       const sermon = (result as any)?.sermon || result
       const resolved = String(sermon?.id || sermon?.sermonId || '')
@@ -201,14 +197,10 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
         exportTypes: deckIntent === 'sermon_presentation' ? ['pptx', 'pdf'] : [],
         themeId: selectedTheme && selectedTheme.trim() !== '' ? selectedTheme : undefined,
         backgroundProvider,
-        backgroundPreset: backgroundProvider === 'local'
-          ? resolveDeckBackgroundPreset(
-              visualStyle,
-              deckIntent,
-              backgroundPreset,
-            )
-          : undefined,
+        backgroundPreset: resolveDeckBackgroundPreset(visualStyle, deckIntent, backgroundPreset),
         visualStyle,
+        layoutPreference,
+        imageGenerationTarget,
       })
       const sermon = (result as any)?.sermon || result
       const deck = (result as any)?.deck || (result as any)?.deckResult || null
@@ -288,63 +280,139 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
   }
 
   return (
-    <div className="border border-white/10 rounded-xl p-6 bg-black/20 space-y-4">
-      <div className="flex items-center gap-3 mb-4">
+    <div className="border border-white/10 rounded-xl p-6 bg-black/20 space-y-5">
+      <div className="flex items-center gap-3">
         <FileText className="w-6 h-6 text-purple-300" />
-        <h3 className="text-lg font-semibold">Sermon Slides</h3>
+        <div>
+          <h3 className="text-lg font-semibold">Sermon Slides</h3>
+          <p className="text-xs text-gray-400">Deck composer, image tools, and editor live in one place.</p>
+        </div>
       </div>
+
       <div className="rounded-xl border border-purple-400/30 bg-purple-500/10 px-4 py-3 text-sm text-purple-100">
         <p className="font-medium">Generate Sermon Presentation Deck</p>
         <p className="text-xs text-purple-100/80 mt-1">
           Best for worship services and Bible study presentations. Expected: 8-14 slides.
         </p>
       </div>
-      <div className="grid gap-2 md:grid-cols-2">
-        <label className="text-xs uppercase tracking-widest text-gray-400">
-          Deck mode
-          <select
-            className="mt-2 w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-            value={deckIntent}
-            onChange={(e) => setDeckIntent(e.target.value as DeckIntent)}
-          >
-            <option value="sermon_presentation">Sermon Presentation Deck</option>
-            <option value="teaching_study">Teaching Study Deck</option>
-            <option value="youth_message">Youth Message Deck</option>
-            <option value="evangelistic_appeal">Evangelistic Appeal Deck</option>
-            <option value="social_summary">Social Promo / Summary Deck</option>
-          </select>
-        </label>
-        <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-gray-300">
-          <p className="uppercase tracking-[0.25em] text-gray-400">Mode note</p>
-          <p className="mt-1">
-            {deckIntent === 'sermon_presentation'
-              ? 'Use this for a full sermon deck with points, support, application, appeal, and closing.'
-              : 'This is a shorter promo-style deck. It is not a full sermon presentation.'}
-          </p>
-        </div>
-      </div>
 
-      <div>
-        <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
-          Visual Style
-        </label>
-        <select
-          value={visualStyle}
-          onChange={(e) => setVisualStyle(e.target.value as VisualStyleKey)}
-          className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-        >
-          <option value="auto">Auto</option>
-          <option value="reverent_worship">Reverent Worship</option>
-          <option value="warm_pastoral">Warm Pastoral</option>
-          <option value="evangelistic_invitation">Evangelistic Invitation</option>
-          <option value="hopeful_prophecy">Hopeful Prophecy</option>
-          <option value="bible_study_clean">Bible Study Clean</option>
-          <option value="youth_modern">Youth Modern</option>
-          <option value="spanish_church_warm">Spanish Church Warm</option>
-        </select>
-        <p className="mt-2 text-xs text-gray-400">
-          Auto picks a style from the sermon. Select one to override the visual tone.
-        </p>
+      <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div>
+            <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">Deck mode</label>
+            <select
+              className="w-full min-w-0 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+              value={deckIntent}
+              onChange={(e) => setDeckIntent(e.target.value as DeckIntent)}
+            >
+              <option value="sermon_presentation">Sermon Presentation Deck</option>
+              <option value="teaching_study">Teaching Study Deck</option>
+              <option value="youth_message">Youth Message Deck</option>
+              <option value="evangelistic_appeal">Evangelistic Appeal Deck</option>
+              <option value="social_summary">Social Promo / Summary Deck</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">Layout style</label>
+            <select
+              className="w-full min-w-0 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+              value={layoutPreference}
+              onChange={(e) => setLayoutPreference(e.target.value as LayoutPreference)}
+            >
+              <option value="balanced">Balanced</option>
+              <option value="text_forward">Text Forward</option>
+              <option value="image_rich">Image Rich</option>
+              <option value="scripture_forward">Scripture Forward</option>
+              <option value="minimal">Minimal</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">Visual style</label>
+            <select
+              value={visualStyle}
+              onChange={(e) => setVisualStyle(e.target.value as VisualStyleKey)}
+              className="w-full min-w-0 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+            >
+              <option value="auto">Auto</option>
+              <option value="reverent_worship">Reverent Worship</option>
+              <option value="warm_pastoral">Warm Pastoral</option>
+              <option value="evangelistic_invitation">Evangelistic Invitation</option>
+              <option value="hopeful_prophecy">Hopeful Prophecy</option>
+              <option value="bible_study_clean">Bible Study Clean</option>
+              <option value="youth_modern">Youth Modern</option>
+              <option value="spanish_church_warm">Spanish Church Warm</option>
+            </select>
+          </div>
+
+          {themes.length > 0 && (
+            <div>
+              <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+                Slide theme
+              </label>
+              <select
+                value={selectedTheme}
+                onChange={(e) => setSelectedTheme(e.target.value)}
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+              >
+                {themes.map((theme) => (
+                  <option key={theme.id} value={theme.id}>
+                    {theme.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4 xl:col-span-2">
+            <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+              Background image
+            </label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <select
+                value={backgroundProvider}
+                onChange={(e) => setBackgroundProvider(e.target.value as 'local' | 'openai' | 'falai')}
+                className="w-full min-w-0 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+              >
+                <option value="local">Local Canvas</option>
+                <option value="openai">OpenAI (DALL-E 3)</option>
+                <option value="falai">fal.ai (Flux Schnell)</option>
+              </select>
+              <select
+                value={backgroundPreset}
+                onChange={(e) => setBackgroundPreset(e.target.value as LocalBackgroundPreset)}
+                className="w-full min-w-0 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+              >
+                <option value="worship">Worship Light</option>
+                <option value="biblical">Biblical Horizon</option>
+                <option value="cyberpunk">Cyberpunk Neon</option>
+                <option value="modern">Modern Geometric</option>
+                <option value="aurora">Aurora Glow</option>
+                <option value="nature">Nature Warmth</option>
+                <option value="minimal">Minimal Studio</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+            <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">Image target</label>
+            <select
+              className="w-full min-w-0 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+              value={imageGenerationTarget}
+              onChange={(e) => setImageGenerationTarget(e.target.value as ImageGenerationTarget)}
+            >
+              <option value="background">Background images</option>
+              <option value="content">Content images</option>
+              <option value="both">Background + content</option>
+            </select>
+          </div>
+        </div>
+        <div className="mt-3 text-xs text-gray-400">
+          Layout style controls the generated deck mix. Image target controls which image jobs are generated. Use Image Rich when you want generated images placed directly into slides.
+        </div>
       </div>
 
       {/* Sync Status */}
@@ -384,63 +452,14 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
         </div>
       )}
 
-      {/* Theme Selection */}
-      {themes.length > 0 && (
-        <div>
-          <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
-            Slide Theme
-          </label>
-          <select
-            value={selectedTheme}
-            onChange={(e) => setSelectedTheme(e.target.value)}
-            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-          >
-            {themes.map((theme) => (
-              <option key={theme.id} value={theme.id}>
-                {theme.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      <div>
-        <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
-          Background Image
-        </label>
-        <select
-          value={backgroundProvider}
-          onChange={(e) => setBackgroundProvider(e.target.value as 'local' | 'openai')}
-          className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm mb-2"
-        >
-          <option value="local">Local Generated</option>
-          <option value="openai">OpenAI Generated</option>
-        </select>
-        {backgroundProvider === 'local' && (
-          <select
-            value={backgroundPreset}
-            onChange={(e) => setBackgroundPreset(e.target.value as LocalBackgroundPreset)}
-            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-          >
-            <option value="worship">Worship Light</option>
-            <option value="biblical">Biblical Horizon</option>
-            <option value="cyberpunk">Cyberpunk Neon</option>
-            <option value="modern">Modern Geometric</option>
-            <option value="aurora">Aurora Glow</option>
-            <option value="nature">Nature Warmth</option>
-            <option value="minimal">Minimal Studio</option>
-          </select>
-        )}
-      </div>
-
       {/* Outline Preview */}
       {workspace.outlines?.[0] && (
-        <div className="border border-white/10 rounded-lg p-3 bg-black/20">
+        <div className="border border-white/10 rounded-xl p-4 bg-black/20 space-y-3">
           <p className="text-xs uppercase tracking-widest text-gray-400 mb-2">
             Outline to Convert
           </p>
           <p className="text-sm font-medium mb-2">{workspace.outlines[0].title}</p>
-          <div className="text-xs text-gray-300 space-y-2">
+          <div className="text-xs text-gray-300 space-y-2 max-h-56 overflow-auto pr-1">
             {(() => {
               const previewPoints =
                 Array.isArray(workspace.outlines[0].structure?.pointNodes) && workspace.outlines[0].structure.pointNodes.length
@@ -475,9 +494,9 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
                   : (workspace.outlines[0].structure?.points || [])
               if (previewPoints.length <= 3) return null
               return (
-              <div className="text-gray-500 ml-4">
-                ... and {previewPoints.length - 3} more
-              </div>
+                <div className="text-gray-500 ml-4">
+                  ... and {previewPoints.length - 3} more
+                </div>
               )
             })()}
           </div>
@@ -508,11 +527,11 @@ export default function SlideGenerationPanel({ workspace, token, onGenerated }: 
       )}
 
       {/* Action Buttons */}
-      <div className="space-y-2">
+      <div className="flex flex-wrap gap-3">
         <button
           onClick={handleGenerateDeck}
           disabled={generating || syncing}
-          className="w-full cyber-button text-sm px-4 py-3 rounded-xl disabled:opacity-60 flex items-center justify-center gap-2"
+          className="cyber-button text-sm px-4 py-3 rounded-xl disabled:opacity-60 flex items-center justify-center gap-2 min-w-[220px] flex-1"
         >
           {generating ? (
             <>

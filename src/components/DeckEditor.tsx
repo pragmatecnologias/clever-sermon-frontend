@@ -48,6 +48,9 @@ interface Slide {
   contentImageProvider?: string
   contentImageStatus?: string
   contentImageUrl?: string
+  imageIntent?: Record<string, any>
+  imageSubject?: string
+  imageMood?: string
   templateId?: string
 }
 
@@ -261,6 +264,51 @@ const slideLayouts: SlideLayout[] = [
       { field: 'subtitle', x: 12, y: 42, w: 76, h: 18, variant: 'subtitle' },
     ],
   },
+  // Image-aware layouts
+  {
+    layoutKey: 'point_image_hero',
+    boxes: [
+      { field: 'title', x: 8, y: 48, w: 84, h: 18, variant: 'title' },
+      { field: 'body', x: 10, y: 68, w: 76, h: 14, variant: 'body', multiline: true },
+      { field: 'reference', x: 72, y: 86, w: 20, h: 6, variant: 'reference' },
+    ],
+  },
+  {
+    layoutKey: 'point_image_side',
+    boxes: [
+      { field: 'title', x: 4, y: 14, w: 52, h: 18, variant: 'title' },
+      { field: 'body', x: 4, y: 36, w: 52, h: 18, variant: 'body', multiline: true },
+      { field: 'bullets', x: 4, y: 60, w: 50, h: 28, variant: 'body', multiline: true },
+    ],
+  },
+  {
+    layoutKey: 'big_idea_image_hero',
+    boxes: [
+      { field: 'title', x: 8, y: 50, w: 84, h: 20, variant: 'title' },
+      { field: 'body', x: 12, y: 72, w: 76, h: 12, variant: 'body', multiline: true },
+    ],
+  },
+  {
+    layoutKey: 'reflection_image',
+    boxes: [
+      { field: 'title', x: 10, y: 40, w: 80, h: 20, variant: 'title' },
+      { field: 'body', x: 12, y: 64, w: 76, h: 16, variant: 'body' },
+    ],
+  },
+  {
+    layoutKey: 'appeal_image_hero',
+    boxes: [
+      { field: 'title', x: 10, y: 42, w: 80, h: 20, variant: 'title' },
+      { field: 'body', x: 12, y: 64, w: 76, h: 16, variant: 'body' },
+    ],
+  },
+  {
+    layoutKey: 'application_icon_grid',
+    boxes: [
+      { field: 'title', x: 8, y: 86, w: 84, h: 8, variant: 'title' },
+      { field: 'bullets', x: 6, y: 16, w: 88, h: 64, variant: 'body', multiline: true },
+    ],
+  },
 ]
 
 const getLayoutForTemplate = (layoutKey?: string | null) =>
@@ -270,16 +318,28 @@ const getLayoutFamily = (layoutKey?: string | null): LayoutFamily => {
   const key = String(layoutKey || '')
   if (['cinematic_title', 'title_centered_v1'].includes(key)) return 'title'
   if (['scripture_focus', 'scripture_centered_v1'].includes(key)) return 'scripture'
-  if (['big_idea_center'].includes(key)) return 'big_idea'
-  if (['point_with_support', 'point_statement', 'point_bullets_v1', 'support_verse', 'point_hero', 'split_support'].includes(key)) return 'point'
+  if (['big_idea_center', 'big_idea_image_hero'].includes(key)) return 'big_idea'
+  if (['point_with_support', 'point_statement', 'point_bullets_v1', 'support_verse', 'point_hero', 'split_support', 'point_image_hero', 'point_image_side'].includes(key)) return 'point'
   if (['story_moment'].includes(key)) return 'story'
-  if (['application_steps', 'application_bullets_v1'].includes(key)) return 'application'
-  if (['reflection_question'].includes(key)) return 'reflection'
-  if (['appeal_minimal', 'invitation_centered_v1'].includes(key)) return 'appeal'
+  if (['application_steps', 'application_bullets_v1', 'application_icon_grid'].includes(key)) return 'application'
+  if (['reflection_question', 'reflection_image'].includes(key)) return 'reflection'
+  if (['appeal_minimal', 'invitation_centered_v1', 'appeal_image_hero'].includes(key)) return 'appeal'
   if (['closing_blessing'].includes(key)) return 'closing'
   if (['social_square', 'social_story'].includes(key)) return 'social'
   return 'default'
 }
+
+const CONTENT_IMAGE_LAYOUTS = new Set([
+  'big_idea_image_hero',
+  'point_image_hero',
+  'point_image_side',
+  'story_moment',
+  'application_icon_grid',
+  'reflection_image',
+  'appeal_image_hero',
+])
+
+const layoutSupportsContentImage = (layoutKey?: string | null) => CONTENT_IMAGE_LAYOUTS.has(String(layoutKey || ''))
 
 const getVisualStylePalette = (style: DeckVisualStyle, theme?: any) => {
   const themePrimary = String(theme?.primaryColor || '#60A5FA')
@@ -486,13 +546,14 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
   const [lineSpacing, setLineSpacing] = useState(1.28)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [presentationMode, setPresentationMode] = useState(true)
+  const [presentationMode, setPresentationMode] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [columns, setColumns] = useState<1 | 2 | 3>(1)
   const [imagePreviews, setImagePreviews] = useState<Record<string, string>>({})
   const [globalImageProvider, setGlobalImageProvider] = useState<'local' | 'openai' | 'falai'>('local')
   const [globalImagePreset, setGlobalImagePreset] = useState<LocalBackgroundPreset>('worship')
   const [generatingAllBackgrounds, setGeneratingAllBackgrounds] = useState(false)
+  const [promptPreviewSlideId, setPromptPreviewSlideId] = useState<string | null>(null)
   const previewScale = columns === 1 ? 1 : columns === 2 ? 0.62 : 0.48
 
   const fontOptions = useMemo(
@@ -783,8 +844,55 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
       const response = await slidesApi.getSlides(deckId, token)
       const sortedSlides = response.sort((a: Slide, b: Slide) => a.orderIndex - b.orderIndex)
       setSlides(sortedSlides)
+      return sortedSlides
     } catch (err) {
       console.error('Failed to load slides', err)
+      return [] as Slide[]
+    }
+  }
+
+  const waitForImageTargets = async (slideIds: string[], target: 'background' | 'content' | 'both', timeoutMs = 90000) => {
+    const startedAt = Date.now()
+    const targetSet = new Set(slideIds.filter(Boolean))
+    if (!targetSet.size) return
+
+    while (Date.now() - startedAt < timeoutMs) {
+      const latest = await slidesApi.getSlides(deckId, token)
+      const sorted = latest.sort((a: Slide, b: Slide) => a.orderIndex - b.orderIndex)
+      setSlides(sorted)
+      const pending = sorted.filter((slide: Slide) => targetSet.has(slide.id)).some((slide: Slide) => {
+        const bgPending = target === 'content' ? false : String(slide.imageStatus || '').toLowerCase() === 'pending' && !slide.imageUrl
+        const contentPending = target === 'background' ? false : String(slide.contentImageStatus || '').toLowerCase() === 'pending' && !slide.contentImageUrl
+        return bgPending || contentPending
+      })
+      if (!pending) return
+      await new Promise((resolve) => setTimeout(resolve, 2500))
+    }
+
+    await loadSlides()
+  }
+
+  const changeLayout = async (slideId: string, newLayoutKey: string) => {
+    const slide = slides.find((item) => item.id === slideId)
+    if (!slide || slide.layoutKey === newLayoutKey) return
+    try {
+      await slidesApi.updateSlide(slideId, { layoutKey: newLayoutKey }, token)
+      setSlides((prev) => prev.map((s) => (s.id === slideId ? { ...s, layoutKey: newLayoutKey } : s)))
+      // Rebuild content drafts for new layout fields
+      const newLayout = getLayoutForTemplate(newLayoutKey)
+      const newFields = newLayout?.boxes?.map((box) => box.field) || Object.keys(slide.content || {})
+      setContentDrafts((prev) => {
+        const current = { ...(prev[slideId] || {}) }
+        newFields.forEach((fk) => {
+          if (!(fk in current)) {
+            const val = slide.content?.[fk]
+            current[fk] = Array.isArray(val) ? val.map((l: string) => `• ${String(l).trim()}`).join('\n\n') : String(val ?? '')
+          }
+        })
+        return { ...prev, [slideId]: current }
+      })
+    } catch (err: any) {
+      setError(err?.message || 'Failed to change layout')
     }
   }
 
@@ -835,7 +943,7 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
   const handleGenerateAllBackgrounds = async () => {
     if (!slides.length) return
     const provider = globalImageProvider
-    const preset = provider === 'local' ? globalImagePreset : undefined
+    const preset = globalImagePreset
 
     setGeneratingAllBackgrounds(true)
     setError('')
@@ -846,11 +954,55 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
           slidesApi.generateSlideImage(slide.id, provider, token, slide.imagePrompt, preset, 'background')
         )
       )
-      await loadSlides()
+      await waitForImageTargets(slides.map((slide) => slide.id), 'background')
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to generate background image')
     } finally {
       setGeneratingAllBackgrounds(false)
+    }
+  }
+
+  const handleGenerateAllContentImages = async () => {
+    const targetSlides = slides.filter((slide) => layoutSupportsContentImage(slide.layoutKey))
+    if (!targetSlides.length) return
+
+    const provider = globalImageProvider
+    const preset = globalImagePreset
+
+    setGeneratingAllBackgrounds(true)
+    setError('')
+    try {
+      await Promise.all(
+        targetSlides.map((slide) =>
+          slidesApi.generateSlideImage(
+            slide.id,
+            provider,
+            token,
+            slide.contentImagePrompt || slide.imagePrompt,
+            preset,
+            'content',
+          ),
+        ),
+      )
+      await waitForImageTargets(targetSlides.map((slide) => slide.id), 'content')
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to generate content images')
+    } finally {
+      setGeneratingAllBackgrounds(false)
+    }
+  }
+
+  const handleGenerateSlideImage = async (
+    slideId: string,
+    target: 'background' | 'content',
+    prompt?: string,
+  ) => {
+    try {
+      setError('')
+      await slidesApi.generateSlideImage(slideId, globalImageProvider, token, prompt, globalImagePreset, target)
+      await waitForImageTargets([slideId], target)
+    } catch (err: any) {
+      setError(err.response?.data?.message || `Failed to generate ${target} image`)
     }
   }
 
@@ -931,39 +1083,6 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
             </button>
           )}
         </div>
-      </div>
-
-      <div className="border border-white/10 rounded-xl p-4 bg-black/20 space-y-3">
-        <p className="text-sm font-medium">Background Image (All Slides)</p>
-        <select
-          className="w-full px-3 py-2 border border-white/10 rounded-lg bg-black/40 text-sm text-gray-100"
-          value={globalImageProvider}
-          onChange={(e) => setGlobalImageProvider(e.target.value as 'local' | 'openai' | 'falai')}
-        >
-          <option value="local">Local Generated</option>
-          <option value="openai">OpenAI (DALL-E 3)</option>
-          <option value="falai">fal.ai (Flux Schnell)</option>
-        </select>
-        {globalImageProvider === 'local' && (
-          <select
-            className="w-full px-3 py-2 border border-white/10 rounded-lg bg-black/40 text-sm text-gray-100"
-            value={globalImagePreset}
-            onChange={(e) => setGlobalImagePreset(e.target.value as LocalBackgroundPreset)}
-          >
-            {LOCAL_BACKGROUND_PRESET_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        )}
-        <button
-          onClick={handleGenerateAllBackgrounds}
-          disabled={generatingAllBackgrounds}
-          className="w-full cyber-outline px-4 py-2 rounded-lg text-sm disabled:opacity-60"
-        >
-          {generatingAllBackgrounds ? 'Generating Backgrounds...' : 'Generate Backgrounds for All Slides'}
-        </button>
       </div>
 
       {/* Text Formatting Toolbar */}
@@ -1081,6 +1200,7 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
                     content: (slide.content || {}) as any,
                     speakerNotes: slide.speakerNotes,
                     imageUrl: resolvedSlideImageUrl,
+                    contentImageUrl: resolveSlidesAssetUrl(slide.contentImageUrl),
                   }}
                   visualStyle={deckVisualStyle}
                 />
@@ -1099,6 +1219,7 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
           const layoutFamily = getLayoutFamily(slide.layoutKey)
           const fieldKeys = layout?.boxes?.map((box) => box.field) || Object.keys(slide.content || {})
           const resolvedSlideImageUrl = imagePreviews[slide.id] || resolveSlidesAssetUrl(slide.imageUrl)
+          const resolvedContentImageUrl = resolveSlidesAssetUrl(slide.contentImageUrl)
 
           return (
             <div
@@ -1106,8 +1227,66 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
               className="border border-white/10 rounded-2xl p-4 bg-black/30 hover:bg-black/40"
             >
               <div className="mb-2">
-                <p className="text-sm font-medium">Slide {idx + 1}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">Slide {idx + 1}</p>
+                  <select
+                    className="text-[10px] bg-black/40 border border-white/10 rounded px-2 py-1 text-gray-300 max-w-[140px]"
+                    value={slide.layoutKey}
+                    onChange={(e) => changeLayout(slide.id, e.target.value)}
+                  >
+                    <optgroup label="Title">
+                      <option value="cinematic_title">Cinematic Title</option>
+                      <option value="title_centered_v1">Title Centered</option>
+                      <option value="title_content_v1">Title + Content</option>
+                    </optgroup>
+                    <optgroup label="Scripture">
+                      <option value="scripture_focus">Scripture Focus</option>
+                      <option value="scripture_centered_v1">Scripture Centered</option>
+                    </optgroup>
+                    <optgroup label="Big Idea">
+                      <option value="big_idea_center">Big Idea Center</option>
+                      <option value="big_idea_image_hero">Big Idea — Image Hero</option>
+                    </optgroup>
+                    <optgroup label="Point">
+                      <option value="point_hero">Point Hero</option>
+                      <option value="point_image_hero">Point — Image Hero</option>
+                      <option value="point_image_side">Point — Image Side Panel</option>
+                      <option value="point_with_support">Point + Support</option>
+                      <option value="point_statement">Point Statement</option>
+                      <option value="split_support">Split Support</option>
+                      <option value="support_verse">Support Verse</option>
+                    </optgroup>
+                    <optgroup label="Story">
+                      <option value="story_moment">Story Moment (Side Image)</option>
+                    </optgroup>
+                    <optgroup label="Application">
+                      <option value="application_steps">Application Steps</option>
+                      <option value="application_icon_grid">Application — Icon Grid</option>
+                      <option value="application_bullets_v1">Application Bullets</option>
+                    </optgroup>
+                    <optgroup label="Reflection">
+                      <option value="reflection_question">Reflection Question</option>
+                      <option value="reflection_image">Reflection — Image</option>
+                    </optgroup>
+                    <optgroup label="Appeal">
+                      <option value="appeal_minimal">Appeal Minimal</option>
+                      <option value="appeal_image_hero">Appeal — Image Hero</option>
+                      <option value="invitation_centered_v1">Invitation Centered</option>
+                    </optgroup>
+                    <optgroup label="Closing">
+                      <option value="closing_blessing">Closing Blessing</option>
+                    </optgroup>
+                  </select>
+                </div>
                 <p className="text-xs text-gray-500">{slide.type}</p>
+                <p className="text-[10px] text-cyan-300/80 mt-1">
+                  Layout: {slide.layoutKey.replace(/_/g, ' ')}
+                </p>
+                {slide.imageIntent && (
+                  <p className="text-[10px] text-gray-600 mt-0.5">
+                    {(slide.imageIntent as any).role?.replace(/_/g, ' ') || ''} · {(slide.imageIntent as any).priority || ''}
+                  </p>
+                )}
               </div>
               {/* Mini preview in edit mode */}
               <SlidePresentationCanvas
@@ -1118,9 +1297,60 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
                   content: (slide.content || {}) as any,
                   speakerNotes: slide.speakerNotes,
                   imageUrl: resolvedSlideImageUrl,
+                  contentImageUrl: resolvedContentImageUrl,
                 }}
                 visualStyle={deckVisualStyle}
               />
+              {/* Image status */}
+              <div className="flex items-center gap-2 mt-2 text-[10px]">
+                <span className={
+                  slide.imageStatus === 'ready' ? 'text-emerald-400' :
+                  slide.imageStatus === 'failed' ? 'text-red-400' :
+                  slide.imageStatus === 'pending' ? 'text-amber-400' :
+                  slide.imageUrl ? 'text-gray-400' : 'text-gray-600'
+                }>
+                  {slide.imageStatus === 'ready' ? 'BG ready' :
+                   slide.imageStatus === 'failed' ? 'BG failed' :
+                   slide.imageStatus === 'pending' ? 'BG generating...' :
+                   slide.imageUrl ? 'BG cached' : 'No BG'}
+                </span>
+                <span className="text-gray-600">|</span>
+                <span className={
+                  slide.contentImageStatus === 'ready' ? 'text-emerald-400' :
+                  slide.contentImageStatus === 'failed' ? 'text-red-400' :
+                  slide.contentImageStatus === 'pending' ? 'text-amber-400' :
+                  slide.contentImageUrl ? 'text-gray-400' : 'text-gray-600'
+                }>
+                  {slide.contentImageStatus === 'ready' ? 'Content ready' :
+                   slide.contentImageStatus === 'failed' ? 'Content failed' :
+                   slide.contentImageStatus === 'pending' ? 'Content generating...' :
+                   slide.contentImageUrl ? 'Content cached' : 'No content'}
+                </span>
+                {slide.imagePrompt && (
+                  <button
+                    onClick={() => setPromptPreviewSlideId(slide.id === promptPreviewSlideId ? null : slide.id)}
+                    className="text-gray-500 hover:text-gray-300 ml-auto"
+                  >
+                    {slide.id === promptPreviewSlideId ? 'Hide prompt' : 'Prompt'}
+                  </button>
+                )}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  onClick={() => handleGenerateSlideImage(slide.id, 'background', slide.imagePrompt)}
+                  className="cyber-outline px-2 py-1 rounded-lg text-[10px]"
+                >
+                  Generate BG
+                </button>
+                {layoutSupportsContentImage(slide.layoutKey) ? (
+                  <button
+                    onClick={() => handleGenerateSlideImage(slide.id, 'content', slide.contentImagePrompt || slide.imagePrompt)}
+                    className="cyber-outline px-2 py-1 rounded-lg text-[10px]"
+                  >
+                    Generate Content
+                  </button>
+                ) : null}
+              </div>
               {/* Quick edit fields */}
               <div className="mt-3 space-y-2">
                 {fieldKeys.filter(f => {
@@ -1160,6 +1390,29 @@ export default function DeckEditor({ deckId, token, onClose, onExport }: DeckEdi
         })}
       </div>
       )}
+      {/* Prompt preview modal */}
+      {promptPreviewSlideId && (() => {
+        const previewSlide = slides.find(s => s.id === promptPreviewSlideId)
+        return (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setPromptPreviewSlideId(null)}>
+            <div className="bg-gray-900 border border-white/10 rounded-xl p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold">Image Prompt — Slide {slides.findIndex(s => s.id === promptPreviewSlideId) + 1}</h3>
+                <button onClick={() => setPromptPreviewSlideId(null)} className="text-gray-400 hover:text-gray-200 text-lg">&times;</button>
+              </div>
+              <p className="text-xs text-gray-300 whitespace-pre-wrap mb-2">{previewSlide?.imagePrompt || 'No prompt'}</p>
+              {previewSlide?.imageIntent && (
+                <div className="mt-2 text-[10px] text-gray-500 space-y-1">
+                  <div>Role: {String((previewSlide.imageIntent as any)?.role || '—')}</div>
+                  <div>Priority: {String((previewSlide.imageIntent as any)?.priority || '—')}</div>
+                  <div>Subject: {String((previewSlide.imageIntent as any)?.subject || '—')}</div>
+                </div>
+              )}
+              <button onClick={() => setPromptPreviewSlideId(null)} className="mt-4 cyber-outline px-4 py-2 rounded-lg text-xs">Close</button>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

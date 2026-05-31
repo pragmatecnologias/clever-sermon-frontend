@@ -9,6 +9,7 @@ import {
   getDeckIdentity,
   selectPreferredDeck,
 } from '@/lib/deck-identity'
+import { getPreferredStudyReport } from '@/components/workspace-study-report.helpers'
 import { resolveDeckBackgroundPreset } from '../../../../shared/deck-composition.contract'
 
 type WorkspaceExportPanelProps = {
@@ -59,7 +60,7 @@ const getExportReadiness = (workspace: any) => {
   const mediaPack = workspace?.metadata?.mediaPack || workspace?.metadata?.deliverables?.mediaPack || null
   const selectedOutline = getSelectedOutline(workspace)
   const selectedManuscript = getSelectedManuscript(workspace)
-  const studyReport = ((workspace as any)?.workspace?.studyReports?.[0] ?? (workspace?.studyReports?.[0] || null))
+  const studyReport = getPreferredStudyReport(workspace)
   const activeSermonDeckId =
     mediaPack?.activeSermonDeckId ||
     mediaPack?.latestDeckByIntent?.sermon_presentation ||
@@ -115,7 +116,7 @@ const buildExportArtifacts = (workspace: any, readiness: ReturnType<typeof getEx
 ]
 
 const buildStudyReportMarkdown = (workspace: any) => {
-  const report = ((workspace as any)?.workspace?.studyReports?.[0]?.sections ?? (workspace?.studyReports?.[0]?.sections || {}))
+  const report = getPreferredStudyReport(workspace)?.sections || {}
   const lines = [
     `# ${asText(workspace?.title || 'Study Report')}`,
     `Main Passage: ${asText(workspace?.mainPassage)}`,

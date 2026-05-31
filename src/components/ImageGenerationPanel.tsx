@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Image as ImageIcon, Sparkles, Loader2 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
 import { buildFallbackImagePrompt, composeImagePrompt, type ImagePromptFields } from '@/lib/media-prompts'
@@ -31,10 +31,13 @@ export default function ImageGenerationPanel({
   onGenerated 
 }: ImageGenerationPanelProps) {
   const [prompt, setPrompt] = useState('')
-  const [provider, setProvider] = useState<'openai' | 'local'>('openai')
+  const [provider, setProvider] = useState<'openai' | 'local' | 'falai'>('falai')
   const [preset, setPreset] = useState('worship')
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [latestImage, setLatestImage] = useState<{ id: string; filePath?: string; createdAt?: string; status?: string; prompt?: string; provider?: string } | null>(null)
+  const [loadingLatestImage, setLoadingLatestImage] = useState(false)
+  const [latestImagePreviewUrl, setLatestImagePreviewUrl] = useState<string>('')
   const [fields, setFields] = useState<ImagePromptFields>(
     autoPromptFields || {
       subject: '',
@@ -70,6 +73,66 @@ export default function ImageGenerationPanel({
       setFields(autoPromptFields)
     }
   }, [autoPromptFields])
+
+  useEffect(() => {
+    let mounted = true
+    let objectUrl: string | null = null
+
+    const loadPreview = async () => {
+      if (!latestImage?.id) {
+        setLatestImagePreviewUrl('')
+        return
+      }
+      try {
+        const blob = await slidesApi.getImageBlob(latestImage.id, token)
+        if (!mounted) return
+        objectUrl = URL.createObjectURL(blob)
+        setLatestImagePreviewUrl(objectUrl)
+      } catch (err) {
+        if (!mounted) return
+        console.warn('Failed to load latest image preview:', err)
+        setLatestImagePreviewUrl('')
+      }
+    }
+
+    void loadPreview()
+
+    return () => {
+      mounted = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [latestImage?.id, token])
+
+  const loadLatestImage = useCallback(async () => {
+    if (!workspaceId || !token) return
+    setLoadingLatestImage(true)
+    try {
+      const images = await slidesApi.listImages(workspaceId, token)
+      const list = Array.isArray(images) ? images : []
+      const latest = list
+        .slice()
+        .sort((a: any, b: any) => new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime())
+        .find((item: any) => item?.filePath)
+      if (latest) {
+        setLatestImage({
+          id: String(latest.id || ''),
+          filePath: latest.filePath,
+          createdAt: latest.createdAt,
+          status: latest.status,
+          prompt: latest.prompt,
+          provider: latest.provider,
+        })
+      }
+    } catch (err) {
+      console.warn('Failed to load latest image preview:', err)
+    } finally {
+      setLoadingLatestImage(false)
+    }
+  }, [workspaceId, token])
+
+  useEffect(() => {
+    void loadLatestImage()
+  }, [loadLatestImage])
 
   const presets = [
     { value: 'worship', label: 'Worship' },
@@ -128,6 +191,7 @@ export default function ImageGenerationPanel({
       )
 
       setPrompt('')
+      await loadLatestImage()
       onGenerated?.()
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to generate image')
@@ -148,28 +212,15 @@ export default function ImageGenerationPanel({
         <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
           AI Provider
         </label>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setProvider('openai')}
-            className={`flex-1 px-4 py-2 rounded-lg text-sm transition-all ${
-              provider === 'openai'
-                ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/40'
-                : 'bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10'
-            }`}
-          >
-            OpenAI DALL-E 3
-          </button>
-          <button
-            onClick={() => setProvider('local')}
-            className={`flex-1 px-4 py-2 rounded-lg text-sm transition-all ${
-              provider === 'local'
-                ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/40'
-                : 'bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10'
-            }`}
-          >
-            Stable Diffusion
-          </button>
-        </div>
+        <select
+          value={provider}
+          onChange={(e) => setProvider(e.target.value as 'openai' | 'local' | 'falai')}
+          className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+        >
+          <option value="falai">fal.ai (Flux Schnell)</option>
+          <option value="openai">OpenAI DALL-E 3</option>
+          <option value="local">Stable Diffusion</option>
+        </select>
       </div>
 
       {/* Style Preset */}
@@ -307,6 +358,36 @@ export default function ImageGenerationPanel({
           ~$0.04-0.08 per image with DALL-E 3
         </p>
       )}
+      {provider === 'falai' && (
+        <p className="text-xs text-gray-500 text-center">
+          High-speed image generation via fal.ai
+        </p>
+      )}
+
+      <div className="rounded-xl border border-white/10 bg-black/20 p-3 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-widest text-gray-400">Last generated image</p>
+            <p className="text-xs text-gray-500">
+              {latestImage?.createdAt ? new Date(latestImage.createdAt).toLocaleString() : 'No image generated yet'}
+            </p>
+          </div>
+          {loadingLatestImage ? <Loader2 className="w-4 h-4 animate-spin text-cyan-300" /> : null}
+        </div>
+        {latestImagePreviewUrl ? (
+          <a href={latestImagePreviewUrl} target="_blank" rel="noreferrer" className="block">
+            <img
+              src={latestImagePreviewUrl}
+              alt="Latest generated image"
+              className="w-full rounded-lg border border-white/10 bg-black/30 object-cover"
+            />
+          </a>
+        ) : (
+          <div className="rounded-lg border border-dashed border-white/10 bg-black/20 px-4 py-6 text-center text-sm text-gray-400">
+            Your newest image will appear here after generation.
+          </div>
+        )}
+      </div>
     </div>
   )
 }

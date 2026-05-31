@@ -359,6 +359,26 @@ export function useWorkspaceGenerationActions({
               : prev,
           )
         }
+      } else if (type === 'media') {
+        generatedResponse = await client.generateMediaSuggestions(
+          workspaceId,
+          { promptOverride: override } as Record<string, unknown>,
+          false,
+        )
+        const generatedStudyReport = unwrapJobPayload(generatedResponse) as { id?: string; sections?: Record<string, unknown> } | null
+        if (generatedStudyReport) {
+          setWorkspace((prev: any) =>
+            prev
+              ? ({
+                  ...prev,
+                  studyReports: [
+                    generatedStudyReport,
+                    ...(prev.studyReports || []).filter((item: any) => item.id !== generatedStudyReport.id),
+                  ],
+                } as WorkspacePageData)
+              : prev,
+          )
+        }
       } else if (type === 'integrity-check') {
         generatedResponse = await client.runIntegrityCheck(workspaceId, true)
         if (generatedResponse?.data?.jobId) {

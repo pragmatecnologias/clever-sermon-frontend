@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Sparkles, FileText, Image as ImageIcon, Mic, Music, Video, Share2, Loader2, Calendar, Clock3 } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
 import { createWorkspaceApiClient } from '@/lib/api/openapi-client'
+import { getPreferredStudyReport } from '@/components/workspace-study-report.helpers'
 import {
   buildStructuredMediaPrompts,
   buildSocialCaption,
@@ -32,8 +33,17 @@ type OptimisticMediaItem = {
   createdAt: string
 }
 type SocialPackMode = 'auto_multi_network' | 'core4'
-type SocialBackgroundProvider = 'local' | 'openai'
+type SocialBackgroundProvider = 'local' | 'openai' | 'falai'
 type SocialBackgroundPreset = 'cyberpunk' | 'modern' | 'aurora' | 'minimal'
+type SocialVisualStyle =
+  | 'auto'
+  | 'reverent_worship'
+  | 'warm_pastoral'
+  | 'evangelistic_invitation'
+  | 'hopeful_prophecy'
+  | 'bible_study_clean'
+  | 'youth_modern'
+  | 'spanish_church_warm'
 type SocialPromptType = 'visual_prompt' | 'caption_copy' | 'quote_candidate'
 type SocialPromptOption = {
   id: string
@@ -69,12 +79,51 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
   const [socialCaption, setSocialCaption] = useState('')
   const [socialMode, setSocialMode] = useState<SocialPackMode>('auto_multi_network')
   const [socialGenerating, setSocialGenerating] = useState(false)
-  const [socialBackgroundProvider, setSocialBackgroundProvider] = useState<SocialBackgroundProvider>('local')
-  const [socialBackgroundPreset, setSocialBackgroundPreset] = useState<SocialBackgroundPreset>('modern')
+  const [campaignMode, setCampaignMode] = useState<'invitation' | 'devotional'>('devotional')
+  const deriveSocialVisualStyle = (styleInput: string): SocialVisualStyle => {
+    const style = String(styleInput || '').toLowerCase()
+    switch (style) {
+      case 'youth_modern':
+        return 'youth_modern'
+      case 'hopeful_prophecy':
+        return 'hopeful_prophecy'
+      case 'bible_study_clean':
+        return 'bible_study_clean'
+      case 'warm_pastoral':
+      case 'warm_pastoral_light':
+        return 'warm_pastoral'
+      case 'evangelistic_invitation':
+        return 'evangelistic_invitation'
+      case 'spanish_church_warm':
+        return 'spanish_church_warm'
+      case 'reverent_worship':
+        return 'reverent_worship'
+      default:
+        return 'auto'
+    }
+  }
+  const [socialVisualStyle, setSocialVisualStyle] = useState<SocialVisualStyle>(() =>
+    deriveSocialVisualStyle(String(workspace?.style || 'auto')),
+  )
+  const [socialBackgroundProvider, setSocialBackgroundProvider] = useState<SocialBackgroundProvider>('falai')
+  const [socialBackgroundPreset, setSocialBackgroundPreset] = useState<SocialBackgroundPreset>(() => {
+    const style = deriveSocialVisualStyle(String(workspace?.style || 'auto'))
+    switch (style) {
+      case 'youth_modern':
+        return 'cyberpunk'
+      case 'hopeful_prophecy':
+        return 'aurora'
+      case 'bible_study_clean':
+        return 'minimal'
+      case 'warm_pastoral':
+      case 'evangelistic_invitation':
+      case 'spanish_church_warm':
+      case 'reverent_worship':
+      default:
+        return 'modern'
+    }
+  })
   const [churchSettingsLoading, setChurchSettingsLoading] = useState(false)
-  const [showOptionalMedia, setShowOptionalMedia] = useState(false)
-  const [showMusicTools, setShowMusicTools] = useState(false)
-  const [showSocialTools, setShowSocialTools] = useState(false)
   const [churchDefaults, setChurchDefaults] = useState({
     churchName: '',
     addressLine1: '',
@@ -175,6 +224,28 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
     [workspace, planning.serviceType, planning.ministryMode, planning.appealStyle, planning.bilingualMode, planning.sermonDate],
   )
 
+  useEffect(() => {
+    const derived = deriveSocialVisualStyle(String(sermonSummary.style || workspace?.style || 'auto'))
+    setSocialVisualStyle((current) => (current === 'auto' ? derived : current))
+  }, [sermonSummary.style, workspace?.style])
+
+  useEffect(() => {
+    switch (socialVisualStyle) {
+      case 'youth_modern':
+        setSocialBackgroundPreset('cyberpunk')
+        break
+      case 'hopeful_prophecy':
+        setSocialBackgroundPreset('aurora')
+        break
+      case 'bible_study_clean':
+        setSocialBackgroundPreset('minimal')
+        break
+      default:
+        setSocialBackgroundPreset('modern')
+        break
+    }
+  }, [socialVisualStyle])
+
   const socialLanguage = ((workspace?.language || workspace?.metadata?.language || 'en') as string).toLowerCase().startsWith('es')
     ? 'es'
     : 'en'
@@ -255,7 +326,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
   }, [sermonSummary.theme])
 
   const studyMediaPrompts = useMemo(() => {
-    const sections = ((workspace as any)?.workspace?.studyReports?.[0]?.sections ?? (workspace?.studyReports?.[0]?.sections || {}))
+    const sections = getPreferredStudyReport(workspace)?.sections || {}
     const studyAssets = sections?.studyAssets || {}
     const categoryAssets = studyAssets?.categoryAssets || {}
     const movementAssets = Array.isArray(studyAssets?.movementAssets) ? studyAssets.movementAssets : []
@@ -577,7 +648,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
       await slidesApi.generateSocialKit(
         {
           workspaceId: workspace.id,
-          sermonId: workspace.sermonId,
+          sermonId: workspace.sermonId || undefined,
           title: sermonSummary.title,
           passage: sermonSummary.passage,
           quote: socialQuote || autoPrompts.social.quote,
@@ -585,7 +656,9 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
           prompt: resolvedVisualPrompt || autoPrompts.image,
           mode: socialMode,
           useCase: 'social-pack',
+          campaignGoal: campaignMode === 'invitation' ? 'invite_attendance' : 'devotional_series',
           overlay: {
+            visualStyle: socialVisualStyle,
             ...eventOverrides,
             language: workspace.language || workspace.metadata?.language || 'en',
             eventTitle: eventOverrides.eventTitle || socialHeadline,
@@ -604,6 +677,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
             phone: churchDefaults.phone || '',
             imageProvider: socialBackgroundProvider,
             imagePreset: socialBackgroundProvider === 'local' ? socialBackgroundPreset : undefined,
+            campaignGoal: campaignMode === 'invitation' ? 'invite_attendance' : 'devotional_series',
           },
         },
         token,
@@ -853,304 +927,348 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
           />
         </div>
 
-        {/* Optional media extras */}
-        <div className="lg:col-span-2 border border-white/10 rounded-2xl bg-black/15">
-          <button
-            type="button"
-            className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left"
-            onClick={() => setShowOptionalMedia((prev) => !prev)}
-          >
+        {/* Theme song */}
+        <div className="lg:col-span-2">
+          <section className="border border-white/10 rounded-2xl bg-black/15 p-5 space-y-4 h-full">
             <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-gray-400">Optional media extras</p>
-              <h3 className="text-lg font-semibold text-white">Theme song and social pack</h3>
+              <p className="text-xs uppercase tracking-[0.25em] text-gray-400">Theme song</p>
+              <h3 className="text-lg font-semibold text-white">Worship music for the sermon package</h3>
               <p className="text-sm text-gray-300">
-                Helpful extras for church promotion. Safe to skip if you just want the sermon package.
+                Create worship music that belongs to this sermon.
               </p>
             </div>
-            <span className="text-sm text-cyan-200">{showOptionalMedia ? 'Hide' : 'Show'}</span>
-          </button>
-          {showOptionalMedia && (
-            <div className="space-y-4 p-5 pt-0">
-              <div className="grid gap-3 md:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => setShowMusicTools((prev) => !prev)}
-                  className="rounded-xl border border-white/10 bg-black/20 p-4 text-left hover:bg-black/30 transition-colors"
+            <SermonMusicGenerator
+              workspace={workspace}
+              sermonId={workspace.sermonId}
+              token={token}
+              suggestedPrompt={autoPrompts.music}
+              suggestedPromptOptions={studyMediaPrompts.musicOptions}
+              onGenerated={() => setRefreshKey((prev) => prev + 1)}
+            />
+          </section>
+        </div>
+
+        {/* Social pack */}
+        <div className="lg:col-span-2">
+          <section className="border border-white/10 rounded-2xl bg-black/15 p-5 space-y-4 h-full">
+            <div>
+              <p className="text-xs uppercase tracking-[0.25em] text-gray-400">Social pack</p>
+              <h3 className="text-lg font-semibold text-white">Quotes, thumbnails, and post copy</h3>
+              <p className="text-sm text-gray-300">
+                Generate church promotion assets without hiding the controls.
+              </p>
+            </div>
+
+            <div className="border border-cyan-400/40 bg-cyan-500/10 text-cyan-100 text-sm rounded-xl px-4 py-3">
+              <p className="font-medium mb-1">Sermon Promotion Assets</p>
+              <p className="text-xs text-cyan-200/80">
+                Generate quote graphics and thumbnails for social media
+              </p>
+            </div>
+
+            <div className="border border-cyan-400/25 bg-cyan-500/10 rounded-xl p-3">
+              <p className="text-xs uppercase tracking-widest text-cyan-200/80">Church Branding Defaults</p>
+              <p className="text-xs text-cyan-100/90 mt-1">
+                {churchSettingsLoading ? 'Loading defaults...' : 'Managed from Settings → Church Settings'}
+              </p>
+            </div>
+
+            <div className="border border-white/10 rounded-xl p-4 bg-black/20 space-y-3">
+              <label className="text-xs uppercase tracking-widest text-gray-400">
+                Per-Run Event Overrides
+              </label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <input
+                  className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm"
+                  placeholder="Event title"
+                  value={eventOverrides.eventTitle}
+                  onChange={(e) => setEventOverrides((prev) => ({ ...prev, eventTitle: e.target.value }))}
+                />
+                <input
+                  className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm"
+                  placeholder="Event subtitle"
+                  value={eventOverrides.eventSubtitle}
+                  onChange={(e) => setEventOverrides((prev) => ({ ...prev, eventSubtitle: e.target.value }))}
+                />
+                <div className="relative">
+                  <input
+                    id="social-service-date"
+                    type="date"
+                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 pr-10 text-sm"
+                    value={eventOverrides.serviceDate}
+                    onChange={(e) => setEventOverrides((prev) => ({ ...prev, serviceDate: e.target.value }))}
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-cyan-200"
+                    onClick={() => {
+                      const input = document.getElementById('social-service-date') as HTMLInputElement | null
+                      if (!input) return
+                      if (typeof input.showPicker === 'function') input.showPicker()
+                      else input.focus()
+                    }}
+                    aria-label="Open date picker"
+                  >
+                    <Calendar className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    id="social-service-time"
+                    type="time"
+                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 pr-10 text-sm"
+                    value={eventOverrides.serviceTime}
+                    onChange={(e) => setEventOverrides((prev) => ({ ...prev, serviceTime: e.target.value }))}
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-cyan-200"
+                    onClick={() => {
+                      const input = document.getElementById('social-service-time') as HTMLInputElement | null
+                      if (!input) return
+                      if (typeof input.showPicker === 'function') input.showPicker()
+                      else input.focus()
+                    }}
+                    aria-label="Open time picker"
+                  >
+                    <Clock3 className="w-4 h-4" />
+                  </button>
+                </div>
+                <select
+                  className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm"
+                  value={eventOverrides.timezone || 'America/New_York'}
+                  onChange={(e) => setEventOverrides((prev) => ({ ...prev, timezone: e.target.value }))}
                 >
-                  <p className="text-xs uppercase tracking-[0.25em] text-gray-400">Theme song</p>
-                  <h4 className="mt-1 text-base font-semibold text-white">
-                    {showMusicTools ? 'Hide music tools' : 'Open music tools'}
-                  </h4>
-                  <p className="mt-2 text-sm text-gray-300">
-                    Optional worship music for the sermon package.
-                  </p>
+                  {US_TIMEZONES.map((zone) => (
+                    <option key={zone.value} value={zone.value}>
+                      {zone.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <div className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-gray-300">
+                  <span className="block uppercase tracking-widest text-[10px] text-gray-500 mb-1">Generated CTA</span>
+                  {generatedSocialMeta.ctaText}
+                </div>
+                <div className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-gray-300">
+                  <span className="block uppercase tracking-widest text-[10px] text-gray-500 mb-1">Generated Hashtags</span>
+                  {generatedSocialMeta.hashtags}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-300">
+                <label className="flex items-center gap-2"><input type="checkbox" checked={eventOverrides.showLogo} onChange={(e) => setEventOverrides((prev) => ({ ...prev, showLogo: e.target.checked }))} />Show logo</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={eventOverrides.showAddress} onChange={(e) => setEventOverrides((prev) => ({ ...prev, showAddress: e.target.checked }))} />Show address</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={eventOverrides.showWebsite} onChange={(e) => setEventOverrides((prev) => ({ ...prev, showWebsite: e.target.checked }))} />Show website</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={eventOverrides.showPhone} onChange={(e) => setEventOverrides((prev) => ({ ...prev, showPhone: e.target.checked }))} />Show phone</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={eventOverrides.showServiceTime} onChange={(e) => setEventOverrides((prev) => ({ ...prev, showServiceTime: e.target.checked }))} />Show service time</label>
+                <select
+                  value={eventOverrides.preset}
+                  onChange={(e) => setEventOverrides((prev) => ({ ...prev, preset: e.target.value as 'minimal' | 'bold' | 'announcement' }))}
+                  className="bg-black/40 border border-white/10 rounded-lg px-2 py-1"
+                >
+                  <option value="minimal">Minimal</option>
+                  <option value="bold">Bold</option>
+                  <option value="announcement">Announcement</option>
+                </select>
+              </div>
+            </div>
+
+            {campaignMode !== 'invitation' && (
+            <div>
+              <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+                Output Pack
+              </label>
+              <select
+                value={socialMode}
+                onChange={(e) => setSocialMode(e.target.value as SocialPackMode)}
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+              >
+                <option value="auto_multi_network">All networks — Instagram, Facebook, WhatsApp, YouTube, X</option>
+                <option value="core4">Core 4 — Instagram, Facebook, WhatsApp</option>
+              </select>
+            </div>
+            )}
+
+            <div>
+              <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+                Campaign Type
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setCampaignMode('devotional')}
+                  className={`px-3 py-2 rounded-lg text-sm transition-all ${
+                    campaignMode === 'devotional'
+                      ? 'bg-purple-500/20 text-purple-200 border border-purple-400/40'
+                      : 'bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10'
+                  }`}
+                >
+                  Devotional Pack
                 </button>
                 <button
-                  type="button"
-                  onClick={() => setShowSocialTools((prev) => !prev)}
-                  className="rounded-xl border border-white/10 bg-black/20 p-4 text-left hover:bg-black/30 transition-colors"
+                  onClick={() => setCampaignMode('invitation')}
+                  className={`px-3 py-2 rounded-lg text-sm transition-all ${
+                    campaignMode === 'invitation'
+                      ? 'bg-amber-500/20 text-amber-200 border border-amber-400/40'
+                      : 'bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10'
+                  }`}
                 >
-                  <p className="text-xs uppercase tracking-[0.25em] text-gray-400">Social pack</p>
-                  <h4 className="mt-1 text-base font-semibold text-white">
-                    {showSocialTools ? 'Hide social tools' : 'Open social tools'}
-                  </h4>
-                  <p className="mt-2 text-sm text-gray-300">
-                    Optional quotes, thumbnails, and post copy.
-                  </p>
+                  Invitation Campaign
                 </button>
               </div>
+            </div>
 
-              {showMusicTools && (
-                <SermonMusicGenerator
-                  workspace={workspace}
-                  sermonId={workspace.sermonId}
-                  token={token}
-                  suggestedPrompt={autoPrompts.music}
-                  suggestedPromptOptions={studyMediaPrompts.musicOptions}
-                  onGenerated={() => setRefreshKey((prev) => prev + 1)}
-                />
-              )}
-
-              {showSocialTools && (
-                <div className="border border-white/10 rounded-xl p-6 bg-black/20 space-y-4">
-                  <div className="flex items-center gap-3 mb-4">
-                    <Share2 className="w-6 h-6 text-cyan-300" />
-                    <h3 className="text-lg font-semibold">Social Media Kit</h3>
+            {campaignMode === 'invitation' && (
+            <div className="border border-amber-400/20 rounded-xl p-4 bg-amber-500/5 space-y-2">
+              <p className="text-xs uppercase tracking-widest text-amber-300/70">
+                Campaign Assets — 6 Roles
+              </p>
+              <div className="space-y-1.5">
+                {[
+                  { role: 'Main Invitation', platform: 'Facebook banner', emoji: '🎯' },
+                  { role: 'Devotional Teaser', platform: 'Instagram post', emoji: '💭' },
+                  { role: 'Story Invite', platform: 'Instagram story', emoji: '📱' },
+                  { role: 'Reflection Question', platform: 'Instagram story', emoji: '❓' },
+                  { role: 'YouTube Thumbnail', platform: 'YouTube', emoji: '▶️' },
+                  { role: 'WhatsApp Forward', platform: 'WhatsApp status', emoji: '💬' },
+                ].map((a) => (
+                  <div key={a.role} className="flex items-center gap-2 text-xs text-gray-300">
+                    <span>{a.emoji}</span>
+                    <span className="text-amber-200/80">{a.role}</span>
+                    <span className="text-gray-500">— {a.platform}</span>
                   </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-2">
+                Service details (date, time, address) go in captions — not on images. At least 3 assets clearly invite attendance.
+              </p>
+            </div>
+            )}
 
-                  <div className="border border-cyan-400/40 bg-cyan-500/10 text-cyan-100 text-sm rounded-xl px-4 py-3">
-                    <p className="font-medium mb-1">Sermon Promotion Assets</p>
-                    <p className="text-xs text-cyan-200/80">
-                      Generate quote graphics and thumbnails for social media
-                    </p>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="border border-cyan-400/25 bg-cyan-500/10 rounded-xl p-3">
-                      <p className="text-xs uppercase tracking-widest text-cyan-200/80">Church Branding Defaults</p>
-                      <p className="text-xs text-cyan-100/90 mt-1">
-                        {churchSettingsLoading ? 'Loading defaults...' : 'Managed from Settings → Church Settings'}
-                      </p>
-                    </div>
-
-                    <div className="border border-white/10 rounded-xl p-4 bg-black/20 space-y-3">
-                      <label className="text-xs uppercase tracking-widest text-gray-400">
-                        Per-Run Event Overrides
-                      </label>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <input
-                          className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm"
-                          placeholder="Event title"
-                          value={eventOverrides.eventTitle}
-                          onChange={(e) => setEventOverrides((prev) => ({ ...prev, eventTitle: e.target.value }))}
-                        />
-                        <input
-                          className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm"
-                          placeholder="Event subtitle"
-                          value={eventOverrides.eventSubtitle}
-                          onChange={(e) => setEventOverrides((prev) => ({ ...prev, eventSubtitle: e.target.value }))}
-                        />
-                        <div className="relative">
-                          <input
-                            id="social-service-date"
-                            type="date"
-                            className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 pr-10 text-sm"
-                            value={eventOverrides.serviceDate}
-                            onChange={(e) => setEventOverrides((prev) => ({ ...prev, serviceDate: e.target.value }))}
-                          />
-                          <button
-                            type="button"
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-cyan-200"
-                            onClick={() => {
-                              const input = document.getElementById('social-service-date') as HTMLInputElement | null
-                              if (!input) return
-                              if (typeof input.showPicker === 'function') input.showPicker()
-                              else input.focus()
-                            }}
-                            aria-label="Open date picker"
-                          >
-                            <Calendar className="w-4 h-4" />
-                          </button>
-                        </div>
-                        <div className="relative">
-                          <input
-                            id="social-service-time"
-                            type="time"
-                            className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 pr-10 text-sm"
-                            value={eventOverrides.serviceTime}
-                            onChange={(e) => setEventOverrides((prev) => ({ ...prev, serviceTime: e.target.value }))}
-                          />
-                          <button
-                            type="button"
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-cyan-200"
-                            onClick={() => {
-                              const input = document.getElementById('social-service-time') as HTMLInputElement | null
-                              if (!input) return
-                              if (typeof input.showPicker === 'function') input.showPicker()
-                              else input.focus()
-                            }}
-                            aria-label="Open time picker"
-                          >
-                            <Clock3 className="w-4 h-4" />
-                          </button>
-                        </div>
-                        <select
-                          className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm"
-                          value={eventOverrides.timezone || 'America/New_York'}
-                          onChange={(e) => setEventOverrides((prev) => ({ ...prev, timezone: e.target.value }))}
-                        >
-                          {US_TIMEZONES.map((zone) => (
-                            <option key={zone.value} value={zone.value}>
-                              {zone.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <div className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-gray-300">
-                          <span className="block uppercase tracking-widest text-[10px] text-gray-500 mb-1">Generated CTA</span>
-                          {generatedSocialMeta.ctaText}
-                        </div>
-                        <div className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-gray-300">
-                          <span className="block uppercase tracking-widest text-[10px] text-gray-500 mb-1">Generated Hashtags</span>
-                          {generatedSocialMeta.hashtags}
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-300">
-                        <label className="flex items-center gap-2"><input type="checkbox" checked={eventOverrides.showLogo} onChange={(e) => setEventOverrides((prev) => ({ ...prev, showLogo: e.target.checked }))} />Show logo</label>
-                        <label className="flex items-center gap-2"><input type="checkbox" checked={eventOverrides.showAddress} onChange={(e) => setEventOverrides((prev) => ({ ...prev, showAddress: e.target.checked }))} />Show address</label>
-                        <label className="flex items-center gap-2"><input type="checkbox" checked={eventOverrides.showWebsite} onChange={(e) => setEventOverrides((prev) => ({ ...prev, showWebsite: e.target.checked }))} />Show website</label>
-                        <label className="flex items-center gap-2"><input type="checkbox" checked={eventOverrides.showPhone} onChange={(e) => setEventOverrides((prev) => ({ ...prev, showPhone: e.target.checked }))} />Show phone</label>
-                        <label className="flex items-center gap-2"><input type="checkbox" checked={eventOverrides.showServiceTime} onChange={(e) => setEventOverrides((prev) => ({ ...prev, showServiceTime: e.target.checked }))} />Show service time</label>
-                        <select
-                          value={eventOverrides.preset}
-                          onChange={(e) => setEventOverrides((prev) => ({ ...prev, preset: e.target.value as 'minimal' | 'bold' | 'announcement' }))}
-                          className="bg-black/40 border border-white/10 rounded-lg px-2 py-1"
-                        >
-                          <option value="minimal">Minimal</option>
-                          <option value="bold">Bold</option>
-                          <option value="announcement">Announcement</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
-                        Output Pack
-                      </label>
-                      <select
-                        value={socialMode}
-                        onChange={(e) => setSocialMode(e.target.value as SocialPackMode)}
-                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-                      >
-                        <option value="auto_multi_network">All networks — Instagram, Facebook, WhatsApp, YouTube, X</option>
-                        <option value="core4">Core 4 — Instagram, Facebook, WhatsApp</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
-                        Background Image Source
-                      </label>
-                      <select
-                        value={socialBackgroundProvider}
-                        onChange={(e) => setSocialBackgroundProvider(e.target.value as SocialBackgroundProvider)}
-                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm mb-2"
-                      >
-                        <option value="local">Local Generated</option>
-                        <option value="openai">OpenAI Generated</option>
-                      </select>
-                      {socialBackgroundProvider === 'local' ? (
-                        <select
-                          value={socialBackgroundPreset}
-                          onChange={(e) => setSocialBackgroundPreset(e.target.value as SocialBackgroundPreset)}
-                          className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-                        >
-                          <option value="cyberpunk">Cyberpunk Neon</option>
-                          <option value="modern">Modern Geometric</option>
-                          <option value="aurora">Aurora Glow</option>
-                          <option value="minimal">Minimal Studio</option>
-                        </select>
-                      ) : (
-                        <p className="text-xs text-gray-400">
-                          OpenAI generation may incur usage cost.
-                        </p>
-                      )}
-                    </div>
-
-                    <div>
-                      <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
-                        Creative Direction
-                      </label>
-                      <select
-                        value={socialPromptId}
-                        onChange={(e) => {
-                          setSocialPromptId(e.target.value)
-                          const match = resolvedSocialOptions.find((item: SocialPromptOption) => item.id === e.target.value)
-                          if (!match?.prompt) return
-                          if (match.promptType === 'visual_prompt') setSocialVisualPrompt(match.prompt)
-                          if (match.promptType === 'caption_copy') setSocialCaption(sanitizeSocialCaptionCopy(match.prompt))
-                          if (match.promptType === 'quote_candidate') setSocialQuote(match.prompt)
-                        }}
-                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-                      >
-                        {resolvedSocialOptions.map((option: SocialPromptOption) => (
-                          <option key={option.id} value={option.id}>
-                            {option.promptType === 'visual_prompt' ? 'Visual Prompt' : option.promptType === 'caption_copy' ? 'Caption Copy' : 'Quote Candidate'} · {option.label}{option.description ? ` — ${option.description}` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
-                        Visual Prompt
-                      </label>
-                      <textarea
-                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm min-h-[72px]"
-                        value={socialVisualPrompt}
-                        onChange={(e) => setSocialVisualPrompt(e.target.value)}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
-                        Featured Quote
-                      </label>
-                      <textarea
-                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm min-h-[80px]"
-                        value={socialQuote}
-                        onChange={(e) => setSocialQuote(e.target.value)}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
-                        Social Caption
-                      </label>
-                      <textarea
-                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm min-h-[60px]"
-                        value={socialCaption}
-                        onChange={(e) => setSocialCaption(sanitizeSocialCaptionCopy(e.target.value))}
-                      />
-                      <p className="text-[11px] text-gray-500 mt-1">
-                        Used as post copy/meta context. It does not select a target platform.
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={handleGenerateSocialPack}
-                      className="w-full cyber-button text-sm px-4 py-3 rounded-xl flex items-center justify-center gap-2"
-                      disabled={socialGenerating}
-                    >
-                      {socialGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
-                      {socialGenerating ? 'Generating Social Pack...' : 'Generate Social Pack'}
-                    </button>
-                  </div>
-                </div>
+            <div>
+              <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+                Social Visual Style
+              </label>
+              <select
+                value={socialVisualStyle}
+                onChange={(e) => setSocialVisualStyle(e.target.value as SocialVisualStyle)}
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm mb-2"
+              >
+                <option value="auto">Auto, match slide style</option>
+                <option value="reverent_worship">Reverent Worship</option>
+                <option value="warm_pastoral">Warm Pastoral</option>
+                <option value="evangelistic_invitation">Evangelistic Invitation</option>
+                <option value="hopeful_prophecy">Hopeful Prophecy</option>
+                <option value="bible_study_clean">Bible Study Clean</option>
+                <option value="youth_modern">Youth Modern</option>
+                <option value="spanish_church_warm">Spanish Church Warm</option>
+              </select>
+              <p className="text-xs text-gray-400 mb-2">
+                The social pack uses the same visual language as the slide deck unless you override it here.
+              </p>
+              <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+                Background Image Source
+              </label>
+              <select
+                value={socialBackgroundProvider}
+                onChange={(e) => setSocialBackgroundProvider(e.target.value as SocialBackgroundProvider)}
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm mb-2"
+              >
+                <option value="falai">fal.ai (Flux Schnell)</option>
+                <option value="local">Local Generated</option>
+                <option value="openai">OpenAI Generated</option>
+              </select>
+              {socialBackgroundProvider === 'local' ? (
+                <select
+                  value={socialBackgroundPreset}
+                  onChange={(e) => setSocialBackgroundPreset(e.target.value as SocialBackgroundPreset)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+                >
+                  <option value="cyberpunk">Cyberpunk Neon</option>
+                  <option value="modern">Modern Geometric</option>
+                  <option value="aurora">Aurora Glow</option>
+                  <option value="minimal">Minimal Studio</option>
+                </select>
+              ) : socialBackgroundProvider === 'falai' ? (
+                <p className="text-xs text-gray-400">
+                  fal.ai uses the shared low-cost image model for cleaner social backgrounds.
+                </p>
+              ) : (
+                <p className="text-xs text-gray-400">
+                  OpenAI generation may incur usage cost.
+                </p>
               )}
             </div>
-          )}
+
+            <div>
+              <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+                Creative Direction
+              </label>
+              <select
+                value={socialPromptId}
+                onChange={(e) => {
+                  setSocialPromptId(e.target.value)
+                  const match = resolvedSocialOptions.find((item: SocialPromptOption) => item.id === e.target.value)
+                  if (!match?.prompt) return
+                  if (match.promptType === 'visual_prompt') setSocialVisualPrompt(match.prompt)
+                  if (match.promptType === 'caption_copy') setSocialCaption(sanitizeSocialCaptionCopy(match.prompt))
+                  if (match.promptType === 'quote_candidate') setSocialQuote(match.prompt)
+                }}
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
+              >
+                {resolvedSocialOptions.map((option: SocialPromptOption) => (
+                  <option key={option.id} value={option.id}>
+                    {option.promptType === 'visual_prompt' ? 'Visual Prompt' : option.promptType === 'caption_copy' ? 'Caption Copy' : 'Quote Candidate'} · {option.label}{option.description ? ` — ${option.description}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+                Visual Prompt
+              </label>
+              <textarea
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm min-h-[72px]"
+                value={socialVisualPrompt}
+                onChange={(e) => setSocialVisualPrompt(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+                Featured Quote
+              </label>
+              <textarea
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm min-h-[80px]"
+                value={socialQuote}
+                onChange={(e) => setSocialQuote(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
+                Social Caption
+              </label>
+              <textarea
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm min-h-[60px]"
+                value={socialCaption}
+                onChange={(e) => setSocialCaption(sanitizeSocialCaptionCopy(e.target.value))}
+              />
+              <p className="text-[11px] text-gray-500 mt-1">
+                Used as post copy/meta context. It does not select a target platform.
+              </p>
+            </div>
+
+            <button
+              onClick={handleGenerateSocialPack}
+              className="w-full cyber-button text-sm px-4 py-3 rounded-xl flex items-center justify-center gap-2"
+              disabled={socialGenerating}
+            >
+              {socialGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+              {socialGenerating ? 'Generating Social Pack...' : 'Generate Social Pack'}
+            </button>
+          </section>
         </div>
 
         {/* Video */}
@@ -1175,7 +1293,7 @@ export default function MediaProductionStudio({ workspace, token }: MediaProduct
           key={refreshKey}
           filter={libraryFilter}
           onFilterChange={setLibraryFilter}
-          showOptionalTypes={showOptionalMedia}
+          showOptionalTypes
           optimisticItems={optimisticMediaItems}
           onMediaDeleted={({ id }) => {
             setOptimisticMediaItems((prev) => prev.filter((item) => item.id !== id))

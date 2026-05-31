@@ -4,6 +4,7 @@ import { Book } from 'lucide-react'
 import SermonCore, { SermonCoreData } from '@/components/SermonCore'
 import WorkspaceOutlineControls from '@/components/WorkspaceOutlineControls'
 import { renderCollapsibleMarkdown, renderOutlinePointSection } from '@/components/workspace-render.helpers'
+import { getPreferredStudyReport } from '@/components/workspace-study-report.helpers'
 import type {
   WorkspaceFlowNarrativeEntry,
   WorkspaceOutlineDraft,
@@ -88,7 +89,7 @@ export default function WorkspaceOutlinePhase({
         mainPassage={workspace?.mainPassage || ''}
         theme={workspace?.theme}
         theologicalLens={workspace?.theologicalLens}
-        studyReport={(workspace as any)?.workspace?.studyReports?.[0]?.sections ?? workspace?.studyReports?.[0]?.sections}
+        studyReport={getPreferredStudyReport(workspace)?.sections}
         initialData={workspace?.sermonCore ?? undefined}
         onDataChange={onSermonCoreChange}
         onGenerate={onGenerateSermonCore}

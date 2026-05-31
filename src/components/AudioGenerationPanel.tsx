@@ -32,7 +32,7 @@ export default function AudioGenerationPanel({
   onQueued,
   onGenerated 
 }: AudioGenerationPanelProps) {
-  const [provider, setProvider] = useState<'local' | 'elevenlabs'>('local')
+  const [provider, setProvider] = useState<'elevenlabs' | 'voicebox'>('voicebox')
   const [source, setSource] = useState<'manuscript' | 'scripture' | 'custom'>('manuscript')
   const [text, setText] = useState('')
   const [voiceId, setVoiceId] = useState('')
@@ -41,6 +41,9 @@ export default function AudioGenerationPanel({
   const [error, setError] = useState<string | null>(null)
   const [selectedPromptOption, setSelectedPromptOption] = useState<string>('')
   const [voiceManuallySelected, setVoiceManuallySelected] = useState(false)
+  const [latestAudio, setLatestAudio] = useState<any | null>(null)
+  const [latestAudioSrc, setLatestAudioSrc] = useState<string>('')
+  const [latestAudioLoading, setLatestAudioLoading] = useState(false)
 
   const narrationKeyPoints = (
     Array.isArray(workspace?.outlines?.[0]?.structure?.pointNodes)
@@ -98,6 +101,43 @@ export default function AudioGenerationPanel({
     token,
   ])
 
+  useEffect(() => {
+    let active = true
+    let objectUrl: string | null = null
+    const loadLatestAudio = async () => {
+      setLatestAudioLoading(true)
+      try {
+        const list = await slidesApi.listAudio(workspaceId, token)
+        if (!active) return
+        const items = Array.isArray(list) ? list : []
+        const preferred = [...items].sort((left, right) => {
+          const leftTime = new Date(left?.createdAt || left?.updatedAt || 0).getTime()
+          const rightTime = new Date(right?.createdAt || right?.updatedAt || 0).getTime()
+          return rightTime - leftTime
+        })[0] || null
+        setLatestAudio(preferred)
+        if (preferred?.id) {
+          const blob = await slidesApi.getAudioBlob(String(preferred.id), token)
+          if (!active) return
+          objectUrl = URL.createObjectURL(blob)
+          setLatestAudioSrc(objectUrl)
+        }
+      } catch (err) {
+        if (!active) return
+        setLatestAudio(null)
+        setLatestAudioSrc('')
+      } finally {
+        if (active) setLatestAudioLoading(false)
+      }
+    }
+
+    loadLatestAudio()
+    return () => {
+      active = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [workspaceId, token])
+
   const isSpanishVoice = (voice: any) => {
     const language = String(voice?.language || voice?.lang || '').toLowerCase()
     const locale = String(voice?.locale || '').toLowerCase()
@@ -108,10 +148,10 @@ export default function AudioGenerationPanel({
     return /(^|[^a-z])es([_-]|$)|spanish|español/.test(`${id} ${name}`)
   }
 
-  const pickPreferredVoiceId = (voicesData: any[], sampleText: string, nextProvider: 'local' | 'elevenlabs') => {
+  const pickPreferredVoiceId = (voicesData: any[], sampleText: string, nextProvider: 'elevenlabs' | 'voicebox') => {
     if (!Array.isArray(voicesData) || voicesData.length === 0) return ''
     const spanishText = isLikelySpanishText(sampleText)
-    if (nextProvider === 'local' && spanishText) {
+    if (spanishText) {
       const spanishVoice = voicesData.find((voice) => isSpanishVoice(voice))
       if (spanishVoice) return getVoiceValue(spanishVoice)
     }
@@ -125,7 +165,6 @@ export default function AudioGenerationPanel({
 
   useEffect(() => {
     if (voiceManuallySelected) return
-    if (provider !== 'local') return
     if (!voices.length) return
     if (!isLikelySpanishText(text)) return
     if (voices.some((voice) => getVoiceValue(voice) === voiceId && isSpanishVoice(voice))) return
@@ -142,7 +181,7 @@ export default function AudioGenerationPanel({
     setSelectedPromptOption(narrationPromptOptions[0].id)
   }, [narrationPromptOptions, selectedPromptOption])
 
-  const loadVoices = async (nextProvider: 'local' | 'elevenlabs') => {
+  const loadVoices = async (nextProvider: 'elevenlabs' | 'voicebox') => {
     try {
       const voicesData = await slidesApi.getVoices(token, nextProvider)
       setVoices(voicesData)
@@ -158,10 +197,16 @@ export default function AudioGenerationPanel({
 
   const getSourceText = (nextSource: 'manuscript' | 'scripture' | 'custom') => {
     if (nextSource === 'scripture') {
-      return String(workspace.mainPassage || '').trim()
+      return String(workspace.mainPassage || narrationPrompt || autoText || '').trim()
     }
     if (nextSource === 'manuscript') {
-      return String(workspace.manuscripts?.[0]?.content?.text || autoText || '').trim()
+      return String(
+        workspace.manuscripts?.[0]?.content?.text ||
+        autoText ||
+        workspace.mainPassage ||
+        narrationPrompt ||
+        '',
+      ).trim()
     }
     return String(text || '').trim()
   }
@@ -172,7 +217,9 @@ export default function AudioGenerationPanel({
     promptOverride?: string
   }) => {
     const sourceText = sanitizeNarrationText(options.sourceText ?? getSourceText(options.sourceType))
-    if (!sourceText) return ''
+    if (!sourceText) {
+      return clampNarrationText(String(workspace.mainPassage || narrationPrompt || autoText || ''), MAX_NARRATION_CHARACTERS)
+    }
 
     try {
       const response = await slidesApi.generateNarrationScript(
@@ -226,9 +273,18 @@ export default function AudioGenerationPanel({
           })
 
     if (!finalNarrationText.trim()) {
-      setError('Please enter text to narrate')
-      setGenerating(false)
-      return
+      const fallbackNarration = clampNarrationText(
+        String(workspace.manuscripts?.[0]?.content?.text || autoText || workspace.mainPassage || narrationPrompt || ''),
+        MAX_NARRATION_CHARACTERS,
+      )
+      if (!fallbackNarration.trim()) {
+        setError('Please enter text to narrate')
+        setGenerating(false)
+        return
+      }
+      if (fallbackNarration !== sanitizeNarrationText(text)) {
+        setText(fallbackNarration)
+      }
     }
 
     if (finalNarrationText !== sanitizeNarrationText(text)) {
@@ -255,6 +311,22 @@ export default function AudioGenerationPanel({
           status: 'pending',
           createdAt: new Date().toISOString(),
         })
+      }
+      setLatestAudio({
+        id: response?.id,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      })
+      if (response?.id) {
+        try {
+          const blob = await slidesApi.getAudioBlob(String(response.id), token)
+          setLatestAudioSrc((prev) => {
+            if (prev) URL.revokeObjectURL(prev)
+            return URL.createObjectURL(blob)
+          })
+        } catch {
+          // preview loads from the refreshed library view too
+        }
       }
       onGenerated?.()
     } catch (err: any) {
@@ -318,14 +390,14 @@ export default function AudioGenerationPanel({
         <label className="text-xs uppercase tracking-widest text-gray-400 mb-2 block">
           Provider
         </label>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           {[
-            { value: 'local', label: 'Local (Docker)' },
+            { value: 'voicebox', label: 'Voicebox' },
             { value: 'elevenlabs', label: 'ElevenLabs' },
           ].map((p) => (
             <button
               key={p.value}
-              onClick={() => setProvider(p.value as 'local' | 'elevenlabs')}
+              onClick={() => setProvider(p.value as 'elevenlabs' | 'voicebox')}
               className={`px-3 py-2 rounded-lg text-sm transition-all ${
                 provider === p.value
                   ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/40'
@@ -442,8 +514,43 @@ export default function AudioGenerationPanel({
         )}
       </button>
 
+      <div className="border border-white/10 rounded-xl bg-black/30 p-4 space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-widest text-gray-400">Latest generated audio</p>
+            <p className="text-sm text-gray-300">
+              {latestAudioLoading ? 'Loading latest audio...' : latestAudio?.status ? `Status: ${latestAudio.status}` : 'No audio yet'}
+            </p>
+          </div>
+          {latestAudio?.id ? (
+          <a
+              href={latestAudioSrc || slidesApi.getAudioDownloadUrl(String(latestAudio.id), token)}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs px-3 py-2 rounded-full border border-white/10 bg-white/5 hover:bg-white/10"
+            >
+              Open audio
+            </a>
+          ) : null}
+        </div>
+        {latestAudio?.id ? (
+          <audio
+            key={String(latestAudio.id)}
+            controls
+            className="w-full"
+            src={latestAudioSrc || slidesApi.getAudioDownloadUrl(String(latestAudio.id), token)}
+          />
+        ) : (
+          <p className="text-xs text-gray-500">
+            The most recent audio output will appear here after generation.
+          </p>
+        )}
+      </div>
+
       <p className="text-xs text-gray-500 text-center">
-        {provider === 'local' ? 'Powered by local Docker text-to-speech' : 'Powered by ElevenLabs text-to-speech'}
+        {provider === 'elevenlabs'
+          ? 'Powered by ElevenLabs text-to-speech'
+          : 'Powered by Voicebox AI'}
       </p>
     </div>
   )

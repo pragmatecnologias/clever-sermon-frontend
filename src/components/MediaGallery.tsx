@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Image as ImageIcon, FileText, Music, Mic, Video, Download, Trash2, Loader2, Share2, Play, Pause } from 'lucide-react'
+import { Image as ImageIcon, FileText, Music, Mic, Video, Download, Trash2, Loader2, Share2, Play, Pause, Copy } from 'lucide-react'
 import { slidesApi } from '@/lib/slides-api'
+import { CAMPAIGN_ROLE_LABELS, CAMPAIGN_ROLE_COLORS } from '@/lib/social-invitation-helpers'
 import { createWorkspaceApiClient } from '@/lib/api/openapi-client'
 import {
   getDeckIdentity,
@@ -24,6 +25,10 @@ interface MediaItem {
   progressTotal?: number
   progressPercent?: number
   progressLabel?: string
+  warnings?: string[]
+  caption?: string
+  campaignRole?: string
+  overlayData?: Record<string, any>
 }
 
 function InlineAudioPlayer({ audioId, token }: { audioId: string; token: string }) {
@@ -179,6 +184,16 @@ function formatSocialToken(value?: string): string {
     .filter(Boolean)
     .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
     .join(' ')
+}
+
+function getCampaignRoleLabel(role?: string): string {
+  if (!role) return ''
+  return (CAMPAIGN_ROLE_LABELS as Record<string, { label: string }>)[role]?.label || role.replace(/_/g, ' ')
+}
+
+function getCampaignRoleColor(role?: string): string {
+  if (!role) return 'border-white/20 bg-white/5 text-gray-300'
+  return (CAMPAIGN_ROLE_COLORS as Record<string, string>)[role] || 'border-white/20 bg-white/5 text-gray-300'
 }
 
 function parseSunoProgress(errorMessage?: string): {
@@ -417,19 +432,33 @@ export default function MediaGallery({ workspace, workspaceId, token, filter, on
       }
 
       if (socialResult.status === 'fulfilled' && Array.isArray(socialResult.value)) {
+        const latestSocialByVariant = new Map<string, any>()
+        const sortedSocial = [...socialResult.value].sort(
+          (a: any, b: any) => +new Date(b.createdAt) - +new Date(a.createdAt),
+        )
+        for (const item of sortedSocial) {
+          const key = [item.platform, item.variant, item.type].filter(Boolean).join(':')
+          if (!latestSocialByVariant.has(key)) {
+            latestSocialByVariant.set(key, item)
+          }
+        }
         mappedMedia.push(
-          ...socialResult.value.map((item: any) => ({
+          ...Array.from(latestSocialByVariant.values()).map((item: any) => ({
             id: item.id,
             type: 'social' as const,
             status: (String(item.status || '').toLowerCase() === 'ready' ? 'completed' : String(item.status || '').toLowerCase()) as MediaItem['status'],
             filePath: item.filePath,
             createdAt: item.createdAt,
             errorMessage: item.errorMessage,
-            label: [item.platform, item.variant, item.overlayData?.layoutVariant].filter(Boolean).join(' • ') || item.type,
+            label: [item.platform, item.variant, item.overlayData?.assetPurpose, item.overlayData?.layoutVariant].filter(Boolean).join(' • ') || item.type,
             dimensions:
               item.width && item.height
                 ? `${item.width}x${item.height} ${String(item.format || 'png').toUpperCase()}`
                 : undefined,
+            warnings: Array.isArray(item.overlayData?.qualityWarnings) ? item.overlayData.qualityWarnings : [],
+            caption: item.caption || item.overlayData?.captionPackage?.caption || '',
+            campaignRole: item.overlayData?.campaignRole || '',
+            overlayData: item.overlayData || {},
           }))
         )
       }
@@ -973,6 +1002,14 @@ export default function MediaGallery({ workspace, workspaceId, token, filter, on
                         </span>
                       </div>
 
+                      {mediaItem.type === 'social' && mediaItem.campaignRole ? (
+                        <div className="mb-2">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${getCampaignRoleColor(mediaItem.campaignRole)}`}>
+                            {getCampaignRoleLabel(mediaItem.campaignRole)}
+                          </span>
+                        </div>
+                      ) : null}
+
                       {mediaItem.type === 'social' ? (
                         <div className="flex flex-wrap gap-2 mb-2">
                           {mediaItem.label?.split('•').map((part, idx) => {
@@ -992,6 +1029,15 @@ export default function MediaGallery({ workspace, workspaceId, token, filter, on
                               {mediaItem.dimensions}
                             </span>
                           ) : null}
+                        </div>
+                      ) : null}
+
+                      {mediaItem.type === 'social' && Array.isArray(mediaItem.warnings) && mediaItem.warnings.length > 0 ? (
+                        <div className="mb-3 rounded-lg border border-amber-400/25 bg-amber-500/10 px-3 py-2">
+                          <p className="text-[11px] font-medium text-amber-200">Social QA warnings</p>
+                          <p className="text-[11px] text-amber-100/90 mt-1">
+                            {mediaItem.warnings.slice(0, 2).join(' • ')}
+                          </p>
                         </div>
                       ) : null}
 
@@ -1077,13 +1123,26 @@ export default function MediaGallery({ workspace, workspaceId, token, filter, on
                               <Trash2 className="w-3 h-3" />
                             )}
                           </button>
+                          {mediaItem.type === 'social' && mediaItem.caption ? (
+                            <button
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                navigator.clipboard.writeText(mediaItem.caption || '')
+                              }}
+                              className="flex-1 cyber-outline text-xs px-3 py-2 rounded-full flex items-center justify-center gap-2"
+                              title="Copy caption to clipboard"
+                            >
+                              <Copy className="w-3 h-3" />
+                              Copy Caption
+                            </button>
+                          ) : null}
                         </div>
                       )}
 
                       {mediaItem.type === 'image' && mediaItem.status === 'completed' ? (
                         <GeneratedImagePreview imageId={mediaItem.id} token={token} />
                       ) : mediaItem.type === 'social' && mediaItem.status === 'completed' ? (
-                        <GeneratedSocialPreview socialId={mediaItem.id} token={token} />
+                        <GeneratedSocialPreview socialId={mediaItem.id} token={token} dimensions={mediaItem.dimensions} />
                       ) : null}
 
                       {mediaItem.label && mediaItem.type !== 'social' ? (
@@ -1382,8 +1441,19 @@ function GeneratedImagePreview({ imageId, token }: { imageId: string; token: str
   )
 }
 
-function GeneratedSocialPreview({ socialId, token }: { socialId: string; token: string }) {
+function GeneratedSocialPreview({ socialId, token, dimensions }: { socialId: string; token: string; dimensions?: string }) {
   const [src, setSrc] = useState<string | null>(null)
+  const previewHeightClass = useMemo(() => {
+    const match = String(dimensions || '').match(/(\d+)x(\d+)/i)
+    if (!match) return 'h-56'
+    const width = Number(match[1])
+    const height = Number(match[2])
+    if (!width || !height) return 'h-56'
+    const ratio = width / height
+    if (ratio <= 0.7) return 'h-80'
+    if (ratio >= 1.5) return 'h-44'
+    return 'h-56'
+  }, [dimensions])
 
   useEffect(() => {
     let mounted = true
@@ -1420,9 +1490,9 @@ function GeneratedSocialPreview({ socialId, token }: { socialId: string; token: 
   if (!src) return null
 
   return (
-    <div className="mt-3 rounded-lg overflow-hidden border border-white/10 bg-black/40">
+    <div className={`mt-3 rounded-lg overflow-hidden border border-white/10 bg-black/40 flex items-center justify-center ${previewHeightClass}`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt="Social media preview" className="w-full h-36 object-cover" />
+      <img src={src} alt="Social media preview" className="w-full h-full object-contain bg-black/20" />
     </div>
   )
 }
